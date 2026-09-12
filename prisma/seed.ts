@@ -1,32 +1,84 @@
+import fs from "fs";
+import path from "path";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+
+// Ensure environment variables from .env and .env.local are loaded into process.env
+function loadEnvFile(fileName: string) {
+  const filePath = path.resolve(process.cwd(), fileName);
+  if (!fs.existsSync(filePath)) return;
+  try {
+    const content = fs.readFileSync(filePath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx !== -1) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if (
+          (val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))
+        ) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`Could not read ${fileName}:`, e);
+  }
+}
+
+loadEnvFile(".env");
+loadEnvFile(".env.local");
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@clickyfied.com";
-  const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-  const adminName = process.env.ADMIN_NAME || "Admin";
+  const adminEmail = (process.env.ADMIN_EMAIL || "admin@clickyfied.com").trim();
+  const adminPassword = (process.env.ADMIN_PASSWORD || "admin123").trim();
+  const adminName = (process.env.ADMIN_NAME || "Admin").trim();
   const passwordHash = await bcrypt.hash(adminPassword, 10);
 
-  // Admin user
-  const admin = await prisma.user.upsert({
+  // Admin user: check if admin with this email exists
+  let existingAdmin = await prisma.user.findUnique({
     where: { email: adminEmail },
-    update: {
-      passwordHash,
-      name: adminName,
-      role: "ADMIN",
-      status: "ACTIVE",
-    },
-    create: {
-      name: adminName,
-      email: adminEmail,
-      passwordHash,
-      role: "ADMIN",
-      status: "ACTIVE",
-      balance: 0,
-    },
   });
+
+  // If not found and a previous default admin exists, update that account to the new email
+  if (!existingAdmin && adminEmail !== "admin@clickyfied.com") {
+    const defaultAdmin = await prisma.user.findUnique({
+      where: { email: "admin@clickyfied.com" },
+    });
+    if (defaultAdmin) {
+      existingAdmin = defaultAdmin;
+    }
+  }
+
+  const admin = existingAdmin
+    ? await prisma.user.update({
+        where: { id: existingAdmin.id },
+        data: {
+          name: adminName,
+          email: adminEmail,
+          passwordHash,
+          role: "ADMIN",
+          status: "ACTIVE",
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          name: adminName,
+          email: adminEmail,
+          passwordHash,
+          role: "ADMIN",
+          status: "ACTIVE",
+          balance: 0,
+        },
+      });
 
   // Default pricing profile
   const defaultProfile = await prisma.pricingProfile.upsert({
@@ -368,7 +420,7 @@ async function main() {
   }
 
   console.log("Seed complete:");
-  console.log(`  Admin: ${adminEmail} / ${process.env.ADMIN_PASSWORD ? "******** (configured via ADMIN_PASSWORD)" : adminPassword}`);
+  console.log(`  Admin: ${adminEmail} / ${adminPassword}`);
   console.log(`  User:  kwame@example.com / user1234`);
   console.log(`  Reseller: ama@example.com / user1234`);
   console.log(`  Default profile: ${defaultProfile.name}`);
