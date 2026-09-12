@@ -1,0 +1,217 @@
+================================================================================
+CLICKYFIED — SMS FORWARDER SETUP GUIDE (ANDROID PHONE)
+================================================================================
+
+This guide explains how to set up an Android phone with your Mobile Money SIM card 
+so that whenever a MoMo payment SMS arrives, it is automatically forwarded in 
+real-time to your Clickyfied server.
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. Prerequisites & Server Configuration
+2. Webhook Specification (URL, Headers, Payload)
+3. Recommended Android Apps
+4. Method 1: Setup Using "SMS Forwarder" App (Easiest)
+5. Method 2: Setup Using "MacroDroid" App (Most Reliable)
+6. Critical Phone & Battery Settings (Don't Miss This!)
+7. Testing & Verifying
+8. Troubleshooting FAQ
+
+================================================================================
+1. PREREQUISITES & SERVER CONFIGURATION
+================================================================================
+
+1. A dedicated Android smartphone with your MoMo merchant or recipient SIM inserted.
+2. Constant internet access (WiFi or active Mobile Data) on the phone.
+3. Your Clickyfied production domain (e.g., https://your-domain.com or https://clickyfied.com).
+4. The secret key set in your server's `.env` file:
+
+   SMS_FORWARDER_SECRET="your_secure_secret_token_here"
+
+   *Note: If you haven't set SMS_FORWARDER_SECRET in .env, the system default is:
+   clickyfied_forwarder_secret_2026
+
+================================================================================
+2. WEBHOOK SPECIFICATION
+================================================================================
+
+Your Clickyfied server listens for incoming SMS at:
+
+- URL:     https://<YOUR-DOMAIN>/api/webhooks/momo/sms
+- Method:  POST
+- Headers:
+    Content-Type: application/json
+    Authorization: Bearer <SMS_FORWARDER_SECRET>
+    (Alternatively: x-forwarder-secret: <SMS_FORWARDER_SECRET>)
+
+- JSON Body (Request Payload):
+  {
+    "message": "[SMS_BODY]",
+    "from": "[SENDER_NUMBER_OR_NAME]",
+    "to": "[YOUR_MOMO_NUMBER]"
+  }
+
+Supported JSON fields for SMS text (any of these work):
+- "message", "body", "text", "content", or "sms"
+
+Supported JSON fields for Sender (optional):
+- "from" or "sender"
+
+Supported networks automatically parsed:
+- MTN Mobile Money (Ghana)
+- Telecel / Vodafone Cash (Ghana)
+- AT / AirtelTigo Money (Ghana)
+
+================================================================================
+3. RECOMMENDED ANDROID APPS
+================================================================================
+
+Choose either of the following two apps:
+
+- Option A: "SMS Forwarder" (by Lanrenshen / auto forwarder)
+  Search on Google Play Store: "SMS Forwarder"
+  or download from GitHub: https://github.com/pppscn/SmsForwarder/releases
+  Pros: Lightweight, specifically built for webhook forwarding.
+
+- Option B: "MacroDroid - Device Automation"
+  Search on Google Play Store: "MacroDroid"
+  Pros: Extremely reliable, runs in background without being killed by Android,
+  built-in HTTP request action. Highly recommended!
+
+================================================================================
+4. METHOD 1: SETUP USING "SMS FORWARDER" APP
+================================================================================
+
+Step 1: Install "SMS Forwarder" from Google Play Store or GitHub.
+Step 2: Grant all requested permissions:
+        - Read SMS / Receive SMS
+        - Ignore Battery Optimizations
+        - Run in Background
+Step 3: Open the app and go to "Send Channel" or "Webhook":
+        - Click the "+" button to add a new Channel.
+        - Channel Type: Choose "Webhook" or "Custom Webhook".
+        - Name: Clickyfied Server
+        - Web Server URL:
+          https://your-domain.com/api/webhooks/momo/sms
+        - Request Method: POST
+        - Headers: Add header:
+          Header Name: Authorization
+          Header Value: Bearer <YOUR_SMS_FORWARDER_SECRET>
+        - Body / Data format: JSON
+        - Template / Content:
+          {
+            "message": "[msg]",
+            "from": "[from]",
+            "to": "[to]"
+          }
+        - Click "Save" or "Test".
+Step 4: Go to "Forwarding Rules":
+        - Click "+" to add a rule.
+        - Source: SMS
+        - Sender match (Optional):
+          Leave empty to forward all SMS, or add sender keywords:
+          *MobileMoney*, *MTN*, *Telecel*, *AirtelTigo*
+        - Target Channel: Select "Clickyfied Server" (created in Step 3).
+        - Enable the rule and click "Save".
+
+================================================================================
+5. METHOD 2: SETUP USING "MACRODROID" (HIGHLY RECOMMENDED)
+================================================================================
+
+MacroDroid is one of the most stable automation tools on Android.
+
+Step 1: Install MacroDroid from Google Play Store.
+Step 2: Grant SMS and Background permissions.
+Step 3: Tap "Add Macro":
+        1. TRIGGER (+):
+           - Select "Incoming SMS"
+           - Choose "From Any Number" (or filter by "Matches: *Money* or *MTN*")
+           - Choose "Any Content"
+        
+        2. ACTION (+):
+           - Search for "HTTP Request" (or Connectivity -> HTTP Request)
+           - Request Method: POST
+           - URL: https://your-domain.com/api/webhooks/momo/sms
+           - Content Type: application/json
+           - Request Body / Content:
+             {
+               "message": "{sms_message}",
+               "from": "{sms_number}"
+             }
+           - Request Headers:
+             Header 1:
+             Name: Authorization
+             Value: Bearer <YOUR_SMS_FORWARDER_SECRET>
+           - Timeout: 30 seconds
+           - Block next actions until complete: Yes
+
+        3. CONSTRAINTS:
+           - None needed (leave empty).
+
+Step 4: Give the Macro a name (e.g., "Forward MoMo SMS") and tap Save (tick mark).
+Step 5: Turn ON the MacroDroid master toggle.
+
+================================================================================
+6. CRITICAL PHONE & BATTERY SETTINGS
+================================================================================
+
+Android aggressively kills background apps to save battery. To ensure you never
+miss an SMS:
+
+1. Disable Battery Optimization:
+   - Go to Phone Settings -> Apps -> [Your Forwarder App / MacroDroid] -> Battery.
+   - Select "Unrestricted" or "Don't Optimize".
+
+2. Enable Autostart / Background Activity:
+   - On Xiaomi / Redmi / Poco (MIUI/HyperOS): Enable "Autostart".
+   - On Samsung: Settings -> Battery -> Background usage limits -> Add app to 
+     "Never sleeping apps".
+   - On Tecno / Infinix (HiOS/XOS): Phone Master -> Auto-start management -> Enable.
+
+3. Lock the App in Recent Apps:
+   - Open Recent Apps overview on your phone.
+   - Long press on the SMS Forwarder app and tap the "Lock" icon so Android never 
+     clears it from memory.
+
+4. Keep Connected & Powered:
+   - Keep the forwarding phone plugged into a charger.
+   - Connect to a stable WiFi network with Mobile Data enabled as backup.
+
+================================================================================
+7. TESTING & VERIFYING
+================================================================================
+
+1. Send a small test MoMo transaction (e.g., GHS 1.00) to the phone's SIM card.
+2. Watch the phone receive the telecom SMS notification.
+3. Open your Clickyfied Admin Dashboard:
+   - Navigate to: ADMIN -> BILLING (or WALLET) -> INCOMING MOMO
+   - Check if the transaction appears in the list with status "AVAILABLE".
+   - View the details to see the extracted Transaction ID, Amount, and Sender.
+4. Log into a regular user account on Clickyfied:
+   - Go to Dashboard -> Billing -> Send & Claim.
+   - Enter the Transaction ID, Amount, and Network.
+   - Click "Claim Money".
+   - Verify the wallet balance updates immediately and a success message appears.
+
+================================================================================
+8. TROUBLESHOOTING FAQ
+================================================================================
+
+Q: Webhook returns 401 Unauthorized?
+A: Your Authorization header does not match your SMS_FORWARDER_SECRET.
+   Make sure you included "Bearer " before the secret in the app settings, or verify
+   the secret in your server's .env file.
+
+Q: Webhook returns 400 Missing SMS message content?
+A: Ensure your JSON body sends the SMS text under the key "message" or "body":
+   {"message": "[SMS_TEXT]"}
+
+Q: Transaction appears as "UNMATCHED"?
+A: The SMS format was not recognized by the telecom parsers. Admin can view the 
+   raw SMS in Admin -> Incoming MoMo and manually credit the user if necessary.
+
+Q: Transaction is marked "REJECTED"?
+A: The parser detected an outgoing debit/cash-out SMS (e.g., "Payment made to...",
+   "Cash Out GHS..."). The system strictly protects against claiming debit messages.
+================================================================================
