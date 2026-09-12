@@ -154,3 +154,4 @@ export function ScrollableTabs<T extends string = string>({
     </div>
   );
 }
+
