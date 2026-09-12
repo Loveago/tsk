@@ -1,0 +1,1694 @@
+Yes. This is a good next layer for Clickyfied. I’d structure it as a **controlled reseller storefront system**: the admin decides who is allowed to open a storefront, while the user controls their storefront, retail pricing, products, branding, and commission wallet.
+
+I’d also add a few safeguards you didn’t mention, especially around **pricing limits, wallet transactions, refunds, order tracking, withdrawals, and admin approval**.
+
+Here’s a Cursor-ready master prompt for the feature:
+
+---
+
+# CLICKYFIED — USER STOREFRONT & RESELLER MARKETPLACE SYSTEM
+
+> **IMPORTANT:** Add a complete storefront/reseller marketplace system to the existing Clickyfied application.
+>
+> This is an extension to the existing system. **Do not rebuild the existing user dashboard, wallet, products, orders, networks or authentication system from scratch.**
+>
+> First inspect the current architecture, database models, APIs and UI, then integrate this feature cleanly into the existing application.
+>
+> The storefront system must support **MTN, Telecel and AirtelTigo** products.
+
+---
+
+# 1. ADMIN MUST ENABLE STOREFRONT ACCESS
+
+A user must NOT automatically receive a storefront.
+
+Add an admin-controlled setting:
+
+```text
+Storefront Access
+```
+
+For each user, admin can:
+
+```text
+[ Enable Storefront ]
+[ Disable Storefront ]
+```
+
+Possible states:
+
+```text
+NOT_ENABLED
+ENABLED
+SUSPENDED
+```
+
+Only users whose storefront access is:
+
+```text
+ENABLED
+```
+
+should see the storefront features on their dashboard.
+
+---
+
+# 2. USER DASHBOARD
+
+For users who have storefront access, add a new navigation item:
+
+```text
+Storefront
+```
+
+Possible dashboard:
+
+```text
+Dashboard
+
+Main Wallet
+Storefront
+Orders
+Sent Orders
+Packages
+My Not Received
+Reports
+Billing
+...
+```
+
+Users without permission should not see the Storefront option.
+
+Do not simply hide it on the frontend.
+
+The backend must also prevent unauthorized users from accessing storefront APIs/pages.
+
+---
+
+# 3. STOREFRONT SETTINGS
+
+Create:
+
+```text
+/storefront
+```
+
+and/or:
+
+```text
+/storefront/settings
+```
+
+The user should have a complete storefront management area.
+
+Main sections:
+
+```text
+Storefront Overview
+Products
+Pricing
+Appearance
+Orders
+Storefront Wallet
+Withdrawals
+Settings
+```
+
+---
+
+# 4. STOREFRONT PROFILE
+
+Users should be able to customize their storefront.
+
+Allow:
+
+```text
+Store Name
+Store Description
+Store Logo
+Store Banner
+Contact Phone
+WhatsApp Number
+Email
+Location
+Social Media Links
+```
+
+Example:
+
+```text
+Store Name:
+Top Skanka Data Hub
+
+Description:
+Affordable MTN, Telecel and AirtelTigo data bundles.
+
+WhatsApp:
+024XXXXXXX
+
+Phone:
+024XXXXXXX
+```
+
+---
+
+# 5. STOREFRONT URL
+
+Every enabled storefront should have a unique public URL.
+
+For example:
+
+```text
+clickyfied.com/store/top-skanka
+```
+
+or preferably:
+
+```text
+clickyfied.com/@topskanka
+```
+
+The username/slug must be unique.
+
+Allow the user to customize the slug where possible.
+
+Example:
+
+```text
+Store URL
+
+clickyfied.com/@topskanka
+
+[Copy Link]
+[Open Store]
+```
+
+---
+
+# 6. STOREFRONT STATUS
+
+Show:
+
+```text
+Storefront Status
+
+● Active
+```
+
+or:
+
+```text
+● Suspended
+```
+
+If the admin suspends the storefront:
+
+* public storefront becomes unavailable
+* user cannot receive new storefront orders
+* existing orders remain accessible
+* storefront wallet remains accessible
+* pending withdrawals continue to be handled according to admin rules
+
+Do not delete the storefront.
+
+---
+
+# 7. PRODUCT MANAGEMENT
+
+The storefront should use the **existing Clickyfied products/packages**.
+
+Do not create completely separate duplicate products.
+
+For example, existing product:
+
+```text
+MTN
+1 GB
+Cost: GHS 3.80
+```
+
+The user can add it to their storefront.
+
+Their storefront price could be:
+
+```text
+GHS 5.00
+```
+
+---
+
+# 8. ADD PRODUCTS TO STOREFRONT
+
+Inside:
+
+```text
+Storefront → Products
+```
+
+show:
+
+```text
+Available Products
+```
+
+Example:
+
+```text
+MTN
+1 GB
+Your Cost: GHS 3.80
+
+[Add to Store]
+```
+
+After adding:
+
+```text
+MTN
+1 GB
+
+Your Cost:
+GHS 3.80
+
+Selling Price:
+GHS 5.00
+
+Commission:
+GHS 1.20
+
+[Edit]
+[Remove]
+```
+
+Do this for:
+
+```text
+MTN
+Telecel
+AirtelTigo
+```
+
+---
+
+# 9. PRICING / MARKUP
+
+The user should be able to set their own selling price for each storefront product.
+
+Example:
+
+```text
+Your Cost:
+GHS 4.00
+
+Selling Price:
+GHS 5.00
+
+Your Commission:
+GHS 1.00
+```
+
+Commission:
+
+```text
+sellingPrice - resellerCost
+```
+
+Example:
+
+```text
+5.00 - 4.00 = 1.00
+```
+
+The commission should be calculated automatically.
+
+Do not allow the user to manually enter the commission.
+
+---
+
+# 10. PRICING VALIDATION
+
+Add pricing rules.
+
+The user should not be able to sell below their actual cost.
+
+Example:
+
+```text
+Your Cost:
+GHS 3.80
+```
+
+If they enter:
+
+```text
+GHS 3.50
+```
+
+show:
+
+```text
+Invalid selling price
+
+Your selling price cannot be below
+your current product cost of GHS 3.80.
+```
+
+Also allow the admin to optionally configure:
+
+```text
+Minimum Markup
+Maximum Markup
+```
+
+per product or globally.
+
+Example:
+
+```text
+Minimum markup:
+GHS 0.50
+
+Maximum markup:
+GHS 10.00
+```
+
+---
+
+# 11. MARKUP MODE
+
+For convenience, allow users to choose:
+
+```text
+Fixed Selling Price
+```
+
+or:
+
+```text
+Markup Amount
+```
+
+or potentially:
+
+```text
+Markup Percentage
+```
+
+Example:
+
+```text
+Cost:
+GHS 3.80
+
+Markup:
+GHS 1.20
+
+Selling:
+GHS 5.00
+```
+
+This makes managing many products much easier.
+
+---
+
+# 12. BULK PRICING
+
+This is something I strongly recommend adding.
+
+Users should be able to select multiple products:
+
+```text
+☑ MTN 1GB
+☑ MTN 2GB
+☑ MTN 3GB
+☑ Telecel 1GB
+☑ AirtelTigo 1GB
+```
+
+Then:
+
+```text
+Bulk Actions
+
+[Apply Markup]
+[Set Markup Percentage]
+[Set Selling Price]
+[Activate]
+[Deactivate]
+```
+
+Example:
+
+```text
+Apply markup:
+
++ GHS 1.00
+
+[Apply]
+```
+
+---
+
+# 13. STOREFRONT PRODUCT VISIBILITY
+
+Each product should have:
+
+```text
+ACTIVE
+INACTIVE
+```
+
+If inactive:
+
+* it remains configured
+* it does not appear publicly
+* the user can reactivate it later
+
+This is better than forcing users to remove/re-add products.
+
+---
+
+# 14. OUT-OF-STOCK / UNAVAILABLE PRODUCTS
+
+If Clickyfied/admin disables a product or the underlying network package becomes unavailable:
+
+The user's storefront should automatically reflect:
+
+```text
+Currently Unavailable
+```
+
+The user should not be able to sell something that Clickyfied cannot fulfil.
+
+This must be controlled by the master product availability.
+
+---
+
+# 15. PUBLIC STOREFRONT
+
+Create a beautiful public-facing storefront.
+
+Example:
+
+```text
+┌───────────────────────────────────────┐
+│              STORE LOGO               │
+│                                       │
+│         Top Skanka Data Hub           │
+│                                       │
+│ Affordable Data Bundles               │
+│                                       │
+│ [WhatsApp] [Contact]                 │
+└───────────────────────────────────────┘
+
+MTN
+────────────────────────────
+
+1 GB                         GHS 5.00
+2 GB                         GHS 9.50
+5 GB                         GHS 23.00
+
+[Buy Now]
+
+TELECEL
+────────────────────────────
+
+1 GB                         GHS 5.00
+
+[Buy Now]
+
+AIRTELTIGO
+────────────────────────────
+
+1 GB                         GHS 5.00
+
+[Buy Now]
+```
+
+Keep the storefront clean, modern and mobile-first.
+
+---
+
+# 16. NETWORK FILTERS
+
+Add filters:
+
+```text
+All
+MTN
+Telecel
+AirtelTigo
+```
+
+Search:
+
+```text
+Search data packages...
+```
+
+This makes larger storefronts easier to navigate.
+
+---
+
+# 17. STOREFRONT PRODUCT CARD
+
+Each product card should show:
+
+```text
+MTN
+
+1 GB
+
+GHS 5.00
+
+Instant Delivery
+```
+
+and:
+
+```text
+[Buy Now]
+```
+
+Do NOT expose the user's internal wholesale cost to customers.
+
+Customers should only see:
+
+```text
+Retail Price
+```
+
+---
+
+# 18. STOREFRONT CHECKOUT
+
+When a customer clicks Buy:
+
+```text
+Buy MTN 1 GB
+
+Recipient Number
+
+[ 024XXXXXXX ]
+
+Network:
+MTN
+
+Package:
+1 GB
+
+Price:
+GHS 5.00
+
+[Continue]
+```
+
+Validate the phone number appropriately.
+
+---
+
+# 19. CUSTOMER PAYMENT
+
+Integrate with the existing payment infrastructure where possible.
+
+The storefront customer pays:
+
+```text
+GHS 5.00
+```
+
+The system internally knows:
+
+```text
+Wholesale cost:
+GHS 3.80
+
+Storefront selling price:
+GHS 5.00
+
+Store owner commission:
+GHS 1.20
+```
+
+The customer must never see the wholesale calculation.
+
+---
+
+# 20. COMMISSION CALCULATION
+
+When a storefront sale is successfully completed:
+
+```text
+Customer pays:
+GHS 5.00
+
+Underlying product cost:
+GHS 3.80
+
+Storefront commission:
+GHS 1.20
+```
+
+Credit:
+
+```text
+Storefront Wallet
++ GHS 1.20
+```
+
+Do NOT credit the commission when the payment is merely initiated.
+
+Only credit after the transaction is successfully confirmed according to the existing payment/order system.
+
+---
+
+# 21. IMPORTANT — WALLET SEPARATION
+
+The existing:
+
+```text
+Main Wallet
+```
+
+must remain completely separate from:
+
+```text
+Storefront Wallet
+```
+
+Do not mix the balances.
+
+Example:
+
+```text
+Main Wallet
+GHS 120.00
+
+Storefront Wallet
+GHS 86.40
+```
+
+The user should clearly understand the difference.
+
+---
+
+# 22. STOREFRONT WALLET
+
+Inside Storefront Settings/Management show:
+
+```text
+Storefront Wallet
+
+Available Balance
+GHS 86.40
+
+Pending
+GHS 12.00
+
+Total Earned
+GHS 430.00
+
+Total Withdrawn
+GHS 331.60
+```
+
+---
+
+# 23. WALLET TRANSACTION HISTORY
+
+Add:
+
+```text
+Storefront Wallet Transactions
+```
+
+Example:
+
+| Date   | Description             |     Amount | Status    |
+| ------ | ----------------------- | ---------: | --------- |
+| Sep 11 | MTN 1GB storefront sale |  +GHS 1.20 | Completed |
+| Sep 11 | MTN 2GB storefront sale |  +GHS 2.00 | Completed |
+| Sep 10 | MoMo withdrawal         | -GHS 50.00 | Completed |
+
+Every wallet movement must have a transaction record.
+
+---
+
+# 24. NEVER DIRECTLY MODIFY WALLET BALANCE
+
+Use a proper ledger.
+
+Do NOT simply do:
+
+```typescript
+wallet.balance += commission
+```
+
+without recording a transaction.
+
+Create something similar to:
+
+```typescript
+StorefrontWalletTransaction
+```
+
+with:
+
+```typescript
+id
+userId
+type
+amount
+balanceBefore
+balanceAfter
+reference
+description
+status
+createdAt
+```
+
+This gives you a proper audit trail.
+
+---
+
+# 25. COMMISSION STATES
+
+Use:
+
+```text
+PENDING
+AVAILABLE
+WITHDRAWN
+REVERSED
+```
+
+Example:
+
+```text
+Customer payment
+       ↓
+Order processing
+       ↓
+Commission = PENDING
+       ↓
+Order completed
+       ↓
+Commission = AVAILABLE
+```
+
+If the underlying order is reversed/refunded according to your business rules:
+
+```text
+Commission
+AVAILABLE → REVERSED
+```
+
+This prevents fraudulent commission withdrawals.
+
+---
+
+# 26. WITHDRAWAL SYSTEM
+
+Users can withdraw their Storefront Wallet earnings to Mobile Money.
+
+Minimum withdrawal:
+
+```text
+GHS 50.00
+```
+
+If balance is:
+
+```text
+GHS 49.99
+```
+
+show:
+
+```text
+Minimum withdrawal is GHS 50.00
+```
+
+If:
+
+```text
+GHS 50.00+
+```
+
+enable:
+
+```text
+[Withdraw]
+```
+
+---
+
+# 27. MOMO WITHDRAWAL
+
+Allow users to configure their payout details:
+
+```text
+Mobile Network
+MoMo Number
+Account Name
+```
+
+Support:
+
+```text
+MTN MoMo
+Telecel Cash
+AirtelTigo Money
+```
+
+Do not assume the phone number used for the storefront is necessarily the payout number.
+
+Allow them to choose/save a separate payout number.
+
+---
+
+# 28. SAVED PAYOUT ACCOUNT
+
+Example:
+
+```text
+Withdrawal Account
+
+MTN MoMo
+024XXXXXXX
+John Doe
+
+[Edit]
+```
+
+Before changing payout information, require appropriate account verification/security.
+
+---
+
+# 29. WITHDRAWAL FLOW
+
+User clicks:
+
+```text
+[Withdraw]
+```
+
+Modal:
+
+```text
+Withdraw Storefront Earnings
+
+Available:
+GHS 86.40
+
+Amount:
+[ GHS 50.00 ]
+
+Payment Method:
+MTN MoMo
+
+Number:
+024XXXXXXX
+
+You will receive:
+GHS 50.00
+
+[Cancel]
+[Request Withdrawal]
+```
+
+---
+
+# 30. WITHDRAWAL STATUS
+
+Withdrawal states:
+
+```text
+PENDING
+PROCESSING
+COMPLETED
+FAILED
+CANCELLED
+```
+
+Example:
+
+```text
+Withdrawal
+GHS 50.00
+
+MTN MoMo
+024XXXXXXX
+
+Status:
+Processing
+
+Requested:
+Sep 11, 2026
+```
+
+---
+
+# 31. ADMIN WITHDRAWAL MANAGEMENT
+
+Create an admin page:
+
+```text
+/admin/storefront/withdrawals
+```
+
+Admin should see:
+
+```text
+Withdrawal ID
+User
+Amount
+Network
+MoMo Number
+Account Name
+Requested
+Status
+Actions
+```
+
+Actions:
+
+```text
+Approve
+Process
+Mark Completed
+Reject
+Cancel
+```
+
+---
+
+# 32. ADMIN CAN SEE STOREFRONT PERFORMANCE
+
+Add a powerful admin dashboard:
+
+```text
+Storefront Overview
+```
+
+Metrics:
+
+```text
+Active Stores
+Total Storefront Sales
+Sales Today
+Sales This Month
+Total Commission Generated
+Commission Paid
+Pending Withdrawals
+Open Storefront Orders
+```
+
+Example:
+
+```text
+Active Storefronts
+184
+
+Sales Today
+GHS 8,420
+
+Commission Generated
+GHS 1,280
+
+Pending Withdrawals
+GHS 3,450
+```
+
+---
+
+# 33. ADMIN STOREFRONT MANAGEMENT
+
+Admin should be able to:
+
+```text
+View all storefronts
+Search storefronts
+Enable storefront
+Disable storefront
+Suspend storefront
+View storefront
+Edit storefront
+View storefront sales
+View commissions
+View withdrawals
+```
+
+---
+
+# 34. ADMIN PRODUCT CONTROL
+
+The admin should retain control over the master products.
+
+Example:
+
+```text
+MTN 1GB
+
+Master Cost:
+GHS 3.80
+
+Storefront:
+Enabled
+
+Minimum Markup:
+GHS 0.50
+
+Maximum Markup:
+GHS 10.00
+```
+
+Admin can:
+
+```text
+Enable/Disable product
+Change wholesale price
+Set minimum markup
+Set maximum markup
+```
+
+When a master price changes, existing storefront pricing needs a clearly defined behavior.
+
+**Recommended:**
+
+Do NOT silently overwrite existing user retail prices.
+
+Instead show:
+
+```text
+Price Updated
+
+Previous Cost:
+GHS 3.80
+
+New Cost:
+GHS 4.00
+
+Your Selling Price:
+GHS 5.00
+
+Your New Commission:
+GHS 1.00
+```
+
+If their selling price is now below cost, automatically prevent new sales until they update the price.
+
+---
+
+# 35. STOREFRONT ORDERS
+
+Add a dedicated:
+
+```text
+Storefront Orders
+```
+
+section for the store owner.
+
+Example:
+
+```text
+CF-ST-000182
+
+MTN
+1 GB
+
+Recipient:
+024XXXXXXX
+
+Customer Paid:
+GHS 5.00
+
+Your Cost:
+GHS 3.80
+
+Commission:
+GHS 1.20
+
+Status:
+COMPLETED
+
+Sep 11 • 10:42 AM
+```
+
+The store owner needs to see the financial breakdown.
+
+---
+
+# 36. CUSTOMER PRIVACY
+
+The storefront owner should NOT see unnecessary sensitive customer information.
+
+Only expose what is required for fulfilment and support.
+
+For example, depending on the architecture:
+
+```text
+Recipient:
+024XXXXXXX
+```
+
+but don't expose payment-card information or sensitive payment details.
+
+---
+
+# 37. STOREFRONT ORDER TRACKING
+
+Each storefront order should have:
+
+```text
+Storefront Order ID
+Underlying Clickyfied Order ID
+Customer/recipient
+Network
+Package
+Selling Price
+Wholesale Cost
+Commission
+Status
+Created At
+Completed At
+```
+
+This creates a traceable connection between:
+
+```text
+Public Storefront
+        ↓
+Payment
+        ↓
+Storefront Order
+        ↓
+Existing Clickyfied Order
+        ↓
+Network Fulfilment
+```
+
+---
+
+# 38. REFUNDS / FAILED ORDERS
+
+This is important.
+
+If a storefront order fails before completion:
+
+```text
+Commission:
+PENDING → REVERSED/VOID
+```
+
+If the customer is refunded:
+
+```text
+Commission:
+AVAILABLE → REVERSED
+```
+
+Do not allow commission to remain withdrawable after the corresponding sale has been refunded/reversed.
+
+Implement this using the existing order/payment lifecycle.
+
+---
+
+# 39. STOREFRONT ANALYTICS
+
+Give users a simple dashboard:
+
+```text
+Storefront Analytics
+
+Sales Today
+GHS 125
+
+Orders Today
+28
+
+Commission Today
+GHS 25
+
+This Month
+GHS 2,480
+
+Top Product
+MTN 1GB
+
+Top Network
+MTN
+```
+
+Charts:
+
+```text
+Sales
+Commission
+Orders
+```
+
+Allow:
+
+```text
+Today
+7 Days
+30 Days
+This Month
+Custom
+```
+
+---
+
+# 40. STOREFRONT CUSTOMIZATION
+
+Allow limited branding:
+
+```text
+Store Logo
+Banner
+Store Name
+Description
+Contact Details
+```
+
+Do not allow arbitrary HTML/CSS/JavaScript.
+
+This prevents users from compromising the platform.
+
+---
+
+# 41. ADMIN STORE APPROVAL
+
+I recommend adding an approval workflow even though the admin currently enables access.
+
+Admin can set:
+
+```text
+Storefront Access:
+Enabled
+
+Storefront Status:
+Pending Review
+Active
+Suspended
+```
+
+This gives you more control as the platform grows.
+
+---
+
+# 42. STORE FRONTEND DESIGN
+
+The public storefront should feel different from the user's dashboard.
+
+User dashboard:
+
+**minimalistic / operational**
+
+Public storefront:
+
+**modern / commercial / conversion-focused**
+
+Still maintain Clickyfied's overall visual identity.
+
+Use:
+
+* responsive design
+* clean product cards
+* strong package pricing
+* clear network grouping
+* fast checkout
+* mobile-first layout
+* WhatsApp/contact CTA
+* store branding
+
+---
+
+# 43. STORE OWNER SETTINGS LAYOUT
+
+Recommended:
+
+```text
+STORE MANAGEMENT
+
+Overview
+Products
+Pricing
+Orders
+Analytics
+
+STORE SETTINGS
+
+Store Profile
+Appearance
+Contact Details
+
+EARNINGS
+
+Storefront Wallet
+Transactions
+Withdrawals
+```
+
+This keeps the feature organized instead of putting everything on one giant page.
+
+---
+
+# 44. ADMIN SIDEBAR
+
+Add:
+
+```text
+STOREFRONTS
+
+Overview
+All Stores
+Store Orders
+Products
+Withdrawals
+Commissions
+```
+
+Admin should be able to drill down:
+
+```text
+Store
+   ↓
+Store Orders
+   ↓
+Individual Order
+   ↓
+Underlying Clickyfied Order
+```
+
+---
+
+# 45. DATABASE ARCHITECTURE
+
+Reuse existing users/products/orders wherever possible.
+
+Add only the necessary models, such as:
+
+```text
+Storefront
+StorefrontProduct
+StorefrontOrder
+StorefrontWallet
+StorefrontWalletTransaction
+StorefrontWithdrawal
+StorefrontSettings
+```
+
+Potential structure:
+
+```typescript
+Storefront {
+  id
+  userId
+  name
+  slug
+  description
+  logoUrl
+  bannerUrl
+  phone
+  whatsapp
+  email
+  location
+  status
+  createdAt
+  updatedAt
+}
+```
+
+```typescript
+StorefrontProduct {
+  id
+  storefrontId
+  productId
+  sellingPrice
+  markupAmount
+  markupPercentage
+  isActive
+  createdAt
+  updatedAt
+}
+```
+
+```typescript
+StorefrontOrder {
+  id
+  storefrontId
+  productId
+  underlyingOrderId
+  customerPhone
+  sellingPrice
+  productCost
+  commission
+  status
+  createdAt
+  completedAt
+}
+```
+
+```typescript
+StorefrontWallet {
+  id
+  userId
+  balance
+  pendingBalance
+  createdAt
+  updatedAt
+}
+```
+
+```typescript
+StorefrontWithdrawal {
+  id
+  userId
+  amount
+  network
+  momoNumber
+  accountName
+  status
+  reference
+  requestedAt
+  processedAt
+}
+```
+
+---
+
+# 46. VERY IMPORTANT — MONEY PRECISION
+
+Do not use JavaScript floating-point numbers for financial calculations.
+
+Do NOT rely on:
+
+```typescript
+5.00 - 3.80
+```
+
+with ordinary floating-point arithmetic for persisted financial values.
+
+Use the database's appropriate decimal/numeric type and perform monetary calculations safely.
+
+Example:
+
+```text
+DECIMAL(12,2)
+```
+
+or the equivalent appropriate precision.
+
+---
+
+# 47. IDEMPOTENCY
+
+Storefront payments and commission creation must be idempotent.
+
+If a payment webhook is accidentally received twice:
+
+```text
+Payment SUCCESS
+Payment SUCCESS
+```
+
+the user must receive:
+
+```text
+ONE storefront order
+ONE underlying order
+ONE commission
+```
+
+not two.
+
+Use unique transaction/payment references.
+
+---
+
+# 48. COMMISSION SECURITY
+
+Never trust:
+
+```text
+sellingPrice
+commission
+productCost
+```
+
+sent by the browser.
+
+The backend must retrieve the actual configured product price and storefront price from the database.
+
+Calculate:
+
+```text
+commission = storefrontSellingPrice - currentProductCost
+```
+
+server-side.
+
+---
+
+# 49. PUBLIC STOREFRONT SECURITY
+
+Public customers can view:
+
+```text
+Store information
+Available products
+Retail prices
+```
+
+They must NOT be able to access:
+
+```text
+Wholesale cost
+Commission
+Store wallet
+Other orders
+Admin information
+```
+
+---
+
+# 50. RESPONSIVE DESIGN
+
+The storefront and management system must work properly on:
+
+```text
+Mobile
+Tablet
+Desktop
+```
+
+The public storefront should be particularly optimized for mobile because customers will likely access it through WhatsApp/social links.
+
+---
+
+# 51. FINAL EXPERIENCE
+
+The finished architecture should work like:
+
+```text
+ADMIN
+  │
+  ├── Enables Storefront
+  │
+  ↓
+USER
+  │
+  ├── Creates Store Profile
+  │
+  ├── Adds Existing Products
+  │
+  ├── Sets Retail Prices
+  │
+  ↓
+PUBLIC STOREFRONT
+  │
+  ├── Customer selects MTN/Telecel/AirtelTigo
+  │
+  ├── Customer selects package
+  │
+  ├── Customer enters recipient
+  │
+  ├── Customer pays
+  │
+  ↓
+STOREFRONT ORDER
+  │
+  ├── Existing Clickyfied order created
+  │
+  ↓
+FULFILMENT
+  │
+  ├── Processing
+  │
+  └── Completed
+  │
+  ↓
+COMMISSION
+  │
+  └── Storefront Wallet
+  │
+  ↓
+USER
+  │
+  ├── Wallet Balance
+  ├── Transaction History
+  └── Withdraw to MoMo
+```
+
+## 52. FEATURES TO ADD IF THEY FIT THE EXISTING ARCHITECTURE
+
+Be creative and add other features that genuinely improve the storefront system, particularly:
+
+* storefront sales notifications
+* low-balance alerts
+* commission history
+* withdrawal history
+* downloadable sales reports
+* CSV/Excel export for store owners
+* customer order reference numbers
+* automatic receipts
+* WhatsApp sharing of storefront
+* copy-store-link button
+* QR code for storefront
+* storefront visit/order statistics
+* best-selling package statistics
+* network performance statistics
+* admin commission reports
+* admin storefront sales reports
+* withdrawal audit trail
+* suspicious transaction detection
+* rate limiting
+* payment webhook protection
+* transaction reconciliation
+
+Do not add unnecessary complexity just for the sake of adding features.
+
+---
+
+## FINAL INSTRUCTION TO CURSOR
+
+> **Before writing code, inspect the existing Clickyfied codebase and understand how users, authentication, products/packages, networks, wallets, payments, orders, order batches and the existing Not Received system currently work.**
+>
+> **Integrate the storefront system into the existing architecture rather than creating parallel versions of existing functionality.**
+>
+> **Do not break existing MTN, Telecel or AirtelTigo ordering.**
+>
+> **Do not expose wholesale prices to public customers.**
+>
+> **Do not trust financial values from the frontend.**
+>
+> **Use server-side calculations, database transactions, proper wallet ledgers, idempotent payment handling and strict authorization.**
+>
+> **Build the admin side as a powerful management and financial-control system while keeping the public storefront and user storefront management interface clean, modern and easy to use.**
+>
+> **After implementation, test the complete lifecycle:**
+>
+> `Admin enables user → User configures store → User adds products → User sets markup → Customer buys → Payment succeeds → Existing order is created → Order completes → Commission becomes available → Commission appears in Storefront Wallet → User requests MoMo withdrawal → Admin processes withdrawal.`

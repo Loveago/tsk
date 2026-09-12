@@ -1,0 +1,151 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ShoppingBag, Clock, ShieldCheck, Zap, Wallet } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { fromPesewas } from "@/lib/storefront";
+import { NetworkLogo } from "@/components/store/network-logo";
+import { NetworkWheel } from "@/components/store/network-wheel";
+import { NETWORK_BRANDS, NETWORK_ORDER, ghs, networkHref } from "@/components/store/brands";
+import type { NetworkProvider } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
+
+export default async function PublicStorePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ payment?: string; reference?: string }>;
+}) {
+  const { slug } = await params;
+  const { payment, reference } = await searchParams;
+
+  // Read access is allowed for ENABLED storefronts only on the public page (§6).
+  const storefront = await prisma.storefront.findUnique({ where: { slug } });
+  if (!storefront || storefront.status !== "ENABLED") notFound();
+
+  const products = await prisma.storefrontProduct.findMany({
+    where: { storefrontId: storefront.id, isActive: true, dataPackage: { active: true } },
+    include: { dataPackage: true },
+  });
+
+  const groups = NETWORK_ORDER.map((network) => {
+    const items = products.filter((p) => p.dataPackage.network === network);
+    if (items.length === 0) return null;
+    return {
+      network: network as NetworkProvider,
+      count: items.length,
+      min: Math.min(...items.map((p) => fromPesewas(p.sellingPrice))),
+    };
+  }).filter((g): g is NonNullable<typeof g> => g !== null);
+
+  return (
+    <div className="pb-4">
+      {payment && (
+        <div className="mx-auto mt-6 max-w-6xl px-4">
+          <div
+            className={`rounded-2xl px-4 py-3 text-sm font-semibold ${
+              payment === "success"
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300"
+            }`}
+          >
+            {payment === "success"
+              ? `Payment received! Your bundle will be delivered to the number you entered shortly.${reference ? ` (Ref: ${reference})` : ""}`
+              : "Payment was not completed. If you were debited, contact support with your reference."}
+          </div>
+        </div>
+      )}
+
+      {/* Hero */}
+      <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 pb-10 pt-10 lg:grid-cols-2 lg:pt-16">
+        <div>
+          <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-900/5 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            {storefront.name} — trusted data marketplace
+          </span>
+          <h1 className="mt-5 font-serif text-4xl font-bold leading-tight text-slate-900 sm:text-5xl lg:text-6xl dark:text-white">
+            Buy data for any number,
+            <span className="block text-yellow-500">delivered reliably</span>
+          </h1>
+          <p className="mt-5 max-w-lg text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-300">
+            {storefront.description ||
+              "Secure MoMo checkout, reliable delivery across major networks, and bundles priced for everyday use. Timing can vary by network availability and number verification."}
+          </p>
+          <div className="mt-7 flex flex-wrap items-center gap-3">
+            <a
+              href="#shop"
+              className="inline-flex h-12 items-center gap-2 rounded-full bg-yellow-300 px-7 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/30 transition-colors hover:bg-yellow-400"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Buy bundles
+            </a>
+            <Link
+              href={`/store/${slug}/track`}
+              className="inline-flex h-12 items-center gap-2 rounded-full bg-white px-7 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/5 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+            >
+              <Clock className="h-4 w-4" />
+              Track your order
+            </Link>
+          </div>
+          <div className="mt-7 flex flex-wrap gap-2">
+            {[
+              { icon: Zap, label: "Reliable delivery" },
+              { icon: Wallet, label: "MoMo & wallet" },
+              { icon: ShieldCheck, label: "Secure checkout" },
+            ].map(({ icon: Icon, label }) => (
+              <span
+                key={label}
+                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-900/5 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10"
+              >
+                <Icon className="h-3.5 w-3.5 text-yellow-500" />
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Spinning network wheel */}
+        <NetworkWheel slug={slug} storeName={storefront.name} networks={groups.map((g) => g.network)} />
+      </section>
+
+      {/* Shop grid */}
+      <section id="shop" className="mx-auto max-w-6xl scroll-mt-24 px-4 pb-6">
+        {groups.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-white/5">
+            This store has no bundles on sale right now. Check back soon.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {groups.map((g) => {
+              const brand = NETWORK_BRANDS[g.network];
+              return (
+                <Link
+                  key={g.network}
+                  href={networkHref(slug, g.network)}
+                  className="group rounded-2xl bg-white p-2 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-lg sm:rounded-3xl sm:p-3 dark:bg-[#111a2c] dark:ring-white/10"
+                >
+                  <div className={`aspect-square overflow-hidden rounded-xl sm:rounded-2xl ${brand.tile}`}>
+                    <NetworkLogo network={g.network} className="h-full w-full" />
+                  </div>
+                  <div className="px-1 pb-1 pt-2 sm:px-2 sm:pb-2 sm:pt-3">
+                    <p className="font-serif text-sm font-bold text-slate-900 sm:text-base dark:text-white">{brand.label}</p>
+                    <div className="mt-1 flex items-center justify-between">
+                      <p className="text-[11px] leading-tight text-slate-500 sm:text-xs dark:text-slate-400">
+                        From {ghs(g.min)} · {g.count} bundle{g.count === 1 ? "" : "s"}
+                      </p>
+                      <span className="text-xs font-bold text-yellow-500 transition-transform group-hover:translate-x-0.5 sm:text-sm">
+                        Buy →
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+    </div>
+  );
+}

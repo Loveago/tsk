@@ -1,0 +1,580 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String          @id @default(cuid())
+  name             String
+  email            String          @unique
+  passwordHash     String
+  role             String          @default("USER") // ADMIN | MANAGER | RESELLER | USER
+  status           String          @default("ACTIVE") // ACTIVE | DISABLED
+  balance          Float           @default(0)
+  phone            String?
+  pricingProfileId String?
+  pricingProfile   PricingProfile? @relation(fields: [pricingProfileId], references: [id])
+  tokenVersion     Int             @default(0)
+  lastLoginAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  orders         Order[]
+  apiKeys        ApiKey[]
+  auditLogs      AuditLog[]
+  resetTokens    PasswordResetToken[]
+  walletTransactions WalletTransaction[]
+  orderBatches   OrderBatch[]
+  exportBatches  ExportBatch[]
+  deliveryReports DeliveryReport[]
+  storefront     Storefront?
+  storefrontWallet StorefrontWallet?
+  storefrontWithdrawals StorefrontWithdrawal[]
+  apiApplication ApiApplication?
+  apiCredentials ApiCredential[]
+  apiWebhook     ApiWebhook?
+
+  @@index([role])
+  @@index([status])
+}
+
+model PricingProfile {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  type      String   @default("RETAIL") // RETAIL | RESELLER | WHOLESALE | MANAGER
+  active    Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tiers PriceTier[]
+  users User[]
+}
+
+model PriceTier {
+  id        String         @id @default(cuid())
+  profileId String
+  profile   PricingProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  gbAmount  Float
+  priceGHS  Float
+
+  @@unique([profileId, gbAmount])
+}
+
+model DataPackage {
+  id                String   @id @default(cuid())
+  network           String // MTN | TELECEL | AIRTELTIGO
+  name              String
+  gbAmount          Float
+  description       String?
+  providerProductId String?
+  retailPriceGHS    Float?
+  active            Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  orders             Order[]
+  storefrontProducts StorefrontProduct[]
+
+  @@unique([network, gbAmount])
+}
+
+model Order {
+  id                Int          @id @default(autoincrement())
+  userId            String
+  user              User         @relation(fields: [userId], references: [id])
+  batchId           String?
+  batch             OrderBatch?  @relation(fields: [batchId], references: [id])
+  phoneNumber       String
+  network           String // MTN | TELECEL | AIRTELTIGO
+  packageId         String?
+  dataPackage       DataPackage? @relation(fields: [packageId], references: [id])
+  gbAmount          Float
+  amount            Float
+  status            String       @default("PENDING") // PENDING | PROCESSING | SUCCESS (COMPLETED) | FAILED | CANCELLED | REFUNDED
+  providerReference String?
+  failureReason     String?
+  source            String       @default("WEB") // WEB | API
+  exportBatchId     String?
+  exportBatch       ExportBatch? @relation(fields: [exportBatchId], references: [id])
+  exportCount       Int          @default(0)
+  lastExportedAt    DateTime?
+  lastExportedBy    String?
+  completedAt       DateTime?
+  externalReference String?
+  apiCredentialId   String?
+  apiCredential     ApiCredential? @relation(fields: [apiCredentialId], references: [id], onDelete: SetNull)
+  isSandbox         Boolean        @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  history        OrderStatusHistory[]
+  deliveryReports DeliveryReport[]
+  storefrontOrder StorefrontOrder?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([phoneNumber])
+  @@index([batchId])
+  @@index([exportBatchId])
+  @@index([userId, externalReference])
+  @@index([apiCredentialId])
+  @@index([isSandbox])
+}
+
+model OrderStatusHistory {
+  id             Int      @id @default(autoincrement())
+  orderId        Int
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status         String
+  previousStatus String?
+  note           String?
+  changedBy      String   @default("system")
+  createdAt      DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model OrderBatch {
+  id              String   @id @default(cuid())
+  batchCode       String   @unique
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  network         String // MTN | TELECEL | AIRTELTIGO — batches are never mixed
+  totalRecipients Int      @default(0)
+  totalGb         Float    @default(0)
+  totalAmount     Float    @default(0)
+  status          String   @default("PENDING") // PENDING | PROCESSING | PARTIALLY_COMPLETED | COMPLETED | FAILED | CANCELLED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orders        Order[]
+  exportBatches ExportBatch[]
+
+  @@index([userId])
+  @@index([network])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ExportBatch {
+  id              String   @id @default(cuid())
+  exportCode      String   @unique
+  network         String // MTN | TELECEL | AIRTELTIGO
+  adminId         String?
+  admin           User?    @relation(fields: [adminId], references: [id])
+  adminLabel      String   @default("Admin")
+  totalRecipients Int      @default(0)
+  totalGb         Float    @default(0)
+  totalAmount     Float    @default(0)
+  status          String   @default("PROCESSING") // PROCESSING | PARTIALLY_COMPLETED | COMPLETED | FAILED | CANCELLED
+  fileName        String
+  isReexport      Boolean  @default(false)
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orders  Order[]
+  batches OrderBatch[]
+
+  @@index([network])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model DeliveryReport {
+  id                   String    @id @default(cuid())
+  seq                  Int       @unique
+  orderId              Int
+  order                Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id])
+  reason               String?
+  message              String?
+  status               String    @default("OPEN") // OPEN | INVESTIGATING | DELIVERED | RESOLVED | REJECTED
+  adminNote            String?
+  adminResponse        String?
+  respondedAt          DateTime?
+  respondedBy          String?
+  proofImageMime       String?
+  proofImage           String?
+  proofImageUploadedAt DateTime?
+  proofImageUploadedBy String?
+  resolvedAt           DateTime?
+  resolvedBy           String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  events DeliveryReportEvent[]
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+/** Append-only timeline for a Not Received report (§13). */
+model DeliveryReportEvent {
+  id         Int            @id @default(autoincrement())
+  reportId   String
+  report     DeliveryReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  type       String // SUBMITTED | INVESTIGATION_STARTED | RESPONSE_ADDED | EVIDENCE_UPLOADED | MARKED_DELIVERED | KEEP_INVESTIGATING | REJECTED | RESOLVED | RESEND | REFUND
+  message    String?
+  actorLabel String         @default("system")
+  createdAt  DateTime       @default(now())
+
+  @@index([reportId, createdAt])
+}
+
+model ApiKey {
+  id           String    @id @default(cuid())
+  name         String
+  prefix       String
+  keyHash      String    @unique
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  active       Boolean   @default(true)
+  lastUsedAt   DateTime?
+  requestCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  logs ApiRequestLog[]
+}
+
+model ApiRequestLog {
+  id             Int            @id @default(autoincrement())
+  apiKeyId       String?
+  apiKey         ApiKey?        @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  credentialId   String?
+  credential     ApiCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  userId         String?
+  requestId      String?
+  endpoint       String
+  method         String
+  status         Int
+  success        Boolean
+  ip             String?
+  userAgent      String?
+  environment    String?        // PRODUCTION | SANDBOX
+  errorCode      String?
+  responseTimeMs Int?
+  createdAt      DateTime       @default(now())
+
+  @@index([apiKeyId])
+  @@index([credentialId])
+  @@index([userId])
+  @@index([requestId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorLabel    String   @default("system")
+  action        String
+  target        String
+  previousValue String?
+  newValue      String?
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model IdempotencyKey {
+  key       String   @id
+  userId    String
+  orderId   Int?
+  status    String?
+  response  String?
+  createdAt DateTime @default(now())
+}
+
+model PasswordResetToken {
+  token     String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model WalletTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // TOPUP | DEBIT | REFUND | ADJUSTMENT
+  amount    Float
+  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reference String?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Storefront / reseller marketplace
+// ---------------------------------------------------------------------------
+
+/// One per user; its existence + `status` encodes the admin-controlled
+/// "Storefront Access" setting (NOT_ENABLED | ENABLED | SUSPENDED).
+model Storefront {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug        String   @unique
+  name        String
+  description String?
+  logoUrl     String?
+  bannerUrl   String?
+  phone       String?
+  whatsapp    String?
+  email       String?
+  location    String?
+  // Saved MoMo payout account (§27/§28)
+  payoutNetwork  String? // MTN | TELECEL | AIRTELTIGO
+  payoutNumber   String?
+  payoutAccountName String?
+  status      String   @default("NOT_ENABLED") // NOT_ENABLED | PENDING | ENABLED | SUSPENDED | REJECTED
+  // Editable contact widget copy (§11): floating WhatsApp bubble + button labels
+  contactText   String? // e.g. "Need help? Chat with us on WhatsApp"
+  whatsappLabel String? // e.g. "Need help?" (drawer/menu button label)
+  rejectionNote String? // admin reason when status = REJECTED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products    StorefrontProduct[]
+  orders      StorefrontOrder[]
+
+  @@index([status])
+}
+
+/// Reseller retail price for an existing master DataPackage (§7-§11).
+model StorefrontProduct {
+  id           String   @id @default(cuid())
+  storefrontId String
+  storefront   Storefront @relation(fields: [storefrontId], references: [id], onDelete: Cascade)
+  packageId    String
+  dataPackage  DataPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  sellingPrice Int // pesewas (GHS x 100) — exact integer money on SQLite (§46)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders StorefrontOrder[]
+
+  @@unique([storefrontId, packageId])
+  @@index([storefrontId, isActive])
+}
+
+/// Public storefront sale, linked to the underlying Clickyfied Order (§35-§37).
+model StorefrontOrder {
+  id                String   @id @default(cuid())
+  seq               Int      @unique // CF-ST-00001 (§35)
+  storefrontId      String
+  storefront        Storefront @relation(fields: [storefrontId], references: [id], onDelete: Cascade)
+  productId         String
+  product           StorefrontProduct @relation(fields: [productId], references: [id])
+  underlyingOrderId Int?  @unique
+  underlyingOrder   Order?   @relation(fields: [underlyingOrderId], references: [id])
+  customerPhone     String // recipient number shown to the store owner (§36)
+  sellingPrice      Int // pesewas (GHS x 100)
+  productCost       Int // pesewas — captured at purchase time
+  commission        Int // pesewas — sellingPrice - productCost, computed server-side (§48)
+  status            String   @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | REFUNDED
+  commissionState   String   @default("PENDING") // PENDING | AVAILABLE | WITHDRAWN | REVERSED (§25)
+  paymentReference  String   @unique // Paystack reference; unique => idempotent settlement (§47)
+  paidAt            DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([storefrontId, createdAt])
+  @@index([storefrontId, status])
+  @@index([commissionState])
+}
+
+/// Separate from the main wallet (§21). balance = withdrawable (AVAILABLE),
+/// pendingBalance = commissions awaiting order completion (§22).
+model StorefrontWallet {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance        Int      @default(0) // pesewas — withdrawable commissions (§22)
+  pendingBalance Int      @default(0) // pesewas — commissions awaiting completion (§22)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  transactions StorefrontWalletTransaction[]
+}
+
+/// Append-only ledger — never mutate balances without a row here (§23/§24).
+model StorefrontWalletTransaction {
+  id            String   @id @default(cuid())
+  walletId      String
+  wallet        StorefrontWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type          String // COMMISSION | COMMISSION_RELEASE | COMMISSION_REVERSAL | WITHDRAWAL | WITHDRAWAL_REVERSAL | ADJUSTMENT
+  amount        Int // pesewas — positive credit, negative debit
+  balanceBefore Int // pesewas
+  balanceAfter  Int // pesewas
+  pendingBefore Int?
+  pendingAfter  Int?
+  reference     String?
+  description   String?
+  createdAt     DateTime @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([reference])
+}
+
+/// MoMo payout request (§26-§30). Approval debits the wallet balance.
+model StorefrontWithdrawal {
+  id          String    @id @default(cuid())
+  seq         Int       @unique // CF-WD-00001
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Int // pesewas
+  network     String // MTN | TELECEL | AIRTELTIGO
+  momoNumber  String
+  accountName String
+  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  reference   String?
+  note        String?
+  adminNote   String?
+  processedBy String?
+  requestedAt DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Developer API Platform
+// ---------------------------------------------------------------------------
+
+model ApiApplication {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName          String
+  websiteUrl            String
+  usageDescription      String
+  expectedMonthlyVolume String
+  contactEmail          String
+  contactPhone          String
+  applicationType       String    // WEBSITE | MOBILE_APP | RESELLER_PORTAL | ERP_ECOMMERCE | OTHER
+  webhookUrl            String?
+  termsAccepted         Boolean   @default(true)
+  status                String    @default("PENDING") // NOT_APPLIED | PENDING | APPROVED | REJECTED | SUSPENDED | REVOKED
+  adminNotes            String?
+  reviewedAt            DateTime?
+  reviewedBy            String?
+
+  // Policy rules configured by admin upon approval
+  allowedScopes         String    @default("networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage")
+  rateLimitPerMin       Int       @default(60)
+  dailyRequestLimit     Int       @default(5000)
+  maxOrderVolume        Int       @default(1000)
+  ipRestrictions        String?   // comma-separated IP list or null
+  webhookPermissions    Boolean   @default(true)
+  sandboxAccess         Boolean   @default(true)
+  productionAccess      Boolean   @default(true)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ApiCredential {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  environment     String          @default("PRODUCTION") // PRODUCTION | SANDBOX
+  keyPrefix       String          // e.g. "ck_live_9a8b" or "ck_test_1c2d"
+  keyHash         String          @unique
+  secretHash      String?
+  status          String          @default("ACTIVE") // ACTIVE | DISABLED | REVOKED
+  scopes          String          @default("networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage")
+  rateLimitPerMin Int             @default(60)
+  dailyLimit      Int             @default(5000)
+  allowedIps      String?
+  lastUsedAt      DateTime?
+  requestCount    Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  orders          Order[]
+  logs            ApiRequestLog[]
+
+  @@index([userId])
+  @@index([keyHash])
+  @@index([status])
+}
+
+model ApiWebhook {
+  id          String               @id @default(cuid())
+  userId      String               @unique
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url         String
+  secret      String               // Used for HMAC SHA-256 signatures
+  events      String               @default("order.created,order.processing,order.completed,order.failed,order.cancelled")
+  active      Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  deliveries  ApiWebhookDelivery[]
+
+  @@index([userId])
+}
+
+model ApiWebhookDelivery {
+  id             String      @id @default(cuid())
+  webhookId      String
+  webhook        ApiWebhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event          String      // order.created, order.completed, etc.
+  orderId        Int?
+  payload        String      // JSON payload
+  url            String
+  signature      String?
+  attempt        Int         @default(1)
+  maxAttempts    Int         @default(5)
+  statusCode     Int?
+  responseTimeMs Int?
+  responseBody   String?
+  error          String?
+  status         String      @default("PENDING") // PENDING | SUCCESS | FAILED
+  nextRetryAt    DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([webhookId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([orderId])
+}
+

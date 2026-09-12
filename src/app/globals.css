@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+  --animate-marquee: marquee 26s linear infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-slate-200 dark:border-white/10;
+  }
+  body {
+    @apply bg-[#eef4fb] text-slate-900 antialiased dark:bg-[#060b16] dark:text-slate-100;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  /* Soft brand glows over the page background (pale blue in light, deep navy in dark) */
+  .app-bg {
+    background-image:
+      radial-gradient(1100px 440px at 50% -160px, rgba(37, 99, 235, 0.12), transparent 65%),
+      radial-gradient(820px 420px at 88% -80px, rgba(124, 58, 237, 0.09), transparent 60%);
+  }
+  .dark .app-bg {
+    background-image:
+      radial-gradient(1100px 480px at 50% -180px, rgba(37, 99, 235, 0.25), transparent 65%),
+      radial-gradient(900px 440px at 88% -60px, rgba(124, 58, 237, 0.16), transparent 62%);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Spinning network wheel (storefront homepage) — orbit rotates while each
+ * logo counter-rotates to stay upright. Pauses on hover; static when the
+ * user prefers reduced motion.
+ * ------------------------------------------------------------------------- */
+@keyframes wheel-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes wheel-rotate-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+.wheel-spin {
+  animation: wheel-rotate 24s linear infinite;
+}
+.wheel-counter {
+  animation: wheel-rotate-rev 24s linear infinite;
+}
+.wheel-wrap:hover .wheel-spin,
+.wheel-wrap:hover .wheel-counter,
+.wheel-wrap:focus-within .wheel-spin,
+.wheel-wrap:focus-within .wheel-counter {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wheel-spin,
+  .wheel-counter {
+    animation: none;
+  }
+}

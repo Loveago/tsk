@@ -1,0 +1,1515 @@
+# CLICKYFIED — ADVANCED ORDER BATCH & DELIVERY MANAGEMENT SYSTEM
+
+> **IMPORTANT:** Extend the existing Clickyfied platform with a powerful Order Batch / Export Batch management system.
+>
+> The system must support MTN, Telecel and AirtelTigo independently.
+>
+> Do not treat every individual recipient as a separate row on the main admin/user order history. Instead, introduce a **Batch Order** concept that groups multiple recipients submitted/exported together while retaining every individual order underneath it.
+
+---
+
+# 1. CORE CONCEPT — ORDER BATCHES
+
+When a reseller submits multiple recipients at once, Clickyfied should create:
+
+```text
+ORDER BATCH
+   │
+   ├── Recipient Order 1
+   ├── Recipient Order 2
+   ├── Recipient Order 3
+   ├── Recipient Order 4
+   └── ...
+```
+
+Example:
+
+```text
+Batch: CF-BATCH-000184
+Network: MTN
+Recipients: 20
+Total Data: 100 GB
+Total Amount: GHS 380.00
+Status: PENDING
+Created: Sep 10, 2026 — 09:42 AM
+```
+
+The individual recipient orders remain stored separately in the database.
+
+This allows:
+
+* batch-level management
+* individual order management
+* batch-level exporting
+* individual status changes
+* batch status changes
+* delivery reporting
+* recipient-level "Not Received" reports
+
+---
+
+# 2. NETWORK SEPARATION
+
+Clickyfied supports:
+
+```text
+MTN
+Telecel
+AirtelTigo
+```
+
+Orders must always belong to a network.
+
+Never mix different networks inside the same export batch.
+
+For example:
+
+```text
+MTN
+CF-BATCH-000184
+20 recipients
+100 GB
+```
+
+and:
+
+```text
+Telecel
+CF-BATCH-000185
+12 recipients
+60 GB
+```
+
+and:
+
+```text
+AirtelTigo
+CF-BATCH-000186
+8 recipients
+40 GB
+```
+
+If an upload contains multiple networks, automatically separate the orders into network-specific batches.
+
+---
+
+# 3. ADMIN ORDER MANAGEMENT PAGE
+
+Create:
+
+```text
+/admin/orders
+```
+
+The page should be feature-packed and designed as an operations center.
+
+Do NOT display hundreds of individual recipient numbers immediately.
+
+Instead, the primary view should show **Order Batches**.
+
+### Batch table
+
+Columns:
+
+```text
+Batch ID
+Network
+User / Reseller
+Total Recipients
+Total GB
+Total Amount
+Pending
+Processing
+Completed
+Failed
+Created
+Last Updated
+Actions
+```
+
+Example:
+
+| Batch        | Network    | Recipients |   Data | Status     | Date   | Actions |
+| ------------ | ---------- | ---------: | -----: | ---------- | ------ | ------- |
+| CF-BATCH-184 | MTN        |         20 | 100 GB | Pending    | Sep 10 | View    |
+| CF-BATCH-185 | Telecel    |         12 |  60 GB | Processing | Sep 10 | View    |
+| CF-BATCH-186 | AirtelTigo |          8 |  40 GB | Completed  | Sep 9  | View    |
+
+---
+
+# 4. ADMIN FILTERS
+
+Give the admin powerful filtering.
+
+Filters:
+
+```text
+Network
+User / Reseller
+Batch Status
+Order Status
+Date Range
+Package
+```
+
+Network quick filters:
+
+```text
+ALL
+MTN
+TELECEL
+AIRTELTIGO
+```
+
+Status filters:
+
+```text
+ALL
+PENDING
+PROCESSING
+COMPLETED
+FAILED
+CANCELLED
+```
+
+Quick date filters:
+
+```text
+Today
+Yesterday
+Last 7 Days
+This Month
+Custom Range
+```
+
+Search:
+
+```text
+Search Batch ID, phone number, reseller...
+```
+
+Searching for an individual phone number should locate the batch containing that recipient.
+
+---
+
+# 5. ADMIN BULK ACTIONS
+
+At the top of the batch table provide:
+
+```text
+☐ Select All
+```
+
+When batches are selected:
+
+```text
+Bulk Actions
+```
+
+Actions:
+
+```text
+Export Excel
+Mark Processing
+Mark Completed
+Mark Failed
+Cancel
+```
+
+Require confirmation for actions that change order state.
+
+Example:
+
+```text
+Mark 5 batches as Completed?
+
+This will update:
+
+5 batches
+86 recipients
+420 GB
+
+This action will also mark all eligible recipient orders
+inside these batches as completed.
+
+[Cancel] [Confirm]
+```
+
+---
+
+# 6. EXPORT BY NETWORK
+
+This is extremely important.
+
+The admin must be able to export orders for each network separately.
+
+For example:
+
+```text
+MTN
+Pending Orders: 20
+Total Data: 100 GB
+
+[Export MTN Pending Orders]
+```
+
+Likewise:
+
+```text
+Telecel
+Pending Orders: 14
+Total Data: 70 GB
+
+[Export Telecel Pending Orders]
+```
+
+And:
+
+```text
+AirtelTigo
+Pending Orders: 18
+Total Data: 90 GB
+
+[Export AirtelTigo Pending Orders]
+```
+
+Never mix MTN, Telecel and AirtelTigo orders in a network-specific export.
+
+---
+
+# 7. EXPORT WORKFLOW
+
+When the admin clicks:
+
+```text
+Export MTN Pending Orders
+```
+
+show a confirmation dialog:
+
+```text
+Export Pending MTN Orders
+
+20 recipients
+100 GB
+GHS 380.00
+
+After successful export, these orders will automatically
+move from PENDING → PROCESSING.
+
+[Cancel]
+[Export & Mark Processing]
+```
+
+### IMPORTANT
+
+The status must only change to `PROCESSING` **after the Excel export has successfully been generated**.
+
+Do not mark orders as processing if file generation fails.
+
+Use a transaction or equivalent safe server-side workflow.
+
+---
+
+# 8. EXCEL EXPORT CONTENT
+
+The exported Excel file should contain the individual recipient orders.
+
+Example:
+
+```text
+Phone Number
+Package
+GB
+Amount
+Order ID
+```
+
+Example:
+
+| Phone Number | Package | GB | Amount | Order ID |
+| ------------ | ------- | -: | -----: | -------- |
+| 024XXXXXXX   | 1 GB    |  1 |   3.80 | CF-10001 |
+| 055XXXXXXX   | 5 GB    |  5 |  19.00 | CF-10002 |
+| 020XXXXXXX   | 10 GB   | 10 |  38.00 | CF-10003 |
+
+The Excel export should also include:
+
+```text
+Network
+Batch ID
+Export Date
+Export Time
+```
+
+Use proper Excel formatting:
+
+* frozen header
+* filters
+* readable column widths
+* formatted currency
+* formatted dates
+* network
+* batch information
+
+---
+
+# 9. EXPORT BATCH HISTORY
+
+Every time the admin exports orders, create an **Export Batch record**.
+
+Example:
+
+```text
+Export Batch
+CF-EXPORT-00091
+
+Network: MTN
+Recipients: 20
+Total GB: 100 GB
+Exported By: Admin
+Exported At: Sep 10, 2026 — 09:52 AM
+Status: PROCESSING
+```
+
+This export batch becomes visible in the admin system.
+
+---
+
+# 10. EXPORTS PAGE
+
+Create:
+
+```text
+/admin/exports
+```
+
+This page should show the historical batches that have been exported.
+
+Instead of showing 20 phone numbers, display **ONE ROW PER EXPORT BATCH**.
+
+Example:
+
+| Export  | Network    | Recipients | Total GB | Status     | Date/Time     | Actions |
+| ------- | ---------- | ---------: | -------: | ---------- | ------------- | ------- |
+| EX-0091 | MTN        |         20 |   100 GB | Processing | Sep 10, 09:52 | View    |
+| EX-0090 | Telecel    |         14 |    70 GB | Completed  | Sep 10, 08:31 | View    |
+| EX-0089 | AirtelTigo |         18 |    90 GB | Processing | Sep 9, 17:45  | View    |
+
+This is the primary view.
+
+---
+
+# 11. EXPORT BATCH DETAILS
+
+When the admin clicks the batch row, open a large responsive drawer/modal or dedicated page.
+
+Example:
+
+```text
+MTN Export Batch
+EX-0091
+```
+
+Summary:
+
+```text
+20 Recipients
+100 GB
+GHS 380.00
+
+Created:
+Sep 10, 2026 — 09:52 AM
+
+Exported By:
+Admin
+
+Current Status:
+PROCESSING
+```
+
+Then show the individual recipients underneath.
+
+---
+
+# 12. RECIPIENT DETAILS INSIDE BATCH
+
+Inside the batch details window:
+
+| Phone      |    GB |    Amount | Status     | Created | Actions |
+| ---------- | ----: | --------: | ---------- | ------- | ------- |
+| 024XXXXXXX |  1 GB |  GHS 3.80 | Processing | 09:42   | View    |
+| 055XXXXXXX |  5 GB | GHS 19.00 | Processing | 09:42   | View    |
+| 020XXXXXXX | 10 GB | GHS 38.00 | Completed  | 09:42   | View    |
+
+Each recipient must be individually manageable.
+
+---
+
+# 13. BATCH BULK ACTIONS
+
+Inside an export batch provide:
+
+```text
+Select All
+```
+
+Bulk actions:
+
+```text
+Mark Completed
+Mark Processing
+Mark Failed
+Cancel
+```
+
+Example:
+
+```text
+20 recipients selected
+
+[Mark Completed]
+[Mark Failed]
+[Cancel]
+```
+
+Confirmation:
+
+```text
+Mark 20 recipients as Completed?
+
+This will update 20 individual orders
+inside this export batch.
+
+[Cancel]
+[Confirm]
+```
+
+---
+
+# 14. "SET EVERYTHING TO COMPLETED"
+
+The batch action bar must have:
+
+```text
+Mark Entire Batch Completed
+```
+
+When clicked:
+
+```text
+Complete Export Batch?
+
+This will mark:
+
+20 recipients
+100 GB
+
+as COMPLETED.
+
+[Cancel]
+[Mark Completed]
+```
+
+After confirmation:
+
+```text
+Batch Status: COMPLETED
+
+20 / 20 Completed
+```
+
+If some recipients were already completed, don't break their history.
+
+---
+
+# 15. INDIVIDUAL ORDER ACTIONS
+
+Every recipient should have an action menu:
+
+```text
+View Details
+Mark Processing
+Mark Completed
+Mark Failed
+Cancel Order
+```
+
+Individual actions must update the database immediately.
+
+Every change must create a status-history record.
+
+---
+
+# 16. ORDER STATUS LOGIC
+
+Use these statuses:
+
+```text
+PENDING
+PROCESSING
+COMPLETED
+FAILED
+CANCELLED
+```
+
+Allowed transitions should be controlled.
+
+For example:
+
+```text
+PENDING
+   ↓
+PROCESSING
+   ↓
+COMPLETED
+```
+
+Failed orders:
+
+```text
+PENDING → FAILED
+PROCESSING → FAILED
+```
+
+Cancellation:
+
+```text
+PENDING → CANCELLED
+```
+
+Do not allow nonsensical transitions without explicit admin override.
+
+---
+
+# 17. STATUS HISTORY
+
+Every individual order needs a complete history.
+
+Example:
+
+```text
+CF-10001
+
+09:42
+PENDING
+Created by reseller
+
+09:52
+PROCESSING
+Exported by Admin
+
+10:17
+COMPLETED
+Marked delivered by Admin
+```
+
+Store:
+
+```text
+Previous Status
+New Status
+Changed By
+Reason
+Timestamp
+```
+
+---
+
+# 18. USER DASHBOARD — MY SENT ORDERS
+
+Change the existing user order page to use the same batch concept.
+
+Instead of displaying every phone number as a separate row, show:
+
+```text
+My Sent Orders
+```
+
+with one row/card per submitted batch.
+
+Example:
+
+```text
+MTN
+20 Recipients
+100 GB
+GHS 380.00
+
+Status: Processing
+
+Sep 10, 2026
+09:42 AM
+
+[View Orders]
+```
+
+Another:
+
+```text
+Telecel
+12 Recipients
+60 GB
+GHS 228.00
+
+Status: Completed
+
+Sep 9, 2026
+04:31 PM
+
+[View Orders]
+```
+
+---
+
+# 19. USER BATCH DETAILS
+
+When the user clicks:
+
+```text
+View Orders
+```
+
+open a responsive modal/drawer/page.
+
+Header:
+
+```text
+MTN Order Batch
+
+20 Recipients
+100 GB
+GHS 380.00
+
+Status: Processing
+```
+
+Then show every recipient:
+
+| Recipient  |  Data |    Amount | Status     | Date/Time |
+| ---------- | ----: | --------: | ---------- | --------- |
+| 024XXXXXXX |  1 GB |  GHS 3.80 | Processing | 09:42     |
+| 055XXXXXXX |  5 GB | GHS 19.00 | Completed  | 09:42     |
+| 020XXXXXXX | 10 GB | GHS 38.00 | Processing | 09:42     |
+
+The user should never have to leave the batch window to understand what happened to an individual recipient.
+
+---
+
+# 20. USER "NOT RECEIVED" BUTTON
+
+For every completed individual order, show:
+
+```text
+Not Received
+```
+
+Example:
+
+```text
+024XXXXXXX
+1 GB
+COMPLETED
+
+[Not Received]
+```
+
+When clicked:
+
+```text
+Report Missing Data
+
+Recipient:
+024XXXXXXX
+
+Package:
+1 GB
+
+Order:
+CF-10001
+
+Tell us what happened:
+[Optional message]
+
+[Cancel]
+[Report Not Received]
+```
+
+After submission:
+
+```text
+Report Submitted
+
+Our support team has been notified.
+```
+
+---
+
+# 21. NOT RECEIVED REPORT SYSTEM
+
+Create a dedicated database record for every report.
+
+Example:
+
+```text
+delivery_reports
+
+id
+order_id
+user_id
+reason
+message
+status
+created_at
+resolved_at
+resolved_by
+admin_note
+```
+
+Statuses:
+
+```text
+OPEN
+INVESTIGATING
+RESOLVED
+REJECTED
+```
+
+---
+
+# 22. ADMIN DELIVERY REPORTS
+
+Create:
+
+```text
+/admin/delivery-reports
+```
+
+Admin sees:
+
+```text
+Recipient
+Network
+Package
+Order ID
+User
+Reported At
+Status
+Actions
+```
+
+Example:
+
+```text
+024XXXXXXX
+MTN
+1 GB
+CF-10001
+Top Skanka
+09:53
+OPEN
+
+[Investigate]
+```
+
+Admin can:
+
+```text
+Mark Investigating
+Resolve
+Reject
+Add Note
+```
+
+---
+
+# 23. ADMIN ORDER DETAIL DRAWER
+
+Clicking any individual order anywhere in the admin panel should open the same reusable order-detail drawer.
+
+Include:
+
+```text
+Order ID
+Batch ID
+Network
+User
+Phone Number
+Package
+GB
+Amount
+Current Status
+Provider Reference
+Created
+Updated
+```
+
+Then:
+
+```text
+Status History
+```
+
+Then:
+
+```text
+Customer Reports
+```
+
+Then:
+
+```text
+Admin Actions
+```
+
+This same drawer should be usable from:
+
+* Admin Orders
+* Export Batches
+* Delivery Reports
+* User Details
+* Dashboard recent orders
+
+---
+
+# 24. BATCH SUMMARY STATISTICS
+
+Every batch should automatically calculate:
+
+```text
+Total Recipients
+Total GB
+Total Amount
+
+Pending
+Processing
+Completed
+Failed
+Cancelled
+```
+
+Example:
+
+```text
+20 Recipients
+
+Completed     15
+Processing     3
+Failed         1
+Pending        1
+```
+
+Add a visual progress bar:
+
+```text
+████████████████░░░░ 75%
+15 / 20 Completed
+```
+
+---
+
+# 25. ADMIN DASHBOARD NETWORK OVERVIEW
+
+Add network-specific operational cards:
+
+```text
+MTN
+Pending: 120
+Processing: 45
+Completed: 1,240
+Total GB: 4,820 GB
+```
+
+```text
+Telecel
+Pending: 75
+Processing: 21
+Completed: 840
+Total GB: 3,110 GB
+```
+
+```text
+AirtelTigo
+Pending: 62
+Processing: 18
+Completed: 620
+Total GB: 2,400 GB
+```
+
+Make these interactive.
+
+Clicking a network should take the admin directly to its filtered orders.
+
+---
+
+# 26. NETWORK-SPECIFIC EXPORT CENTER
+
+Create a prominent section:
+
+```text
+Network Export Center
+```
+
+Cards:
+
+```text
+MTN
+
+Pending Orders
+20
+
+Total GB
+100 GB
+
+[Export Pending MTN]
+```
+
+```text
+Telecel
+
+Pending Orders
+14
+
+Total GB
+70 GB
+
+[Export Pending Telecel]
+```
+
+```text
+AirtelTigo
+
+Pending Orders
+18
+
+Total GB
+90 GB
+
+[Export Pending AirtelTigo]
+```
+
+The buttons should automatically apply:
+
+```text
+Network = selected network
+Status = PENDING
+```
+
+---
+
+# 27. EXPORT SAFETY
+
+Never accidentally export the same pending order twice.
+
+When an order has already been moved to:
+
+```text
+PROCESSING
+```
+
+it should no longer appear in:
+
+```text
+Pending Export
+```
+
+unless an admin explicitly chooses a retry/re-export workflow.
+
+Add:
+
+```text
+Already Exported
+```
+
+information to order details.
+
+Track:
+
+```text
+export_count
+last_exported_at
+last_exported_by
+```
+
+---
+
+# 28. RE-EXPORT / RETRY
+
+Sometimes an admin may need to export an order again.
+
+Provide:
+
+```text
+Re-export
+```
+
+but require confirmation.
+
+Example:
+
+```text
+This order was previously exported on
+Sep 10, 2026 at 09:52 AM.
+
+Re-exporting will NOT create a duplicate order.
+
+[Cancel]
+[Re-export]
+```
+
+Record every re-export in the audit log.
+
+---
+
+# 29. DATABASE ADDITIONS
+
+Add the following models.
+
+### OrderBatch
+
+```typescript
+interface OrderBatch {
+  id: string;
+  userId: string;
+  network: NetworkProvider;
+  totalRecipients: number;
+  totalGb: number;
+  totalAmount: number;
+  status: BatchStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### BatchStatus
+
+```typescript
+type BatchStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "PARTIALLY_COMPLETED"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELLED";
+```
+
+### ExportBatch
+
+```typescript
+interface ExportBatch {
+  id: string;
+  network: NetworkProvider;
+  adminId: string;
+  orderBatchIds: string[];
+  totalRecipients: number;
+  totalGb: number;
+  exportedAt: string;
+  status: BatchStatus;
+  fileName: string;
+}
+```
+
+### DeliveryReport
+
+```typescript
+interface DeliveryReport {
+  id: string;
+  orderId: string;
+  userId: string;
+  reason?: string;
+  message?: string;
+  status:
+    | "OPEN"
+    | "INVESTIGATING"
+    | "RESOLVED"
+    | "REJECTED";
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  adminNote?: string;
+}
+```
+
+---
+
+# 30. IMPORTANT DATABASE RELATIONSHIP
+
+Use:
+
+```text
+User
+ │
+ └── OrderBatch
+       │
+       ├── Order
+       ├── Order
+       ├── Order
+       └── Order
+```
+
+And:
+
+```text
+Order
+ │
+ ├── Status History
+ │
+ └── Delivery Reports
+```
+
+And:
+
+```text
+ExportBatch
+ │
+ └── Exported Orders / Order Batches
+```
+
+Do not store all recipient numbers as one JSON blob.
+
+Each recipient must remain a proper database record so that individual statuses, reports, searches and auditing work correctly.
+
+---
+
+# 31. EXCEL EXPORT TRANSACTION
+
+The export operation must follow this order:
+
+```text
+1. Select eligible pending orders
+        ↓
+2. Lock/verify eligible orders
+        ↓
+3. Generate Excel file
+        ↓
+4. Confirm file generation succeeded
+        ↓
+5. Create ExportBatch record
+        ↓
+6. Change selected orders:
+   PENDING → PROCESSING
+        ↓
+7. Record status history
+        ↓
+8. Record audit log
+        ↓
+9. Return downloadable file
+```
+
+If anything fails before the status update:
+
+```text
+DO NOT change the orders to PROCESSING.
+```
+
+This prevents orders from disappearing from the pending queue because of an export error.
+
+---
+
+# 32. PAGINATION
+
+Pagination is mandatory.
+
+Admin batch list:
+
+```text
+10 / 25 / 50 / 100
+```
+
+per page.
+
+Show:
+
+```text
+Showing 1–25 of 428 batches
+```
+
+Controls:
+
+```text
+First
+Previous
+1
+2
+3
+...
+Next
+Last
+```
+
+Individual orders inside a batch should also be paginated when a batch contains a large number of recipients.
+
+Example:
+
+```text
+Showing 1–50 of 500 recipients
+```
+
+Do not load thousands of rows into the browser at once.
+
+Use server-side pagination.
+
+---
+
+# 33. ADMIN UX
+
+The admin panel should be **much more feature-packed than the user dashboard**.
+
+User side:
+
+> Minimal, clean, simple, screenshot-inspired.
+
+Admin side:
+
+> Dense, powerful, information-rich operations center.
+
+Use:
+
+* advanced tables
+* sticky table headers
+* bulk selection
+* filters
+* search
+* drawers
+* modals
+* charts
+* status indicators
+* progress bars
+* quick actions
+* keyboard-friendly actions
+* confirmation dialogs
+* toast notifications
+* pagination
+* export controls
+* audit information
+
+Do not make the admin interface unnecessarily flashy.
+
+Prioritize **speed, visibility and operational efficiency**.
+
+---
+
+# 34. USER UX
+
+Keep the user side minimalist.
+
+The main Sent Orders page should primarily show:
+
+```text
+MTN
+20 Recipients
+100 GB
+GHS 380.00
+Processing
+Sep 10, 2026
+09:42 AM
+
+[View Orders]
+```
+
+Then the details window provides the individual recipients.
+
+This keeps the user interface clean while still giving complete information.
+
+---
+
+# 35. REAL-TIME STATUS SYNCHRONIZATION
+
+This is critical.
+
+If the admin changes:
+
+```text
+Batch:
+PROCESSING → COMPLETED
+```
+
+then all eligible individual orders should update.
+
+When the reseller opens the same batch:
+
+```text
+Batch: COMPLETED
+
+024XXXXXXX     COMPLETED
+055XXXXXXX     COMPLETED
+020XXXXXXX     COMPLETED
+...
+```
+
+The user's dashboard must reflect the latest database state.
+
+Use Supabase realtime where appropriate.
+
+---
+
+# 36. ADMIN → USER CONSISTENCY
+
+There must be **one source of truth: the database**.
+
+Never maintain separate fake statuses for the admin and user.
+
+Example:
+
+```text
+DATABASE
+Order #CF-10001
+Status = COMPLETED
+```
+
+Admin sees:
+
+```text
+COMPLETED
+```
+
+User sees:
+
+```text
+COMPLETED
+```
+
+API sees:
+
+```json
+{
+  "status": "COMPLETED"
+}
+```
+
+Everything must remain synchronized.
+
+---
+
+# 37. AUDIT LOGGING
+
+Log:
+
+```text
+Batch created
+Batch exported
+Orders exported
+Order status changed
+Batch status changed
+Order cancelled
+Order re-exported
+Delivery report created
+Delivery report resolved
+Delivery report rejected
+```
+
+Example:
+
+```text
+ADMIN
+Changed Batch CF-BATCH-000184
+PROCESSING → COMPLETED
+
+20 orders affected
+
+Sep 10, 2026
+10:17 AM
+```
+
+---
+
+# 38. FINAL EXPERIENCE
+
+The finished system should feel like this:
+
+### USER
+
+```text
+Dashboard
+   ↓
+My Sent Orders
+
+MTN
+20 Recipients
+100 GB
+Processing
+
+[View Orders]
+```
+
+Click:
+
+```text
+MTN Batch
+20 Recipients
+100 GB
+
+024XXXXXXX   1 GB   PROCESSING
+055XXXXXXX   5 GB   COMPLETED
+020XXXXXXX   2 GB   PROCESSING
+
+                         [Not Received]
+```
+
+### ADMIN
+
+```text
+Admin Dashboard
+       ↓
+Order Management
+       ↓
+MTN
+       ↓
+Pending: 20
+Total: 100 GB
+
+[Export Excel]
+       ↓
+Export successful
+       ↓
+20 orders → PROCESSING
+       ↓
+Export Batch Created
+       ↓
+EX-0091
+20 Recipients
+100 GB
+PROCESSING
+       ↓
+[View]
+       ↓
+20 individual recipients
+       ↓
+[Mark Entire Batch Completed]
+       ↓
+20 orders → COMPLETED
+       ↓
+USER DASHBOARD UPDATES
+```
+
+---
+
+## One important improvement I strongly recommend
+
+Add an **"Operations Queue"** to the admin dashboard.
+
+It could look like:
+
+```text
+┌─────────────────────────────────────────────┐
+│ OPERATIONS QUEUE                            │
+├─────────────────────────────────────────────┤
+│                                             │
+│ MTN                                         │
+│ 20 Pending       100 GB       [Export]      │
+│                                             │
+│ Telecel                                     │
+│ 14 Pending        70 GB       [Export]      │
+│                                             │
+│ AirtelTigo                                  │
+│ 18 Pending        90 GB       [Export]      │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+That way, when you open the admin panel, you immediately know:
+
+**"MTN has 20 orders waiting. Telecel has 14. AirtelTigo has 18."**
+
+One click exports each queue, moves those orders into **Processing**, and creates the corresponding export batch.
+
