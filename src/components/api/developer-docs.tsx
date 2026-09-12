@@ -217,12 +217,12 @@ function verifyClickyfiedWebhook(rawBody, signatureHeader, timestampHeader, secr
             <h3 className="text-base font-bold">Quickstart: Create Order</h3>
             <p className="text-xs text-slate-500">POST /v1/orders</p>
           </div>
-          <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 dark:bg-slate-800 no-scrollbar">
             {(["curl", "javascript", "nodejs", "python", "php"] as const).map((lang) => (
               <button
                 key={lang}
                 onClick={() => setLangTab(lang)}
-                className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                   langTab === lang
                     ? "bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-400"
                     : "text-slate-500 hover:text-slate-900 dark:text-slate-400"

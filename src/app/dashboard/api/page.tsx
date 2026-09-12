@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Activity,
   ArrowRight,
+  ChevronDown,
 } from "lucide-react";
 import { PageHeader, StatCard, Spinner } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
@@ -105,8 +106,68 @@ export default function DeveloperDashboardPage() {
         description="Integrate Clickyfied mobile data fulfillment into your websites and applications."
       />
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex w-full items-center gap-1.5 overflow-x-auto border-b border-slate-200/80 pb-2.5 dark:border-slate-800 no-scrollbar">
+      {/* Navigation: Mobile Section Selector */}
+      <div className="sm:hidden space-y-2.5">
+        <div className="relative flex items-center">
+          <div className="pointer-events-none absolute left-3.5 flex items-center text-blue-600 dark:text-blue-400">
+            {React.createElement(navItems.find((n) => n.key === activeTab)?.icon || LayoutDashboard, {
+              className: "h-4 w-4",
+            })}
+          </div>
+          <select
+            value={activeTab}
+            onChange={(e) => {
+              const newTab = e.target.value as TabKey;
+              setActiveTab(newTab);
+              if (typeof window !== "undefined") {
+                const url = new URL(window.location.href);
+                url.searchParams.set("tab", newTab);
+                window.history.replaceState({}, "", url.toString());
+              }
+            }}
+            className="h-11 w-full appearance-none rounded-xl border-2 border-blue-600/70 bg-white pl-10 pr-10 text-xs font-bold uppercase tracking-wider text-slate-900 shadow-sm focus:outline-none dark:border-blue-500/70 dark:bg-slate-900 dark:text-white"
+          >
+            {navItems.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3.5 h-4 w-4 text-blue-600 dark:text-blue-400" />
+        </div>
+
+        {/* Mobile Horizontal Pill Scroll with snap */}
+        <div className="flex w-full min-w-0 max-w-full items-center gap-1.5 overflow-x-auto py-1 no-scrollbar border-b border-slate-200/80 pb-2 dark:border-slate-800">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => {
+                  setActiveTab(item.key);
+                  if (typeof window !== "undefined") {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("tab", item.key);
+                    window.history.replaceState({}, "", url.toString());
+                  }
+                }}
+                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                  active
+                    ? "bg-blue-600 text-white shadow-sm shadow-blue-600/20"
+                    : "bg-slate-100/80 text-slate-600 hover:bg-slate-200 dark:bg-slate-800/80 dark:text-slate-300"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Navigation Sub-Tabs (Desktop) */}
+      <div className="hidden sm:flex w-full min-w-0 max-w-full items-center gap-1.5 overflow-x-auto border-b border-slate-200/80 pb-2.5 dark:border-slate-800 no-scrollbar">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.key;

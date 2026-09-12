@@ -170,7 +170,7 @@ export function AppShell({
           {(user.role === "ADMIN" || user.role === "MANAGER") && (
             <Link
               href={admin ? "/dashboard/send" : "/admin"}
-              className="hidden h-7 shrink-0 items-center gap-1 rounded-full border border-brand-500/25 bg-brand-500/10 px-2.5 text-[11px] font-bold text-brand-600 transition hover:bg-brand-500/20 sm:flex dark:border-brand-400/30 dark:bg-brand-500/15 dark:text-brand-300 dark:hover:bg-brand-500/25"
+              className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-brand-500/25 bg-brand-500/10 px-2 text-[11px] font-bold text-brand-600 transition hover:bg-brand-500/20 sm:px-2.5 dark:border-brand-400/30 dark:bg-brand-500/15 dark:text-brand-300 dark:hover:bg-brand-500/25"
               title={admin ? "Switch to User Dashboard view" : "Switch to Admin Panel"}
             >
               <span>{admin ? "User View" : "Admin Panel"}</span>
@@ -180,7 +180,7 @@ export function AppShell({
 
           <div className="flex-1" />
 
-          <div className="flex items-center sm:hidden">
+          <div className="flex items-center gap-2 sm:hidden">
             <ThemeToggle />
           </div>
 
@@ -215,6 +215,18 @@ export function AppShell({
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">{user.name}</span>
             <RoleBadge role={user.role} className="mr-1.5" />
           </Link>
+
+          {(user.role === "ADMIN" || user.role === "MANAGER") && (
+            <Link
+              href={admin ? "/dashboard/send" : "/admin"}
+              title={admin ? "Switch to User Dashboard" : "Switch to Admin Panel"}
+              className="flex h-10 shrink-0 items-center gap-1 rounded-full border border-brand-500/30 bg-gradient-to-r from-blue-600 to-violet-600 px-3 text-xs font-bold text-white shadow-sm transition hover:opacity-90 active:scale-95"
+            >
+              <span>{admin ? "User" : "Admin"}</span>
+              <span className="text-[11px]">↗</span>
+            </Link>
+          )}
+
           <button
             onClick={onLogout}
             aria-label="Sign out"
@@ -223,7 +235,12 @@ export function AppShell({
             <LogOut className="h-4 w-4" />
           </button>
         </div>
-        <MobileSelectNav items={items} className="pt-3" />
+        <MobileSelectNav
+          items={items}
+          isAdminRole={user.role === "ADMIN" || user.role === "MANAGER"}
+          currentIsAdmin={admin}
+          className="pt-3"
+        />
       </div>
 
       <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 pb-20 sm:px-6 sm:py-6 sm:pb-24">{children}</main>

@@ -101,23 +101,55 @@ export function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+export function ThemeToggle({ className }: { className?: string }) {
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
-  const resolved = mounted ? (theme ?? "system") : "system";
-  const next = resolved === "light" ? "dark" : resolved === "dark" ? "system" : "light";
-  const Icon = resolved === "light" ? Sun : resolved === "dark" ? Moon : Monitor;
+  const isDark = mounted ? (resolvedTheme === "dark" || theme === "dark") : false;
+
+  const toggle = () => {
+    if (!mounted) return;
+    setTheme(isDark ? "light" : "dark");
+  };
 
   return (
     <button
-      onClick={() => mounted && setTheme(next)}
-      title={`Theme: ${resolved} — click for ${next}`}
-      aria-label={`Switch theme (current: ${resolved})`}
-      className="flex h-7 w-10 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm shadow-violet-600/30 transition-colors hover:bg-violet-500"
+      type="button"
+      onClick={toggle}
+      role="switch"
+      aria-checked={isDark}
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      title={isDark ? "Dark mode active — click for Light mode" : "Light mode active — click for Dark mode"}
+      className={cn(
+        "group relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full p-1 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
+        isDark
+          ? "bg-slate-800 border border-indigo-500/40 shadow-inner"
+          : "bg-amber-50/90 border border-amber-300/80 shadow-sm",
+        className
+      )}
     >
-      <Icon className="h-3.5 w-3.5" />
+      {/* Background Icons */}
+      <div className="flex w-full items-center justify-between px-0.5">
+        <Sun className={cn("h-3.5 w-3.5 transition-opacity duration-200", isDark ? "opacity-30 text-amber-400" : "opacity-0")} />
+        <Moon className={cn("h-3.5 w-3.5 transition-opacity duration-200", isDark ? "opacity-0" : "opacity-30 text-indigo-400")} />
+      </div>
+
+      {/* Sliding Knob */}
+      <span
+        className={cn(
+          "absolute top-1 flex h-6 w-6 items-center justify-center rounded-full shadow-md transition-all duration-300 ease-out",
+          isDark
+            ? "translate-x-6 bg-gradient-to-tr from-indigo-600 to-violet-500 text-white shadow-indigo-600/40"
+            : "translate-x-0 bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-900 shadow-amber-400/30"
+        )}
+      >
+        {isDark ? (
+          <Moon className="h-3.5 w-3.5 text-indigo-100" />
+        ) : (
+          <Sun className="h-3.5 w-3.5 text-amber-950 fill-amber-950/20" />
+        )}
+      </span>
     </button>
   );
 }
@@ -264,7 +296,17 @@ export function TopTabs({ items, className }: { items: NavItem[]; className?: st
   );
 }
 
-export function MobileSelectNav({ items, className }: { items: NavItem[]; className?: string }) {
+export function MobileSelectNav({
+  items,
+  isAdminRole,
+  currentIsAdmin,
+  className,
+}: {
+  items: NavItem[];
+  isAdminRole?: boolean;
+  currentIsAdmin?: boolean;
+  className?: string;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const current = items.find((i) => isActive(pathname, i.href))?.href ?? "";
@@ -275,13 +317,22 @@ export function MobileSelectNav({ items, className }: { items: NavItem[]; classN
         value={current}
         onChange={(e) => router.push(e.target.value)}
         aria-label="Navigate to page"
-        className="h-10 w-full appearance-none rounded-lg border-2 border-brand-500 bg-white px-3 pr-9 text-sm font-semibold text-slate-800 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-[#0d1526] dark:text-slate-100"
+        className="h-10 w-full appearance-none rounded-xl border-2 border-brand-500/80 bg-white px-3 pr-9 text-sm font-semibold text-slate-800 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-brand-400/70 dark:bg-[#0d1526] dark:text-slate-100"
       >
-        {items.map((item) => (
-          <option key={item.href} value={item.href}>
-            {item.label}
-          </option>
-        ))}
+        <optgroup label={currentIsAdmin ? "Admin Navigation" : "Dashboard Pages"}>
+          {items.map((item) => (
+            <option key={item.href} value={item.href}>
+              {item.label}
+            </option>
+          ))}
+        </optgroup>
+        {isAdminRole && (
+          <optgroup label="Switch Portal">
+            <option value={currentIsAdmin ? "/dashboard/send" : "/admin"}>
+              {currentIsAdmin ? "⚡ Switch to User Dashboard →" : "🛡️ Open Admin Panel →"}
+            </option>
+          </optgroup>
+        )}
       </select>
       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-500" />
     </div>
