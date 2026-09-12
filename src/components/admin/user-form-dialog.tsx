@@ -15,6 +15,10 @@ export interface AdminUser {
   status: string;
   balance: number;
   pricingProfileId: string | null;
+  signupCodeUsage?: {
+    signupCode: { code: string };
+    usedAt: string;
+  } | null;
 }
 
 const ROLES = ["USER", "RESELLER", "MANAGER", "ADMIN"];
@@ -80,6 +84,22 @@ export function UserFormDialog({
   return (
     <Dialog open={open} onClose={onClose} title={user ? `Edit ${user.name}` : "Add user"}>
       <div className="space-y-3 text-sm">
+        {user?.signupCodeUsage?.signupCode?.code && (
+          <div className="rounded-xl bg-brand-50/70 border border-brand-200 dark:border-brand-500/20 dark:bg-brand-500/10 p-3 flex justify-between items-center text-xs">
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block font-medium">Signup Code:</span>
+              <span className="font-mono font-bold text-brand-700 dark:text-brand-300 text-sm">
+                {user.signupCodeUsage.signupCode.code}
+              </span>
+            </div>
+            <div className="text-right text-slate-500 dark:text-slate-400">
+              <span className="block font-medium">Used At:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                {new Date(user.signupCodeUsage.usedAt).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label>Name</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />

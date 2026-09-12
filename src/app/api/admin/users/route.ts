@@ -44,6 +44,12 @@ export async function GET(request: NextRequest) {
           lastLoginAt: true,
           createdAt: true,
           _count: { select: { orders: true } },
+          signupCodeUsage: {
+            select: {
+              signupCode: { select: { code: true } },
+              usedAt: true,
+            },
+          },
         },
       }),
       prisma.user.count({ where }),

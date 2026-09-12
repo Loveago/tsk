@@ -4,9 +4,11 @@ import * as React from "react";
 import { PageHeader, EmptyState, Spinner } from "@/components/shared";
 import { StatCard } from "@/components/shared";
 import { TopupForm } from "@/components/billing/topup-form";
+import { SendClaimCard } from "@/components/billing/send-claim-card";
+import { ClaimHistory } from "@/components/billing/claim-history";
 import { useToast } from "@/components/toast";
 import { formatGHS, formatDateTime } from "@/lib/types";
-import { Wallet, ArrowDownLeft, ArrowUpRight, Receipt } from "lucide-react";
+import { Wallet, ArrowDownLeft, ArrowUpRight, Receipt, Smartphone, History } from "lucide-react";
 
 interface Tx {
   id: string;
@@ -31,8 +33,11 @@ function txBadge(status: string) {
   );
 }
 
+type Tab = "overview" | "send-claim" | "claim-history";
+
 export default function BillingPage() {
   const { toast } = useToast();
+  const [tab, setTab] = React.useState<Tab>("overview");
   const [data, setData] = React.useState<Tx[]>([]);
   const [balance, setBalance] = React.useState(0);
   const [summary, setSummary] = React.useState({ topups: 0, spend: 0 });
@@ -51,7 +56,15 @@ export default function BillingPage() {
     load();
   }, [load]);
 
-  // Paystack redirect-back result (callback lands here with ?paystack=success|failed)
+  // URL tab query param synchronization
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (tabParam === "send-claim") setTab("send-claim");
+    else if (tabParam === "history" || tabParam === "claims") setTab("claim-history");
+  }, []);
+
+  // Paystack redirect-back result
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const paystack = params.get("paystack");
@@ -66,66 +79,118 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Billing" description="Your wallet balance and transactions" />
+      <PageHeader title="Billing" description="Your wallet balance, Send & Claim, and transactions" />
 
+      {/* Balance Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard title="Current Balance" value={formatGHS(balance)} icon={Wallet} />
         <StatCard title="Total Top-ups" value={formatGHS(summary.topups)} icon={ArrowDownLeft} />
         <StatCard title="Total Spending" value={formatGHS(summary.spend)} icon={ArrowUpRight} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
-          <h2 className="text-sm font-semibold">Request a top-up</h2>
-          <div className="mt-4">
-            <TopupForm onSuccess={load} />
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm dark:border-white/5 dark:bg-[#0d1526] lg:col-span-2">
-          <div className="border-b border-slate-100 px-5 py-4 dark:border-white/5">
-            <h2 className="text-sm font-semibold">Transactions</h2>
-          </div>
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <Spinner className="h-6 w-6 text-brand-600" />
-            </div>
-          ) : data.length === 0 ? (
-            <EmptyState icon={Receipt} title="No transactions yet" description="Top up to get started." />
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-white/5">
-              {data.map((t) => (
-                <div key={t.id} className="flex items-center gap-3 px-5 py-3 text-sm">
-                  <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                      t.type === "TOPUP"
-                        ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-                        : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400"
-                    }`}
-                  >
-                    {t.type === "TOPUP" ? (
-                      <ArrowDownLeft className="h-4 w-4" />
-                    ) : (
-                      <ArrowUpRight className="h-4 w-4" />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{t.type}</p>
-                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                      {formatDateTime(t.createdAt)}
-                      {t.reference ? ` · ref ${t.reference}` : ""}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{formatGHS(t.amount)}</p>
-                    {txBadge(t.status)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Tab Navigation */}
+      <div className="flex border-b border-slate-200 dark:border-white/10 text-sm font-medium gap-2">
+        <button
+          type="button"
+          onClick={() => setTab("overview")}
+          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
+            tab === "overview"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          <Wallet className="h-4 w-4" /> Wallet &amp; Top-up
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("send-claim")}
+          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
+            tab === "send-claim"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          <Smartphone className="h-4 w-4" /> Send &amp; Claim
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("claim-history")}
+          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
+            tab === "claim-history"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          <History className="h-4 w-4" /> Claim History
+        </button>
       </div>
+
+      {/* Tab 1: Overview & Instant Top-up */}
+      {tab === "overview" && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
+            <h2 className="text-sm font-semibold">Request a top-up</h2>
+            <div className="mt-4">
+              <TopupForm onSuccess={load} />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm dark:border-white/5 dark:bg-[#0d1526] lg:col-span-2">
+            <div className="border-b border-slate-100 px-5 py-4 dark:border-white/5">
+              <h2 className="text-sm font-semibold">Wallet Ledger Transactions</h2>
+            </div>
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <Spinner className="h-6 w-6 text-brand-600" />
+              </div>
+            ) : data.length === 0 ? (
+              <EmptyState icon={Receipt} title="No transactions yet" description="Top up to get started." />
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-white/5">
+                {data.map((t) => (
+                  <div key={t.id} className="flex items-center gap-3 px-5 py-3 text-sm">
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                        t.type === "TOPUP"
+                          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400"
+                      }`}
+                    >
+                      {t.type === "TOPUP" ? (
+                        <ArrowDownLeft className="h-4 w-4" />
+                      ) : (
+                        <ArrowUpRight className="h-4 w-4" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{t.type}</p>
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                        {formatDateTime(t.createdAt)}
+                        {t.reference ? ` · ref ${t.reference}` : ""}
+                        {t.note ? ` · ${t.note}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">{formatGHS(t.amount)}</p>
+                      {txBadge(t.status)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 2: Send & Claim */}
+      {tab === "send-claim" && (
+        <SendClaimCard onSuccess={load} />
+      )}
+
+      {/* Tab 3: Claim History */}
+      {tab === "claim-history" && (
+        <ClaimHistory />
+      )}
     </div>
   );
 }

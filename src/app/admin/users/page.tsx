@@ -3,26 +3,15 @@
 import * as React from "react";
 import { PageHeader } from "@/components/shared";
 import { UserFormDialog } from "@/components/admin/user-form-dialog";
-import { AdminUsersTable } from "@/components/admin/admin-users-table";
+import { AdminUsersTable, type UserRow } from "@/components/admin/admin-users-table";
+import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
 import { ExportButtons } from "@/components/admin/export-buttons";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Label } from "@/components/ui/input";
 import { Users } from "lucide-react";
 
-interface Row {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  status: string;
-  balance: number;
-  pricingProfileId: string | null;
-  _count: { orders: number };
-  lastLoginAt: string | null;
-}
-
 export default function AdminUsersPage() {
-  const [data, setData] = React.useState<Row[]>([]);
+  const [data, setData] = React.useState<UserRow[]>([]);
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
   const [page, setPage] = React.useState(1);
@@ -30,7 +19,9 @@ export default function AdminUsersPage() {
   const [q, setQ] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editing, setEditing] = React.useState<Row | null>(null);
+  const [editing, setEditing] = React.useState<UserRow | null>(null);
+  const [creditDialogOpen, setCreditDialogOpen] = React.useState(false);
+  const [creditingUser, setCreditingUser] = React.useState<UserRow | null>(null);
   const [profiles, setProfiles] = React.useState<{ id: string; name: string }[]>([]);
 
   const load = React.useCallback(async () => {
@@ -104,6 +95,10 @@ export default function AdminUsersPage() {
           setEditing(u);
           setDialogOpen(true);
         }}
+        onManualCredit={(u) => {
+          setCreditingUser(u);
+          setCreditDialogOpen(true);
+        }}
       />
 
       {pages > 1 && (
@@ -126,6 +121,16 @@ export default function AdminUsersPage() {
         user={editing}
         profiles={profiles}
         onSaved={load}
+      />
+
+      <ManualCreditDialog
+        open={creditDialogOpen}
+        onClose={() => {
+          setCreditDialogOpen(false);
+          setCreditingUser(null);
+        }}
+        user={creditingUser}
+        onCredited={load}
       />
     </div>
   );

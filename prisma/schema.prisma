@@ -37,6 +37,8 @@ model User {
   apiApplication ApiApplication?
   apiCredentials ApiCredential[]
   apiWebhook     ApiWebhook?
+  sendClaims     SendClaim[]
+  signupCodeUsage SignupCodeUsage?
 
   @@index([role])
   @@index([status])
@@ -327,6 +329,7 @@ model WalletTransaction {
   note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  sendClaim SendClaim?
 
   @@index([userId])
   @@index([status])
@@ -576,5 +579,111 @@ model ApiWebhookDelivery {
   @@index([status])
   @@index([createdAt])
   @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Send & Claim Mobile Money Top-Up
+// ---------------------------------------------------------------------------
+
+model IncomingMomoTransaction {
+  id                   String      @id @default(cuid())
+  transactionReference String      @unique
+  network              String      // MTN | TELECEL | AIRTELTIGO
+  amount               Float
+  currency             String      @default("GHS")
+  senderPhone          String?
+  recipientPhone       String?
+  transactionAt        DateTime?
+  rawSms               String
+  parsedData           String?     // JSON-serialized parsed fields
+  source               String      @default("SMS_FORWARDER")
+  status               String      @default("AVAILABLE") // UNMATCHED | AVAILABLE | CLAIMED | REJECTED | DUPLICATE | EXPIRED
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  claims               SendClaim[]
+
+  @@index([transactionReference])
+  @@index([network])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SendClaim {
+  id                        String                   @id @default(cuid())
+  userId                    String
+  user                      User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  incomingMomoTransactionId String?
+  incomingTransaction       IncomingMomoTransaction? @relation(fields: [incomingMomoTransactionId], references: [id], onDelete: SetNull)
+  walletTransactionId       String?                  @unique
+  walletTransaction         WalletTransaction?       @relation(fields: [walletTransactionId], references: [id], onDelete: SetNull)
+  transactionReference      String
+  claimedAmount             Float
+  network                   String
+  senderPhone               String?
+  status                    String                   @default("APPROVED") // PENDING | APPROVED | REJECTED
+  rejectionReason           String?
+  ipAddress                 String?
+  userAgent                 String?
+  createdAt                 DateTime                 @default(now())
+  processedAt               DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([transactionReference])
+  @@index([incomingMomoTransactionId])
+}
+
+model SendClaimSettings {
+  id               String   @id @default("default")
+  enabled          Boolean  @default(true)
+  network          String   @default("MTN") // MTN | TELECEL | AIRTELTIGO
+  momoNumber       String   @default("0240000000")
+  accountName      String   @default("Clickyfied")
+  instructions     String?
+  minimumAmount    Float    @default(1)
+  maximumAmount    Float    @default(5000)
+  claimExpiryHours Int      @default(168) // 7 days = 168 hours
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Sign-up Codes
+// ---------------------------------------------------------------------------
+
+model SignupCode {
+  id          String            @id @default(cuid())
+  code        String            @unique // Stored normalized uppercase
+  status      String            @default("ACTIVE") // ACTIVE | DISABLED | EXHAUSTED | EXPIRED
+  maxUses     Int?              // null = unlimited
+  usageCount  Int               @default(0)
+  expiresAt   DateTime?
+  createdBy   String?
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  usages      SignupCodeUsage[]
+
+  @@index([code])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model SignupCodeUsage {
+  id           String     @id @default(cuid())
+  signupCodeId String
+  signupCode   SignupCode @relation(fields: [signupCodeId], references: [id], onDelete: Cascade)
+  userId       String     @unique
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usedAt       DateTime   @default(now())
+  ipAddress    String?
+  userAgent    String?
+
+  @@index([signupCodeId])
+  @@index([userId])
+  @@index([usedAt])
 }
 

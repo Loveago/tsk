@@ -8,7 +8,11 @@ import { ExportButtons } from "@/components/admin/export-buttons";
 import { Select, Label } from "@/components/ui/input";
 import { useToast } from "@/components/toast";
 import { formatGHS, formatDateTime } from "@/lib/types";
-import { Wallet, Check, X } from "lucide-react";
+import { IncomingMomoTable } from "@/components/admin/incoming-momo-table";
+import { ClaimsTable } from "@/components/admin/claims-table";
+import { MomoSettingsCard } from "@/components/admin/momo-settings-card";
+import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
+import { Wallet, Check, X, Smartphone, Receipt, Settings, PlusCircle } from "lucide-react";
 
 interface Tx {
   id: string;
@@ -18,11 +22,14 @@ interface Tx {
   reference: string | null;
   note: string | null;
   createdAt: string;
-  user: { name: string; email: string; balance: number };
+  user: { id: string; name: string; email: string; balance: number };
 }
+
+type BillingTab = "transactions" | "incoming-momo" | "claims" | "settings";
 
 export default function AdminBillingPage() {
   const { toast } = useToast();
+  const [tab, setTab] = React.useState<BillingTab>("transactions");
   const [data, setData] = React.useState<Tx[]>([]);
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
@@ -30,6 +37,11 @@ export default function AdminBillingPage() {
   const [status, setStatus] = React.useState("PENDING");
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+
+  // Manual Credit dialog state
+  const [manualCreditOpen, setManualCreditOpen] = React.useState(false);
+  const [usersList, setUsersList] = React.useState<{ id: string; name: string; email: string; balance: number }[]>([]);
+  const [selectedUserForCredit, setSelectedUserForCredit] = React.useState<{ id: string; name: string; email: string; balance: number } | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -46,6 +58,28 @@ export default function AdminBillingPage() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  // Read URL query tab
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (tabParam === "momo" || tabParam === "incoming") setTab("incoming-momo");
+    else if (tabParam === "claims") setTab("claims");
+    else if (tabParam === "settings") setTab("settings");
+  }, []);
+
+  const openManualCredit = async () => {
+    try {
+      const res = await fetch("/api/admin/users?pageSize=100");
+      const json = await res.json();
+      const list = json.data ?? [];
+      setUsersList(list);
+      if (list.length > 0) setSelectedUserForCredit(list[0]);
+      setManualCreditOpen(true);
+    } catch {
+      toast("Could not load users list", "error");
+    }
+  };
 
   const decide = async (id: string, decision: "APPROVED" | "REJECTED") => {
     const note =
@@ -72,88 +106,182 @@ export default function AdminBillingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Billing"
-        description={`${total} wallet transactions`}
-        actions={<ExportButtons type="transactions" params={status ? `status=${status}` : ""} />}
+        title="Billing &amp; MoMo Management"
+        description="Monitor wallet transactions, incoming Mobile Money SMS, user claims, and top-up settings"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={openManualCredit} variant="outline">
+              <PlusCircle className="h-4 w-4" /> Manual Credit
+            </Button>
+            {tab === "transactions" && (
+              <ExportButtons type="transactions" params={status ? `status=${status}` : ""} />
+            )}
+          </div>
+        }
       />
 
-      <div className="max-w-xs space-y-1.5">
-        <Label>Filter by status</Label>
-        <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-          <option value="PENDING">Pending approval</option>
-          <option value="APPROVED">Approved</option>
-          <option value="REJECTED">Rejected</option>
-          <option value="">All</option>
-        </Select>
+      {/* Tabs */}
+      <div className="flex border-b border-slate-200 dark:border-white/10 text-sm font-medium gap-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setTab("transactions")}
+          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold whitespace-nowrap ${
+            tab === "transactions"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          <Receipt className="h-4 w-4" /> Transactions
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("incoming-momo")}
+          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold whitespace-nowrap ${
+            tab === "incoming-momo"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          <Smartphone className="h-4 w-4" /> Incoming MoMo
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("claims")}
+          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold whitespace-nowrap ${
+            tab === "claims"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          <Check className="h-4 w-4" /> User Claims
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("settings")}
+          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold whitespace-nowrap ${
+            tab === "settings"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          <Settings className="h-4 w-4" /> Send &amp; Claim Settings
+        </button>
       </div>
 
-      <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Spinner className="h-6 w-6 text-brand-600" />
+      {/* Tab 1: Ledger Transactions */}
+      {tab === "transactions" && (
+        <div className="space-y-4">
+          <div className="max-w-xs space-y-1.5">
+            <Label>Filter by status</Label>
+            <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+              <option value="PENDING">Pending approval</option>
+              <option value="APPROVED">Approved</option>
+              <option value="REJECTED">Rejected</option>
+              <option value="">All</option>
+            </Select>
           </div>
-        ) : data.length === 0 ? (
-          <EmptyState icon={Wallet} title="Nothing here" description="No transactions match this filter." />
-        ) : (
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {data.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex flex-wrap items-center gap-3 px-4 py-4 text-sm sm:px-5"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold">{formatGHS(tx.amount)}</p>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                      {tx.type}
-                    </span>
-                    <StatusBadge status={tx.status} />
-                  </div>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">
-                    {tx.user.name} · {tx.user.email} · balance {formatGHS(tx.user.balance)}
-                  </p>
-                  {tx.reference && (
-                    <p className="text-xs text-slate-400">Ref: {tx.reference}</p>
-                  )}
-                  <p className="text-xs text-slate-400">{formatDateTime(tx.createdAt)}</p>
-                </div>
-                {tx.status === "PENDING" && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      disabled={busyId === tx.id}
-                      onClick={() => decide(tx.id, "APPROVED")}
-                    >
-                      <Check className="h-3.5 w-3.5" /> Approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busyId === tx.id}
-                      onClick={() => decide(tx.id, "REJECTED")}
-                    >
-                      <X className="h-3.5 w-3.5" /> Reject
-                    </Button>
-                  </div>
-                )}
+
+          <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <Spinner className="h-6 w-6 text-brand-600" />
               </div>
-            ))}
+            ) : data.length === 0 ? (
+              <EmptyState icon={Wallet} title="Nothing here" description="No transactions match this filter." />
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {data.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex flex-wrap items-center gap-3 px-4 py-4 text-sm sm:px-5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold">{formatGHS(tx.amount)}</p>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {tx.type}
+                        </span>
+                        <StatusBadge status={tx.status} />
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                        {tx.user.name} · {tx.user.email} · balance {formatGHS(tx.user.balance)}
+                      </p>
+                      {tx.reference && (
+                        <p className="text-xs text-slate-400">Ref: {tx.reference}</p>
+                      )}
+                      {tx.note && (
+                        <p className="text-xs text-slate-400">Note: {tx.note}</p>
+                      )}
+                      <p className="text-xs text-slate-400">{formatDateTime(tx.createdAt)}</p>
+                    </div>
+                    {tx.status === "PENDING" && (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          disabled={busyId === tx.id}
+                          onClick={() => decide(tx.id, "APPROVED")}
+                        >
+                          <Check className="h-3.5 w-3.5" /> Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busyId === tx.id}
+                          onClick={() => decide(tx.id, "REJECTED")}
+                        >
+                          <X className="h-3.5 w-3.5" /> Reject
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {pages > 1 && (
+              <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
+                <span className="text-slate-500">Page {page} of {pages}</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    Previous
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-        {pages > 1 && (
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
-            <span className="text-slate-500">Page {page} of {pages}</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Tab 2: Incoming MoMo */}
+      {tab === "incoming-momo" && (
+        <IncomingMomoTable />
+      )}
+
+      {/* Tab 3: Claims */}
+      {tab === "claims" && (
+        <ClaimsTable />
+      )}
+
+      {/* Tab 4: Send & Claim Settings */}
+      {tab === "settings" && (
+        <MomoSettingsCard />
+      )}
+
+      {/* Manual Credit Dialog */}
+      {manualCreditOpen && (
+        <div className="space-y-4">
+          <ManualCreditDialog
+            open={manualCreditOpen}
+            onClose={() => setManualCreditOpen(false)}
+            user={selectedUserForCredit}
+            onCredited={() => {
+              load();
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

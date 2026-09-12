@@ -13,6 +13,7 @@ import {
   Fingerprint,
   Phone,
   Tag,
+  Ticket,
   Wallet,
   XCircle,
 } from "lucide-react";
@@ -32,6 +33,11 @@ export default async function ProfilePage() {
       balance: true,
       createdAt: true,
       pricingProfileId: true,
+      signupCodeUsage: {
+        select: {
+          signupCode: { select: { code: true } },
+        },
+      },
     },
   });
   if (!user) return null;
@@ -142,6 +148,16 @@ export default async function ProfilePage() {
                   </dt>
                   <dd className="font-medium">{memberSince}</dd>
                 </div>
+                {user.signupCodeUsage?.signupCode?.code && (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                      <Ticket className="h-3.5 w-3.5" /> Signup code
+                    </dt>
+                    <dd className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs font-semibold text-brand-600 dark:bg-white/5 dark:text-brand-400">
+                      {user.signupCodeUsage.signupCode.code}
+                    </dd>
+                  </div>
+                )}
               </dl>
             </div>
           </div>

@@ -14,6 +14,10 @@ import {
   Wallet,
   AlertTriangle,
   TrendingUp,
+  Smartphone,
+  Ticket,
+  Clock,
+  ArrowDownLeft,
 } from "lucide-react";
 
 export default async function AdminDashboardPage() {
@@ -21,8 +25,23 @@ export default async function AdminDashboardPage() {
   if (!user) return null;
 
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
 
-  const [stats, userCount, resellerAgg, activeUsers, recent, halted] = await Promise.all([
+  const [
+    stats,
+    userCount,
+    resellerAgg,
+    activeUsers,
+    recent,
+    halted,
+    incomingTodayAgg,
+    unclaimedAgg,
+    claimedTodayAgg,
+    claimsTodayCount,
+    activeSignupCodesCount,
+    codeRegistrationsCount,
+  ] = await Promise.all([
     getOrderStats({}),
     prisma.user.count(),
     prisma.user.aggregate({ where: { role: { in: ["RESELLER", "USER"] } }, _sum: { balance: true } }),
@@ -33,6 +52,34 @@ export default async function AdminDashboardPage() {
       include: { user: { select: { name: true, email: true } } },
     }),
     isOrderProcessingHalted(),
+    // INCOMING MOMO TODAY
+    prisma.incomingMomoTransaction.aggregate({
+      where: { createdAt: { gte: startOfDay } },
+      _sum: { amount: true },
+      _count: { id: true },
+    }),
+    // UNCLAIMED MOMO
+    prisma.incomingMomoTransaction.aggregate({
+      where: { status: "AVAILABLE" },
+      _sum: { amount: true },
+      _count: { id: true },
+    }),
+    // CLAIMED TODAY
+    prisma.incomingMomoTransaction.aggregate({
+      where: { status: "CLAIMED", updatedAt: { gte: startOfDay } },
+      _sum: { amount: true },
+      _count: { id: true },
+    }),
+    // CLAIMS TODAY
+    prisma.sendClaim.count({
+      where: { createdAt: { gte: startOfDay } },
+    }),
+    // ACTIVE SIGNUP CODES
+    prisma.signupCode.count({
+      where: { status: "ACTIVE" },
+    }),
+    // CODE REGISTRATIONS
+    prisma.signupCodeUsage.count(),
   ]);
 
   return (
@@ -52,6 +99,7 @@ export default async function AdminDashboardPage() {
         </div>
       )}
 
+      {/* Main Stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Total Revenue"
@@ -71,6 +119,61 @@ export default async function AdminDashboardPage() {
           icon={CheckCircle2}
           hint={`${stats.failed} failed · ${stats.pending + stats.processing} open`}
         />
+      </div>
+
+      {/* Send & Claim MoMo + Signup Codes Section (§46) */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+            Mobile Money &amp; Signup Codes Overview
+          </h2>
+          <div className="flex gap-3 text-xs">
+            <Link href="/admin/billing?tab=incoming" className="text-brand-600 hover:underline dark:text-brand-400">
+              Incoming MoMo →
+            </Link>
+            <Link href="/admin/users/signup-codes" className="text-brand-600 hover:underline dark:text-brand-400">
+              Signup Codes →
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          <StatCard
+            title="Incoming MoMo Today"
+            value={formatGHS(incomingTodayAgg._sum.amount ?? 0)}
+            icon={Smartphone}
+            hint={`${incomingTodayAgg._count.id} received`}
+          />
+          <StatCard
+            title="Unclaimed"
+            value={formatGHS(unclaimedAgg._sum.amount ?? 0)}
+            icon={Clock}
+            hint={`${unclaimedAgg._count.id} available`}
+          />
+          <StatCard
+            title="Claimed Today"
+            value={formatGHS(claimedTodayAgg._sum.amount ?? 0)}
+            icon={CheckCircle2}
+            hint={`${claimedTodayAgg._count.id} settled`}
+          />
+          <StatCard
+            title="Claims Today"
+            value={String(claimsTodayCount)}
+            icon={ArrowDownLeft}
+            hint="User submissions"
+          />
+          <StatCard
+            title="Active Signup Codes"
+            value={String(activeSignupCodesCount)}
+            icon={Ticket}
+          />
+          <StatCard
+            title="Code Registrations"
+            value={String(codeRegistrationsCount)}
+            icon={Users}
+            hint="Total invited users"
+          />
+        </div>
       </div>
 
       <NetworkStatsCards />

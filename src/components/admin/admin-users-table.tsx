@@ -4,9 +4,9 @@ import * as React from "react";
 import { EmptyState, Spinner } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { formatGHS, formatDateTime } from "@/lib/types";
-import { Users, Pencil } from "lucide-react";
+import { Users, Pencil, PlusCircle, Ticket } from "lucide-react";
 
-interface Row {
+export interface UserRow {
   id: string;
   name: string;
   email: string;
@@ -16,16 +16,22 @@ interface Row {
   pricingProfileId: string | null;
   _count: { orders: number };
   lastLoginAt: string | null;
+  signupCodeUsage?: {
+    signupCode: { code: string };
+    usedAt: string;
+  } | null;
 }
 
 export function AdminUsersTable({
   data,
   loading,
   onEdit,
+  onManualCredit,
 }: {
-  data: Row[];
+  data: UserRow[];
   loading: boolean;
-  onEdit: (u: Row) => void;
+  onEdit: (u: UserRow) => void;
+  onManualCredit?: (u: UserRow) => void;
 }) {
   if (loading) {
     return (
@@ -48,19 +54,20 @@ export function AdminUsersTable({
                 <th className="px-4 py-3 font-medium">Role</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Balance</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">Orders</th>
-                <th className="hidden px-4 py-3 font-medium lg:table-cell">Last login</th>
-                <th className="px-4 py-3" />
+                <th className="hidden px-4 py-3 font-medium md:table-cell">Signup Code</th>
+                <th className="hidden px-4 py-3 font-medium lg:table-cell">Orders</th>
+                <th className="hidden px-4 py-3 font-medium xl:table-cell">Last login</th>
+                <th className="px-4 py-3 text-right" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {data.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                   <td className="px-4 py-3">
-                    <p className="font-medium">{u.name}</p>
+                    <p className="font-medium text-slate-900 dark:text-white">{u.name}</p>
                     <p className="text-xs text-slate-500">{u.email}</p>
                   </td>
-                  <td className="px-4 py-3">{u.role}</td>
+                  <td className="px-4 py-3 text-xs font-semibold">{u.role}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
@@ -72,15 +79,37 @@ export function AdminUsersTable({
                       {u.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-semibold">{formatGHS(u.balance)}</td>
-                  <td className="hidden px-4 py-3 md:table-cell">{u._count.orders}</td>
-                  <td className="hidden px-4 py-3 text-slate-500 lg:table-cell">
+                  <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">{formatGHS(u.balance)}</td>
+                  <td className="hidden px-4 py-3 md:table-cell text-xs">
+                    {u.signupCodeUsage?.signupCode?.code ? (
+                      <span className="inline-flex items-center gap-1 font-mono font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/10 px-2 py-0.5 rounded">
+                        <Ticket className="h-3 w-3" /> {u.signupCodeUsage.signupCode.code}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="hidden px-4 py-3 md:table-cell text-xs">{u._count.orders}</td>
+                  <td className="hidden px-4 py-3 text-slate-500 xl:table-cell text-xs">
                     {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button size="sm" variant="outline" onClick={() => onEdit(u)}>
-                      <Pencil className="h-3.5 w-3.5" /> Edit
-                    </Button>
+                    <div className="flex justify-end gap-1.5">
+                      {onManualCredit && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onManualCredit(u)}
+                          className="h-7 text-xs"
+                          title="Manual wallet credit"
+                        >
+                          <PlusCircle className="h-3 w-3 text-emerald-600" /> Credit
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => onEdit(u)} className="h-7 text-xs">
+                        <Pencil className="h-3 w-3" /> Edit
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -66,3 +66,31 @@ export async function sendWebhookFailureEmail(userEmail: string, webhookUrl: str
     text: `Hello,\n\nWe detected multiple consecutive delivery failures when dispatching order status webhooks to your endpoint:\n\n${webhookUrl}\n\nLast error: ${errorDetail}\n\nPlease check that your server is online, reachable, and responds with an HTTP 2xx status within 10 seconds.\n\nBest regards,\nThe Clickyfied Team`,
   });
 }
+
+export async function sendClaimSuccessEmail(
+  userEmail: string,
+  userName: string,
+  amount: number,
+  reference: string,
+  network: string
+): Promise<void> {
+  await sendEmail({
+    to: userEmail,
+    subject: "Your Clickyfied Wallet Top-Up Was Successful",
+    text: `Hello ${userName},\n\nYour GHS ${amount.toFixed(2)} Mobile Money payment has been successfully added to your Clickyfied wallet.\n\nTransaction Reference: ${reference}\nNetwork: ${network}\n\nBest regards,\nThe Clickyfied Team`,
+  });
+}
+
+export async function sendClaimRejectedEmail(
+  userEmail: string,
+  userName: string,
+  reference: string,
+  reason: string
+): Promise<void> {
+  await sendEmail({
+    to: userEmail,
+    subject: "Clickyfied Mobile Money Claim Update",
+    text: `Hello ${userName},\n\nYour claim for Mobile Money transaction ${reference} could not be processed.\n\nReason: ${reason}\n\nIf you need assistance, please verify your transaction details or contact Clickyfied support.\n\nBest regards,\nThe Clickyfied Team`,
+  });
+}
+

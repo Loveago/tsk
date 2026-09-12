@@ -9,6 +9,7 @@ export const registerSchema = z.object({
     .string()
     .min(8, "Password must be at least 8 characters")
     .max(72, "Password is too long"),
+  signupCode: z.string().trim().max(60).optional().or(z.literal("")),
 });
 
 export const loginSchema = z.object({
@@ -299,3 +300,70 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type SendOrdersInput = z.infer<typeof sendOrdersSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+
+// ---------- Send & Claim ----------
+export const sendClaimSubmitSchema = z.object({
+  transactionReference: z.string().trim().min(3, "Transaction reference is required").max(100),
+  amount: z.coerce.number().positive("Amount must be positive"),
+  network: z.enum(NETWORKS as [string, ...string[]]),
+  senderPhone: z.string().trim().max(30).optional().or(z.literal("")),
+});
+
+export const sendClaimSettingsUpdateSchema = z.object({
+  enabled: z.boolean().optional(),
+  network: z.enum(NETWORKS as [string, ...string[]]).optional(),
+  momoNumber: z.string().trim().min(5).max(30).optional(),
+  accountName: z.string().trim().min(2).max(100).optional(),
+  instructions: z.string().max(1000).optional().or(z.literal("")),
+  minimumAmount: z.coerce.number().positive().optional(),
+  maximumAmount: z.coerce.number().positive().optional(),
+  claimExpiryHours: z.coerce.number().int().positive().optional(),
+});
+
+export const smsWebhookInputSchema = z.object({
+  message: z.string().optional(),
+  body: z.string().optional(),
+  text: z.string().optional(),
+  content: z.string().optional(),
+  sms: z.string().optional(),
+  from: z.string().optional(),
+  sender: z.string().optional(),
+  recipient: z.string().optional(),
+  network: z.string().optional(),
+  timestamp: z.union([z.string(), z.number()]).optional(),
+});
+
+export const manualCreditSchema = z.object({
+  userId: z.string().min(1, "User ID is required"),
+  amount: z.coerce.number().positive("Amount must be positive"),
+  reason: z.string().trim().min(3, "Reason is required").max(300),
+  reference: z.string().trim().max(100).optional().or(z.literal("")),
+});
+
+// ---------- Sign-up Codes ----------
+export const signupCodeCreateSchema = z.object({
+  code: z.string().trim().min(3, "Code must be at least 3 characters").max(40),
+  maxUses: z.coerce.number().int().positive().nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+  notes: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const signupCodeBulkSchema = z.object({
+  quantity: z.coerce.number().int().min(1).max(500).default(10),
+  prefix: z.string().trim().max(15).default("CLICK"),
+  length: z.coerce.number().int().min(4).max(16).default(8),
+  maxUses: z.coerce.number().int().positive().nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+  notes: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const signupCodeUpdateSchema = z.object({
+  status: z.enum(["ACTIVE", "DISABLED"]).optional(),
+  maxUses: z.coerce.number().int().positive().nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+  notes: z.string().max(500).optional().or(z.literal("")),
+});
+
+export type SendClaimSubmitInput = z.infer<typeof sendClaimSubmitSchema>;
+export type SignupCodeCreateInput = z.infer<typeof signupCodeCreateSchema>;
+
