@@ -1,0 +1,216 @@
+================================================================================
+           CLICKYFIED / TOPSHANKA — COMPLETE VERCEL DEPLOYMENT GUIDE
+================================================================================
+Repository: https://github.com/Loveago/tsk.git
+Framework:  Next.js 15 (App Router) + Prisma + Tailwind CSS
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. CRITICAL NOTICE: Database (SQLite vs Cloud PostgreSQL)
+2. PREREQUISITES
+3. STEP 1: Set Up a Free Cloud Database (Neon or Supabase)
+4. STEP 2: Update Prisma Schema for PostgreSQL
+5. STEP 3: Push Changes to GitHub
+6. STEP 4: Deploy to Vercel (Web Dashboard)
+7. STEP 5: Add Environment Variables in Vercel
+8. STEP 6: Run Database Schema & Initial Seed
+9. STEP 7: Configure Paystack Webhooks & Callbacks
+10. ALTERNATIVE: Deploy Using Vercel CLI
+11. TROUBLESHOOTING & COMMON MISTAKES
+
+================================================================================
+1. CRITICAL NOTICE: DATABASE (SQLite vs Cloud PostgreSQL)
+================================================================================
+⚠️ IMPORTANT:
+In local development, the app uses SQLite ("file:./dev.db").
+Vercel executes Next.js server actions and API routes inside serverless functions
+(AWS Lambda). These functions have an EPHEMERAL (temporary), READ-ONLY filesystem.
+
+Any data written to a local SQLite file on Vercel will be WIPED when functions
+recycle. For production on Vercel, you MUST use a cloud database (PostgreSQL).
+
+Recommended Free Serverless Postgres Providers:
+- Neon (https://neon.tech) — Recommended (free tier, instant setup, pooling)
+- Supabase (https://supabase.com) — Free tier, PostgreSQL
+- Vercel Postgres / Neon integration directly in the Vercel marketplace
+
+================================================================================
+2. PREREQUISITES
+================================================================================
+1. GitHub Account: Already pushed to https://github.com/Loveago/tsk.git
+2. Vercel Account: Sign up free at https://vercel.com with your GitHub account.
+3. Cloud Postgres Account: Sign up free at https://neon.tech or https://supabase.com.
+4. Paystack Account: https://dashboard.paystack.com (for Ghana mobile money top-ups).
+
+================================================================================
+3. STEP 1: SET UP A FREE CLOUD DATABASE (NEON RECOMMENDED)
+================================================================================
+1. Go to https://neon.tech and sign up / log in with GitHub.
+2. Click "Create Project".
+   - Name: clickyfied-db
+   - Region: Choose the closest region (e.g., Frankfurt / Ireland for EMEA/Ghana).
+3. Once created, copy the "Connection string".
+   Select "Prisma" or "Connection Pooling".
+   It looks like:
+   postgresql://username:password@ep-cool-frog-123456-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
+
+Save this connection string — this is your DATABASE_URL!
+
+================================================================================
+4. STEP 2: UPDATE PRISMA SCHEMA FOR POSTGRESQL
+================================================================================
+In your project file `prisma/schema.prisma`:
+
+Change lines 5-8 from:
+--------------------------------------------------
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+--------------------------------------------------
+To:
+--------------------------------------------------
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+--------------------------------------------------
+
+================================================================================
+5. STEP 3: PUSH CHANGES TO GITHUB
+================================================================================
+Run the following commands in your terminal:
+
+  git add prisma/schema.prisma
+  git commit -m "Configure Prisma datasource for PostgreSQL"
+  git push origin main
+
+================================================================================
+6. STEP 4: DEPLOY TO VERCEL (WEB DASHBOARD)
+================================================================================
+1. Go to https://vercel.com and log in.
+2. On your Vercel Dashboard, click "Add New..." -> "Project".
+3. Under "Import Git Repository", find:
+   Loveago/tsk
+   (If it does not appear, click "Adjust GitHub App Permissions" and grant access).
+4. Click "Import".
+5. In the "Configure Project" screen:
+   - Project Name: clickyfied (or tsk)
+   - Framework Preset: Next.js (automatically detected)
+   - Root Directory: ./ (default)
+   - Build Command: leave default (Next.js handles `prisma generate` via postinstall)
+   - Output Directory: leave default (.next)
+6. DO NOT CLICK DEPLOY YET! Proceed to Step 5 to add Environment Variables.
+
+================================================================================
+7. STEP 5: ADD ENVIRONMENT VARIABLES IN VERCEL
+================================================================================
+Under the "Environment Variables" section in the Vercel project configuration,
+add the following keys:
+
+1) DATABASE_URL
+   Value: Your Neon/Supabase Postgres connection string.
+   Example:
+   postgresql://neondb_owner:YOUR_PASS@ep-xyz-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
+
+2) AUTH_SECRET
+   Value: A secure 32+ character random string.
+   Generate on your terminal with:
+     openssl rand -base64 32
+   Example:
+   dGhpcy1pcy1hLXN1cGVyLXNlY3JldC1rZXktZm9yLXZlcmNlbC0yMDI2
+
+3) PAYSTACK_SECRET_KEY
+   Value: Your Paystack Secret Key from Paystack Dashboard -> Settings -> API Keys.
+   Test mode: sk_test_...
+   Live mode: sk_live_...
+
+4) NEXT_PUBLIC_APP_URL
+   Value: https://your-project-name.vercel.app
+   (You can update this after Vercel assigns your project domain).
+
+Once all variables are entered, click "Deploy".
+
+================================================================================
+8. STEP 6: RUN DATABASE SCHEMA & INITIAL SEED
+================================================================================
+Once the cloud database is created, you must push the tables and seed default data
+(admin user, networks, default pricing profiles, and data packages).
+
+You can run this locally targeting the cloud database:
+
+1. In your local `.env` file, temporarily set DATABASE_URL to your cloud database:
+   DATABASE_URL="postgresql://username:password@your-host/neondb?sslmode=require"
+
+2. Generate client & push tables to the cloud database:
+   npx prisma db push
+
+3. Seed the default database data (Admin accounts, packages, pricing profiles):
+   npm run db:seed
+
+4. Default seeded credentials will be created:
+   - Admin Login:
+     Email:    admin@clickyfied.com
+     Password: AdminPassword123!
+   - Reseller Login:
+     Email:    reseller@clickyfied.com
+     Password: ResellerPassword123!
+
+(Remember: Log in immediately in production and change default passwords!)
+
+================================================================================
+9. STEP 7: CONFIGURE PAYSTACK WEBHOOKS & CALLBACKS
+================================================================================
+To receive instant wallet top-up and storefront order callbacks:
+
+1. Go to https://dashboard.paystack.com/#/settings/developers
+2. Under "Webhook URL", enter:
+   https://your-project.vercel.app/api/store/paystack/callback
+3. Under "Callback URL", enter:
+   https://your-project.vercel.app/dashboard/billing
+4. Save Changes.
+
+================================================================================
+10. ALTERNATIVE: DEPLOY USING VERCEL CLI
+================================================================================
+If you prefer deploying directly from your terminal:
+
+1. Install Vercel CLI globally:
+   npm install -g vercel
+
+2. Log in to Vercel:
+   vercel login
+
+3. Link and Deploy:
+   vercel
+
+4. Add production environment variables:
+   vercel env add DATABASE_URL production
+   vercel env add AUTH_SECRET production
+   vercel env add PAYSTACK_SECRET_KEY production
+
+5. Deploy to Production:
+   vercel --prod
+
+================================================================================
+11. TROUBLESHOOTING & COMMON MISTAKES
+================================================================================
+Q: Deployment fails with "Prisma Client has not been generated yet".
+A: Ensure package.json has:
+   "postinstall": "prisma generate"
+   (This is already configured in this repository).
+
+Q: "Database schema is out of sync" or 500 error on login.
+A: Make sure you executed `npx prisma db push` against your production
+   DATABASE_URL so the tables exist in Postgres.
+
+Q: Paystack payments succeed but wallet doesn't credit.
+A: Verify PAYSTACK_SECRET_KEY in Vercel environment variables matches the key
+   corresponding to the mode you are testing (Test mode vs Live mode).
+
+Q: How to view/edit database records directly?
+A: Run Prisma Studio locally connected to your cloud database:
+   npx prisma studio
+   Then open http://localhost:5555 in your browser.
+================================================================================
