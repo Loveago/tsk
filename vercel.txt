@@ -130,6 +130,12 @@ add the following keys:
    Value: https://your-project-name.vercel.app
    (You can update this after Vercel assigns your project domain).
 
+5) ADMIN_EMAIL (Optional, defaults to admin@clickyfied.com)
+   Value: your-preferred-admin-email@domain.com
+
+6) ADMIN_PASSWORD (Optional, defaults to admin123)
+   Value: YourSuperSecureAdminPassword!
+
 Once all variables are entered, click "Deploy".
 
 ================================================================================
@@ -140,8 +146,10 @@ Once the cloud database is created, you must push the tables and seed default da
 
 You can run this locally targeting the cloud database:
 
-1. In your local `.env` file, temporarily set DATABASE_URL to your cloud database:
+1. In your local `.env` file, set:
    DATABASE_URL="postgresql://username:password@your-host/neondb?sslmode=require"
+   ADMIN_EMAIL="admin@clickyfied.com"
+   ADMIN_PASSWORD="YourSecureAdminPassword123!"
 
 2. Generate client & push tables to the cloud database:
    npx prisma db push
@@ -149,15 +157,8 @@ You can run this locally targeting the cloud database:
 3. Seed the default database data (Admin accounts, packages, pricing profiles):
    npm run db:seed
 
-4. Default seeded credentials will be created:
-   - Admin Login:
-     Email:    admin@clickyfied.com
-     Password: AdminPassword123!
-   - Reseller Login:
-     Email:    reseller@clickyfied.com
-     Password: ResellerPassword123!
-
-(Remember: Log in immediately in production and change default passwords!)
+   (If ADMIN_EMAIL and ADMIN_PASSWORD are set in .env, the seed will create the admin
+    with your specified credentials directly!)
 
 ================================================================================
 9. STEP 7: CONFIGURE PAYSTACK WEBHOOKS & CALLBACKS
@@ -214,3 +215,4 @@ A: Run Prisma Studio locally connected to your cloud database:
    npx prisma studio
    Then open http://localhost:5555 in your browser.
 ================================================================================
+

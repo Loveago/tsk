@@ -4,15 +4,23 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await bcrypt.hash("admin123", 10);
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@clickyfied.com";
+  const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+  const adminName = process.env.ADMIN_NAME || "Admin";
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
 
   // Admin user
   const admin = await prisma.user.upsert({
-    where: { email: "admin@clickyfied.com" },
-    update: {},
+    where: { email: adminEmail },
+    update: {
+      passwordHash,
+      name: adminName,
+      role: "ADMIN",
+      status: "ACTIVE",
+    },
     create: {
-      name: "Admin",
-      email: "admin@clickyfied.com",
+      name: adminName,
+      email: adminEmail,
       passwordHash,
       role: "ADMIN",
       status: "ACTIVE",
@@ -169,7 +177,7 @@ async function main() {
         data: { orderId: created.id, status: "PENDING", note: "Order placed", changedBy: "system", createdAt: created.createdAt },
       });
       await prisma.orderStatusHistory.create({
-        data: { orderId: created.id, status: s.status, note: s.reason ?? null, changedBy: "admin@clickyfied.com", createdAt: new Date(created.createdAt.getTime() + 600000) },
+        data: { orderId: created.id, status: s.status, note: s.reason ?? null, changedBy: adminEmail, createdAt: new Date(created.createdAt.getTime() + 600000) },
       });
       await prisma.order.update({
         where: { id: created.id },
@@ -188,7 +196,7 @@ async function main() {
     await prisma.auditLog.create({
       data: {
         userId: admin.id,
-        actorLabel: "admin@clickyfied.com",
+        actorLabel: adminEmail,
         action: "seed.initialize",
         target: "system",
         newValue: "Demo data created",
@@ -254,7 +262,7 @@ async function main() {
             orderId: created.id,
             status: r.status,
             note: r.reason ?? "Processed via export batch",
-            changedBy: "admin@clickyfied.com",
+            changedBy: adminEmail,
             createdAt: new Date(created.createdAt.getTime() + 3600000),
           },
         });
@@ -300,7 +308,7 @@ async function main() {
         exportCode: "CF-EXPORT-00001",
         network: "MTN",
         adminId: admin.id,
-        adminLabel: "admin@clickyfied.com",
+        adminLabel: adminEmail,
         totalRecipients: 4,
         totalGb: 8,
         totalAmount: 26.0,
@@ -320,7 +328,7 @@ async function main() {
           exportBatchId: exportBatch.id,
           exportCount: 1,
           lastExportedAt: exportBatch.createdAt,
-          lastExportedBy: "admin@clickyfied.com",
+          lastExportedBy: adminEmail,
         },
       });
     }
@@ -351,7 +359,7 @@ async function main() {
     await prisma.auditLog.create({
       data: {
         userId: admin.id,
-        actorLabel: "admin@clickyfied.com",
+        actorLabel: adminEmail,
         action: "seed.demo_batches",
         target: "batches",
         newValue: "Demo batches, export history and delivery report created",
@@ -360,7 +368,7 @@ async function main() {
   }
 
   console.log("Seed complete:");
-  console.log(`  Admin: admin@clickyfied.com / admin123`);
+  console.log(`  Admin: ${adminEmail} / ${process.env.ADMIN_PASSWORD ? "******** (configured via ADMIN_PASSWORD)" : adminPassword}`);
   console.log(`  User:  kwame@example.com / user1234`);
   console.log(`  Reseller: ama@example.com / user1234`);
   console.log(`  Default profile: ${defaultProfile.name}`);
