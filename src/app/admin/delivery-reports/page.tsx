@@ -6,6 +6,7 @@ import { StatusBadge, DeliveryReportStatusBadge } from "@/components/status-badg
 import { Pagination } from "@/components/ui/pagination";
 import { DeliveryReportManageDialog } from "@/components/admin/delivery-report-manage-dialog";
 import { Button } from "@/components/ui/button";
+import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { formatDateTime, formatGHS } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
 import { FileWarning, Image as ImageIcon } from "lucide-react";
@@ -89,27 +90,23 @@ export default function DeliveryReportsPage() {
         description={`${total} report${total === 1 ? "" : "s"} filed by customers`}
       />
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {TABS.map((t) => (
-          <button
-            key={t.key || "all"}
-            onClick={() => {
-              setStatus(t.key);
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="min-w-0 flex-1">
+          <ScrollableTabs
+            tabs={TABS.map((t) => ({
+              key: t.key,
+              label: t.label,
+              badge: t.key && stats[t.key] ? stats[t.key] : undefined,
+            }))}
+            activeTab={status}
+            onChange={(st) => {
+              setStatus(st);
               setPage(1);
             }}
-            className={
-              "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition " +
-              (status === t.key
-                ? "border-brand-600 bg-brand-600 text-white"
-                : "border-slate-200 bg-white text-slate-600 hover:border-brand-300 dark:border-white/10 dark:bg-transparent dark:text-slate-300")
-            }
-          >
-            {t.label}
-            {t.key && stats[t.key] ? ` (${stats[t.key]})` : ""}
-          </button>
-        ))}
+          />
+        </div>
         <input
-          className="ml-auto h-9 w-64 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100"
+          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-brand-500 lg:w-64 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100"
           placeholder="Search phone, user, order code…"
           value={q}
           onChange={(e) => {

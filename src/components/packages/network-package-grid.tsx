@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Signal } from "lucide-react";
 import { PriceMask } from "@/components/price-mask";
+import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { cn } from "@/lib/utils";
 
 export interface Pkg {
@@ -64,23 +65,20 @@ export function NetworkPackageGrid({ groups }: { groups: PackageGroup[] }) {
   return (
     <div className="space-y-5">
       {/* Network filter pills */}
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <FilterPill
-          label="All Networks"
-          count={allCount}
-          active={active === "ALL"}
-          onClick={() => setActive("ALL")}
+      <div className="w-full flex justify-center">
+        <ScrollableTabs
+          tabs={[
+            { key: "ALL", label: "All Networks", badge: allCount },
+            ...groups.map((g) => ({
+              key: g.network,
+              label: meta(g.network).label,
+              badge: g.packages.length,
+            })),
+          ]}
+          activeTab={active}
+          onChange={setActive}
+          className="max-w-xl mx-auto"
         />
-        {groups.map((g) => (
-          <FilterPill
-            key={g.network}
-            label={meta(g.network).label}
-            count={g.packages.length}
-            dot={meta(g.network).dot}
-            active={active === g.network}
-            onClick={() => setActive(g.network)}
-          />
-        ))}
       </div>
 
       {visible.map((group) => {

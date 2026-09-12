@@ -6,6 +6,7 @@ import { BatchesTable, type BatchRow } from "@/components/admin/batches-table";
 import { BatchDetailSheet } from "@/components/admin/batch-detail-sheet";
 import { QuickExportPanel } from "@/components/admin/quick-export-panel";
 import { Pagination } from "@/components/ui/pagination";
+import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "PARTIALLY_COMPLETED", "COMPLETED", "FAILED", "CANCELLED"];
@@ -69,25 +70,19 @@ export default function AdminOrdersPage() {
 
       <QuickExportPanel onChanged={load} />
 
-      {/* Network tabs */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {["", ...NETWORKS].map((n) => (
-          <button
-            key={n || "all"}
-            onClick={() => {
-              setNetwork(n);
-              setPage(1);
-            }}
-            className={
-              "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition " +
-              (network === n
-                ? "border-brand-600 bg-brand-600 text-white"
-                : "border-slate-200 bg-white text-slate-600 hover:border-brand-300 dark:border-white/10 dark:bg-transparent dark:text-slate-300")
-            }
-          >
-            {n || "All networks"}
-          </button>
-        ))}
+      {/* Network tabs with smooth scrolling & chevrons on mobile */}
+      <div className="flex flex-wrap items-center gap-4">
+        <ScrollableTabs
+          tabs={[
+            { key: "", label: "All Networks" },
+            ...NETWORKS.map((n) => ({ key: n, label: n })),
+          ]}
+          activeTab={network}
+          onChange={(n) => {
+            setNetwork(n);
+            setPage(1);
+          }}
+        />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <select
             className={selectCls}

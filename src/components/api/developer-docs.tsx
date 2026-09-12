@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Download, Copy, Check, Terminal, Code2, Globe, Shield, Zap, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { useToast } from "@/components/toast";
 
 export function DeveloperDocs() {
@@ -212,25 +213,23 @@ function verifyClickyfiedWebhook(rawBody, signatureHeader, timestampHeader, secr
 
       {/* Code Examples */}
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
           <div>
             <h3 className="text-base font-bold">Quickstart: Create Order</h3>
             <p className="text-xs text-slate-500">POST /v1/orders</p>
           </div>
-          <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 dark:bg-slate-800 no-scrollbar">
-            {(["curl", "javascript", "nodejs", "python", "php"] as const).map((lang) => (
-              <button
-                key={lang}
-                onClick={() => setLangTab(lang)}
-                className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  langTab === lang
-                    ? "bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-400"
-                    : "text-slate-500 hover:text-slate-900 dark:text-slate-400"
-                }`}
-              >
-                {lang === "nodejs" ? "NODE.JS" : lang.toUpperCase()}
-              </button>
-            ))}
+          <div className="w-full sm:w-auto sm:max-w-md">
+            <ScrollableTabs
+              tabs={[
+                { key: "curl", label: "cURL" },
+                { key: "javascript", label: "JavaScript" },
+                { key: "nodejs", label: "Node.js" },
+                { key: "python", label: "Python" },
+                { key: "php", label: "PHP" },
+              ]}
+              activeTab={langTab}
+              onChange={(k) => setLangTab(k as any)}
+            />
           </div>
         </div>
 

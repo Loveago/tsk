@@ -5,6 +5,7 @@ import { PageHeader, EmptyState, Spinner } from "@/components/shared";
 import { PackageFormDialog, type AdminPackage } from "@/components/admin/package-form-dialog";
 import { PackageTable } from "@/components/admin/package-table";
 import { Button } from "@/components/ui/button";
+import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { useToast } from "@/components/toast";
 import { formatGHS } from "@/lib/types";
 import { Package, Pencil, Trash2, Plus } from "lucide-react";
@@ -71,27 +72,18 @@ export default function AdminPackagesPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setNetwork("")}
-          className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-            network === "" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-          }`}
-        >
-          All ({packages.length})
-        </button>
-        {NETWORKS.map((n) => (
-          <button
-            key={n}
-            onClick={() => setNetwork(n)}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-              network === n ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            }`}
-          >
-            {n} ({packages.filter((p) => p.network === n).length})
-          </button>
-        ))}
-      </div>
+      <ScrollableTabs
+        tabs={[
+          { key: "", label: "All Networks", badge: packages.length },
+          ...NETWORKS.map((n) => ({
+            key: n,
+            label: n,
+            badge: packages.filter((p) => p.network === n).length,
+          })),
+        ]}
+        activeTab={network}
+        onChange={setNetwork}
+      />
 
       <PackageTable
         packages={filtered}

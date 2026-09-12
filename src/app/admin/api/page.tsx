@@ -29,6 +29,7 @@ import {
 import { PageHeader, StatCard, Spinner, EmptyState } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS } from "@/lib/types";
 
@@ -328,9 +329,10 @@ export default function AdminApiManagementPage() {
         )}
       </div>
 
-      {/* Navigation: Mobile Section Selector */}
-      <div className="sm:hidden space-y-2.5">
-        <div className="relative flex items-center">
+      {/* Navigation Sub-Tabs with Smooth Chevrons & Mobile Quick Select */}
+      <div className="space-y-2 border-b border-slate-200/80 pb-3 dark:border-slate-800">
+        {/* Mobile quick-jump select */}
+        <div className="sm:hidden relative flex items-center">
           <div className="pointer-events-none absolute left-3.5 flex items-center text-blue-600 dark:text-blue-400">
             {React.createElement(tabs.find((t) => t.key === activeTab)?.icon || LayoutDashboard, {
               className: "h-4 w-4",
@@ -339,7 +341,7 @@ export default function AdminApiManagementPage() {
           <select
             value={activeTab}
             onChange={(e) => setActiveTab(e.target.value as AdminTab)}
-            className="h-11 w-full appearance-none rounded-xl border-2 border-blue-600/70 bg-white pl-10 pr-10 text-xs font-bold uppercase tracking-wider text-slate-900 shadow-sm focus:outline-none dark:border-blue-500/70 dark:bg-slate-900 dark:text-white"
+            className="h-10 w-full appearance-none rounded-xl border-2 border-blue-600/70 bg-white pl-10 pr-10 text-xs font-bold uppercase tracking-wider text-slate-900 shadow-sm focus:outline-none dark:border-blue-500/70 dark:bg-slate-900 dark:text-white"
           >
             {tabs.map((tab) => (
               <option key={tab.key} value={tab.key}>
@@ -350,59 +352,18 @@ export default function AdminApiManagementPage() {
           <ChevronDown className="pointer-events-none absolute right-3.5 h-4 w-4 text-blue-600 dark:text-blue-400" />
         </div>
 
-        {/* Mobile Horizontal Pill Scroll */}
-        <div className="flex w-full min-w-0 max-w-full items-center gap-1.5 overflow-x-auto py-1 no-scrollbar border-b border-slate-200/80 pb-2 dark:border-slate-800">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
-                  active
-                    ? "bg-blue-600 text-white shadow-sm shadow-blue-600/20"
-                    : "bg-slate-100/80 text-slate-600 hover:bg-slate-200 dark:bg-slate-800/80 dark:text-slate-300"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{tab.label}</span>
-                {tab.key === "applications" && m.pendingApplications > 0 && (
-                  <span className="ml-1 rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] text-white font-bold">
-                    {m.pendingApplications}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Navigation Sub-Tabs (Desktop) */}
-      <div className="hidden sm:flex w-full min-w-0 max-w-full items-center gap-1.5 overflow-x-auto border-b border-slate-200/80 pb-2.5 dark:border-slate-800 no-scrollbar">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
-                active
-                  ? "bg-blue-600 text-white shadow-sm shadow-blue-600/20"
-                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              <span>{tab.label}</span>
-              {tab.key === "applications" && m.pendingApplications > 0 && (
-                <span className="ml-1 rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] text-white font-bold">
-                  {m.pendingApplications}
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {/* Scrollable pill bar with Left/Right chevrons & auto-scroll for all screen sizes */}
+        <ScrollableTabs
+          tabs={tabs.map((t) => ({
+            key: t.key,
+            label: t.label,
+            icon: t.icon,
+            badge: t.key === "applications" && m.pendingApplications > 0 ? m.pendingApplications : undefined,
+            badgeCls: "bg-amber-500 text-white",
+          }))}
+          activeTab={activeTab}
+          onChange={(newTab) => setActiveTab(newTab as AdminTab)}
+        />
       </div>
 
       {loading ? (
