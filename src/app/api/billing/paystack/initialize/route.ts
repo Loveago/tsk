@@ -10,6 +10,7 @@ import {
   initializeTransaction,
   PAYSTACK_MIN_AMOUNT,
 } from "@/lib/paystack";
+import { getSetting } from "@/lib/orders";
 
 /**
  * Start an instant Paystack top-up: creates a PENDING WalletTransaction and
@@ -21,11 +22,25 @@ export async function POST(request: NextRequest) {
     const user = await requireUser();
     const input = paystackTopupSchema.parse(await request.json());
 
+    const paystackEnabled = await getSetting("paystack_topup_enabled", "true");
+    if (paystackEnabled === "false") {
+      return apiError(503, "Paystack top-ups are currently disabled.");
+    }
+
     if (!isPaystackConfigured()) {
       return apiError(503, "Paystack is not configured yet. Please use the MoMo top-up method.");
     }
-    if (input.amount < PAYSTACK_MIN_AMOUNT) {
-      return apiError(400, `Minimum top-up is GHS ${PAYSTACK_MIN_AMOUNT.toFixed(2)}`);
+
+    const minSetting = await getSetting("paystack_min_topup", "");
+    const maxSetting = await getSetting("paystack_max_topup", "");
+    const minAmount = minSetting ? parseFloat(minSetting) : PAYSTACK_MIN_AMOUNT;
+    const maxAmount = maxSetting ? parseFloat(maxSetting) : 5000;
+
+    if (input.amount < minAmount) {
+      return apiError(400, `Minimum top-up is GHS ${minAmount.toFixed(2)}`);
+    }
+    if (input.amount > maxAmount) {
+      return apiError(400, `Maximum top-up is GHS ${maxAmount.toFixed(2)}`);
     }
 
     const amount = Math.round(input.amount * 100) / 100;

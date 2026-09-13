@@ -113,6 +113,10 @@ export function AppShell({
   announcement,
   extraNavItems,
   supportWhatsapp,
+  supportPhone,
+  supportTelegram,
+  supportEmail,
+  footerText,
 }: {
   user: AuthUser;
   children: React.ReactNode;
@@ -122,6 +126,10 @@ export function AppShell({
    *  Must be plain data — icon components can't cross the RSC boundary. */
   extraNavItems?: ExtraNavItem[];
   supportWhatsapp?: string;
+  supportPhone?: string;
+  supportTelegram?: string;
+  supportEmail?: string;
+  footerText?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -247,8 +255,13 @@ export function AppShell({
 
       <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 pb-20 sm:px-6 sm:py-6 sm:pb-24">{children}</main>
 
-      <footer className="mt-4 border-t border-slate-200/70 py-4 text-center text-xs text-slate-400 dark:border-white/5">
-        Clickyfied4u © 2026
+      <footer className="mt-4 border-t border-slate-200/70 py-4 text-center text-xs text-slate-400 dark:border-white/5 space-y-2">
+        <div>{footerText || "Clickyfied4u © 2026"}</div>
+        <div className="flex justify-center gap-4 text-[11px]">
+          {supportPhone && <span>Support: {supportPhone}</span>}
+          {supportTelegram && <span>Telegram: {supportTelegram}</span>}
+          {supportEmail && <span>Email: {supportEmail}</span>}
+        </div>
       </footer>
 
       {/* Floating support chat — bottom right */}

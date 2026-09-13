@@ -218,10 +218,53 @@ export const settingsSchema = z.object({
   mtn_number_verification_enabled: z.enum(["true", "false"]).optional(),
   mtn_verification_instructions: z.string().max(2000).optional(),
   storefront_feature_enabled: z.enum(["true", "false"]).optional(),
+  storefront_apply_enabled: z.enum(["true", "false"]).optional(),
   storefront_min_markup: z.string().max(20).optional(),
   storefront_max_markup: z.string().max(20).optional(),
   storefront_min_withdrawal: z.string().max(20).optional(),
   max_orders_per_submission: z.string().max(10).optional(),
+  paystack_topup_enabled: z.enum(["true", "false"]).optional(),
+  paystack_min_topup: z.string().max(20).optional(),
+  paystack_max_topup: z.string().max(20).optional(),
+  api_feature_enabled: z.enum(["true", "false"]).optional(),
+  
+  // Send Claim / MoMo
+  send_claim_enabled: z.enum(["true", "false"]).optional(),
+  send_claim_expiry_hours: z.string().max(10).optional(),
+  send_claim_min_amount: z.string().max(20).optional(),
+  send_claim_max_amount: z.string().max(20).optional(),
+  send_claim_max_active_per_user: z.string().max(10).optional(),
+  
+  // Security
+  max_login_attempts: z.string().max(10).optional(),
+  login_lockout_minutes: z.string().max(10).optional(),
+  password_reset_expiry_minutes: z.string().max(10).optional(),
+  api_rate_limit_per_minute: z.string().max(10).optional(),
+  
+  // Maintenance Mode
+  maintenance_mode_enabled: z.enum(["true", "false"]).optional(),
+  
+  // Notifications & Contact
+  support_phone: z.string().max(40).optional(),
+  support_telegram: z.string().max(100).optional(),
+  support_email: z.string().max(80).optional(),
+  footer_text: z.string().max(500).optional(),
+  
+  // Pricing & Packages
+  show_package_prices_to_users: z.enum(["true", "false"]).optional(),
+  low_balance_warning_threshold: z.string().max(20).optional(),
+  allow_zero_price_orders: z.enum(["true", "false"]).optional(),
+  
+  // Wallet & Withdrawals
+  storefront_max_withdrawal: z.string().max(20).optional(),
+  storefront_withdrawal_fee_percent: z.string().max(10).optional(),
+  storefront_withdrawal_enabled: z.enum(["true", "false"]).optional(),
+  storefront_auto_approve_withdrawal: z.enum(["true", "false"]).optional(),
+  
+  // Reports
+  reports_enabled: z.enum(["true", "false"]).optional(),
+  reports_max_date_range_days: z.string().max(10).optional(),
+  report_auto_close_days: z.string().max(10).optional(),
 });
 
 export const pricingProfileUpdateSchema = pricingProfileSchema;

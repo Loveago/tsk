@@ -179,6 +179,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser();
+    const { getSetting } = await import("@/lib/orders");
+    const reportsEnabled = await getSetting("reports_enabled", "true");
+    if (reportsEnabled === "false") {
+      return apiError(400, "Report submission is currently disabled.");
+    }
     const input = deliveryReportCreateSchema.parse(await request.json());
 
     const order = await prisma.order.findUnique({

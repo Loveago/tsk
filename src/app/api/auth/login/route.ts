@@ -6,12 +6,15 @@ import { createSession, getClientIp } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { rateLimit } from "@/lib/rate-limit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { getSetting } from "@/lib/orders";
 
 export async function POST(request: NextRequest) {
   try {
     const ip = await getClientIp();
-    const rl = rateLimit(`login:${ip}`, 10, 60_000);
-    if (!rl.allowed) return apiError(429, "Too many login attempts. Try again later.");
+    const maxAttempts = parseInt(await getSetting("max_login_attempts", "5"), 10);
+    const lockoutMins = parseInt(await getSetting("login_lockout_minutes", "15"), 10);
+    const rl = rateLimit(`login:${ip}`, maxAttempts, lockoutMins * 60 * 1000);
+    if (!rl.allowed) return apiError(429, `Too many login attempts. Try again in ${lockoutMins} minutes.`);
 
     const body = await request.json();
     const input = loginSchema.parse(body);

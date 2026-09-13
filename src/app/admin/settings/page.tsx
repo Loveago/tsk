@@ -13,16 +13,31 @@ import {
   ShieldCheck,
   Store,
   Users,
+  Wallet,
+  Wrench,
+  Lock,
+  MessageSquare,
+  FileText,
+  Tag,
 } from "lucide-react";
 
-type Category = "orders" | "users" | "mtn" | "storefront" | "general";
+type Category = "orders" | "users" | "mtn" | "storefront" | "billing" | "api" | "general" | "momo" | "wallet" | "maintenance" | "security" | "notifications" | "reports" | "pricing";
 
 const CATEGORIES: Array<{ id: Category; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "orders", label: "Orders & Submission", icon: Layers },
   { id: "users", label: "Users & Roles", icon: Users },
   { id: "mtn", label: "MTN Verification", icon: ShieldCheck },
   { id: "storefront", label: "Storefront & Markup", icon: Store },
+  { id: "billing", label: "Billing & Payments", icon: Globe },
+  { id: "api", label: "API Access", icon: Layers },
   { id: "general", label: "General & Branding", icon: Globe },
+  { id: "momo", label: "Send Claim / MoMo", icon: Wallet },
+  { id: "wallet", label: "Wallet & Withdrawals", icon: Wallet },
+  { id: "maintenance", label: "Maintenance", icon: Wrench },
+  { id: "security", label: "Security", icon: Lock },
+  { id: "notifications", label: "Notifications & Contact", icon: MessageSquare },
+  { id: "reports", label: "Reports", icon: FileText },
+  { id: "pricing", label: "Pricing & Packages", icon: Tag },
 ];
 
 export default function AdminSettingsPage() {
@@ -70,6 +85,9 @@ export default function AdminSettingsPage() {
   const allowRegistration = settings.allow_user_registration !== "false";
   const mtnVerificationEnabled = settings.mtn_number_verification_enabled === "true";
   const storefrontEnabled = settings.storefront_feature_enabled !== "false";
+  const storefrontApplyEnabled = settings.storefront_apply_enabled !== "false";
+  const paystackTopupEnabled = settings.paystack_topup_enabled === "true";
+  const apiFeatureEnabled = settings.api_feature_enabled === "true";
   const defaultRole = settings.default_register_role || "USER";
 
   return (
@@ -422,6 +440,37 @@ export default function AdminSettingsPage() {
                 </button>
               </div>
 
+              <div className="flex items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Storefront Apply Access
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    When enabled, users can submit new storefront applications.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={storefrontApplyEnabled}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      storefront_apply_enabled: storefrontApplyEnabled ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    storefrontApplyEnabled ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      storefrontApplyEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 pt-2">
                 <div className="space-y-1.5">
                   <Label>Min markup (GHS)</Label>
@@ -510,6 +559,536 @@ export default function AdminSettingsPage() {
                   value={settings.contact_email ?? ""}
                   onChange={(e) => setSettings((s) => ({ ...s, contact_email: e.target.value }))}
                   placeholder="support@topshanka.com"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Category 6: Billing & Payments */}
+        {activeCat === "billing" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Paystack Top-up Enabled
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Enable or disable automatic Paystack top-ups for customers.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={paystackTopupEnabled}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      paystack_topup_enabled: paystackTopupEnabled ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    paystackTopupEnabled ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      paystackTopupEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-1.5">
+                  <Label>Min Paystack Top-up (GHS)</Label>
+                  <Input
+                    type="number"
+                    value={settings.paystack_min_topup ?? "10"}
+                    onChange={(e) => setSettings((s) => ({ ...s, paystack_min_topup: e.target.value }))}
+                    placeholder="10"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Max Paystack Top-up (GHS)</Label>
+                  <Input
+                    type="number"
+                    value={settings.paystack_max_topup ?? "5000"}
+                    onChange={(e) => setSettings((s) => ({ ...s, paystack_max_topup: e.target.value }))}
+                    placeholder="5000"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category 7: API Access */}
+        {activeCat === "api" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    API Feature Enabled
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Enable or disable developer API access and application submissions.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={apiFeatureEnabled}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      api_feature_enabled: apiFeatureEnabled ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    apiFeatureEnabled ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      apiFeatureEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category 8: Send Claim / MoMo */}
+        {activeCat === "momo" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Send Claim Enabled
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Master kill switch for send-claim feature.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.send_claim_enabled === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      send_claim_enabled: s.send_claim_enabled === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.send_claim_enabled === "true" ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.send_claim_enabled === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-1.5">
+                  <Label>Min Claim Amount (GHS)</Label>
+                  <Input
+                    type="number"
+                    value={settings.send_claim_min_amount ?? "1"}
+                    onChange={(e) => setSettings((s) => ({ ...s, send_claim_min_amount: e.target.value }))}
+                    placeholder="1"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Max Claim Amount (GHS)</Label>
+                  <Input
+                    type="number"
+                    value={settings.send_claim_max_amount ?? "5000"}
+                    onChange={(e) => setSettings((s) => ({ ...s, send_claim_max_amount: e.target.value }))}
+                    placeholder="5000"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Expiry Hours</Label>
+                  <Input
+                    type="number"
+                    value={settings.send_claim_expiry_hours ?? "168"}
+                    onChange={(e) => setSettings((s) => ({ ...s, send_claim_expiry_hours: e.target.value }))}
+                    placeholder="168"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Max Active Claims Per User</Label>
+                  <Input
+                    type="number"
+                    value={settings.send_claim_max_active_per_user ?? "5"}
+                    onChange={(e) => setSettings((s) => ({ ...s, send_claim_max_active_per_user: e.target.value }))}
+                    placeholder="5"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category 9: Wallet & Withdrawals */}
+        {activeCat === "wallet" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Withdrawal Feature Enabled
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Allow or block user withdrawals.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.storefront_withdrawal_enabled === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      storefront_withdrawal_enabled: s.storefront_withdrawal_enabled === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.storefront_withdrawal_enabled === "true" ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.storefront_withdrawal_enabled === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Auto-Approve Withdrawals
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Auto-approve withdrawals without admin action.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.storefront_auto_approve_withdrawal === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      storefront_auto_approve_withdrawal: s.storefront_auto_approve_withdrawal === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.storefront_auto_approve_withdrawal === "true" ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.storefront_auto_approve_withdrawal === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-1.5">
+                  <Label>Withdrawal Fee Percent (%)</Label>
+                  <Input
+                    type="number"
+                    value={settings.storefront_withdrawal_fee_percent ?? "0"}
+                    onChange={(e) => setSettings((s) => ({ ...s, storefront_withdrawal_fee_percent: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Max Single Withdrawal (GHS)</Label>
+                  <Input
+                    type="number"
+                    value={settings.storefront_max_withdrawal ?? "10000"}
+                    onChange={(e) => setSettings((s) => ({ ...s, storefront_max_withdrawal: e.target.value }))}
+                    placeholder="10000"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category 10: Maintenance */}
+        {activeCat === "maintenance" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Maintenance Mode
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    When ON, non-admin users accessing /dashboard/* see a maintenance page instead.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.maintenance_mode_enabled === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      maintenance_mode_enabled: s.maintenance_mode_enabled === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.maintenance_mode_enabled === "true" ? "bg-red-500" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.maintenance_mode_enabled === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category 11: Security */}
+        {activeCat === "security" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                Platform Security Rules
+              </h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-2">
+                <div className="space-y-1.5">
+                  <Label>Max Login Attempts</Label>
+                  <Input
+                    type="number"
+                    value={settings.max_login_attempts ?? "5"}
+                    onChange={(e) => setSettings((s) => ({ ...s, max_login_attempts: e.target.value }))}
+                    placeholder="5"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Login Lockout Duration (Minutes)</Label>
+                  <Input
+                    type="number"
+                    value={settings.login_lockout_minutes ?? "15"}
+                    onChange={(e) => setSettings((s) => ({ ...s, login_lockout_minutes: e.target.value }))}
+                    placeholder="15"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Password Reset Expiry (Minutes)</Label>
+                  <Input
+                    type="number"
+                    value={settings.password_reset_expiry_minutes ?? "60"}
+                    onChange={(e) => setSettings((s) => ({ ...s, password_reset_expiry_minutes: e.target.value }))}
+                    placeholder="60"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>API Rate Limit (per minute)</Label>
+                  <Input
+                    type="number"
+                    value={settings.api_rate_limit_per_minute ?? "60"}
+                    onChange={(e) => setSettings((s) => ({ ...s, api_rate_limit_per_minute: e.target.value }))}
+                    placeholder="60"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category 12: Notifications & Contact */}
+        {activeCat === "notifications" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                Support & Communications
+              </h3>
+              <div className="space-y-1.5">
+                <Label>Support Phone Number</Label>
+                <Input
+                  value={settings.support_phone ?? ""}
+                  onChange={(e) => setSettings((s) => ({ ...s, support_phone: e.target.value }))}
+                  placeholder="233XXXXXXXXX"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Support Telegram</Label>
+                <Input
+                  value={settings.support_telegram ?? ""}
+                  onChange={(e) => setSettings((s) => ({ ...s, support_telegram: e.target.value }))}
+                  placeholder="@clickyfied"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Support Email</Label>
+                <Input
+                  value={settings.support_email ?? ""}
+                  onChange={(e) => setSettings((s) => ({ ...s, support_email: e.target.value }))}
+                  placeholder="support@example.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Footer Text</Label>
+                <Input
+                  value={settings.footer_text ?? ""}
+                  onChange={(e) => setSettings((s) => ({ ...s, footer_text: e.target.value }))}
+                  placeholder="Powered by Clickyfied"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category 13: Reports */}
+        {activeCat === "reports" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    User Reports Enabled
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Allow users to submit "not received" reports.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.reports_enabled === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      reports_enabled: s.reports_enabled === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.reports_enabled === "true" ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.reports_enabled === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-1.5">
+                  <Label>Max Date Range for Admin Queries (Days)</Label>
+                  <Input
+                    type="number"
+                    value={settings.reports_max_date_range_days ?? "90"}
+                    onChange={(e) => setSettings((s) => ({ ...s, reports_max_date_range_days: e.target.value }))}
+                    placeholder="90"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Auto-close Unresolved Reports After (Days)</Label>
+                  <Input
+                    type="number"
+                    value={settings.report_auto_close_days ?? "7"}
+                    onChange={(e) => setSettings((s) => ({ ...s, report_auto_close_days: e.target.value }))}
+                    placeholder="7"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category 14: Pricing & Packages */}
+        {activeCat === "pricing" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Show Package Prices
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Whether users see package retail prices on the packages page.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.show_package_prices_to_users === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      show_package_prices_to_users: s.show_package_prices_to_users === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.show_package_prices_to_users === "true" ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.show_package_prices_to_users === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Allow Free Packages
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Whether orders with GHS 0 cost are allowed.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.allow_zero_price_orders === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      allow_zero_price_orders: s.allow_zero_price_orders === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.allow_zero_price_orders === "true" ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.allow_zero_price_orders === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-1.5 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <Label>Low Balance Warning Threshold (GHS)</Label>
+                <Input
+                  type="number"
+                  value={settings.low_balance_warning_threshold ?? "5"}
+                  onChange={(e) => setSettings((s) => ({ ...s, low_balance_warning_threshold: e.target.value }))}
+                  placeholder="5"
                 />
               </div>
             </div>

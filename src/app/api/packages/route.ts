@@ -22,14 +22,18 @@ export async function GET(request: NextRequest) {
       : [];
     const priceMap = new Map(tiers.map((t) => [t.gbAmount, t.priceGHS]));
 
+    const { getSetting } = await import("@/lib/orders");
+    const showPricesSetting = await getSetting("show_package_prices_to_users", "true");
+    const showPrices = showPricesSetting !== "false";
+
     const data = packages.map((p) => ({
       id: p.id,
       network: p.network,
       name: p.name,
       gbAmount: p.gbAmount,
       description: p.description,
-      retailPriceGHS: p.retailPriceGHS,
-      price: priceMap.has(p.gbAmount) ? priceMap.get(p.gbAmount) : p.retailPriceGHS ?? null,
+      retailPriceGHS: showPrices ? p.retailPriceGHS : null,
+      price: showPrices ? (priceMap.has(p.gbAmount) ? priceMap.get(p.gbAmount) : (p.retailPriceGHS ?? null)) : null,
     }));
 
     const killSwitch = await prisma.systemSetting.findUnique({

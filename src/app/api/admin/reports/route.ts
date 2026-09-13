@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { getSetting } from "@/lib/orders";
 
 function parseDateParam(str: string | null, endOfDay = false): Date | null {
   if (!str) return null;
@@ -14,8 +15,20 @@ export async function GET(request: NextRequest) {
   try {
     await requireStaff();
     const { searchParams } = new URL(request.url);
-    const fromDate = parseDateParam(searchParams.get("from"), false);
-    const toDate = parseDateParam(searchParams.get("to"), true);
+    const fromDateParam = parseDateParam(searchParams.get("from"), false);
+    const toDateParam = parseDateParam(searchParams.get("to"), true);
+    
+    let fromDate = fromDateParam;
+    let toDate = toDateParam || new Date();
+
+    const maxDays = parseInt(await getSetting("reports_max_date_range_days", "90"), 10);
+    const maxMs = maxDays * 24 * 60 * 60 * 1000;
+    
+    if (!fromDate) {
+      fromDate = new Date(toDate.getTime() - maxMs);
+    } else if (toDate.getTime() - fromDate.getTime() > maxMs) {
+      return apiError(400, `Date range cannot exceed ${maxDays} days`);
+    }
 
     const where: Record<string, unknown> = {};
     if (fromDate || toDate) {

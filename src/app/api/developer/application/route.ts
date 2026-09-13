@@ -54,6 +54,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const input = applicationSchema.parse(body);
 
+    const apiEnabledSetting = await prisma.systemSetting.findUnique({
+      where: { key: "api_feature_enabled" },
+    });
+    if (apiEnabledSetting?.value === "false") {
+      return apiError(503, "API applications are currently disabled by administrator.");
+    }
+
     const existing = await prisma.apiApplication.findUnique({
       where: { userId: user.id },
     });

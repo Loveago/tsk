@@ -3,6 +3,7 @@ import { recordAudit } from "./audit";
 import { parseMomoSms, normalizeTransactionReference } from "./momo-parser";
 import { sendClaimSuccessEmail, sendClaimRejectedEmail } from "./email";
 import { timingSafeEqual } from "crypto";
+import { getSetting } from "./orders";
 
 export const DEFAULT_EXPIRY_HOURS = 168; // 7 days
 export const DEFAULT_MIN_AMOUNT = 1;
@@ -416,7 +417,8 @@ export async function claimMomoTransaction(input: {
   });
 
   if (preCheck && preCheck.status === "AVAILABLE") {
-    const expiryMs = (settings.claimExpiryHours || DEFAULT_EXPIRY_HOURS) * 3600 * 1000;
+    const expirySetting = parseFloat(await getSetting("send_claim_expiry_hours", String(DEFAULT_EXPIRY_HOURS)));
+    const expiryMs = (isNaN(expirySetting) ? DEFAULT_EXPIRY_HOURS : expirySetting) * 3600 * 1000;
     const createdAtTime = preCheck.createdAt.getTime();
     if (Date.now() - createdAtTime > expiryMs) {
       await prisma.incomingMomoTransaction.update({
@@ -466,7 +468,8 @@ export async function claimMomoTransaction(input: {
     }
 
     // 5. Expiration check inside transaction as fallback
-    const expiryMs = (settings.claimExpiryHours || DEFAULT_EXPIRY_HOURS) * 3600 * 1000;
+    const expirySetting = parseFloat(await getSetting("send_claim_expiry_hours", String(DEFAULT_EXPIRY_HOURS)));
+    const expiryMs = (isNaN(expirySetting) ? DEFAULT_EXPIRY_HOURS : expirySetting) * 3600 * 1000;
     const createdAtTime = incoming.createdAt.getTime();
     if (Date.now() - createdAtTime > expiryMs) {
       await tx.incomingMomoTransaction.update({

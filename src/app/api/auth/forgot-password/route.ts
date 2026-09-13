@@ -6,6 +6,7 @@ import { getClientIp } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { rateLimit } from "@/lib/rate-limit";
 import { handleRouteError } from "@/lib/api-helpers";
+import { getSetting } from "@/lib/orders";
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,12 +28,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    const expiryMinutes = parseInt(await getSetting("password_reset_expiry_minutes", "60"), 10);
     const token = randomBytes(24).toString("hex");
     await prisma.passwordResetToken.create({
       data: {
         token,
         userId: user.id,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+        expiresAt: new Date(Date.now() + expiryMinutes * 60 * 1000),
       },
     });
 

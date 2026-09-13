@@ -39,6 +39,13 @@ export async function POST(request: NextRequest) {
       return apiError(503, "Storefront applications are currently disabled by administrator.");
     }
 
+    const applyEnabledSetting = await prisma.systemSetting.findUnique({
+      where: { key: "storefront_apply_enabled" },
+    });
+    if (applyEnabledSetting?.value === "false") {
+      return apiError(503, "New storefront applications are currently closed.");
+    }
+
     const input = storefrontApplySchema.parse(await request.json());
 
     const existing = await prisma.storefront.findUnique({ where: { userId: user.id } });

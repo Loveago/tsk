@@ -82,6 +82,13 @@ export async function createOrder(input: CreateOrderInput) {
   if (price == null) {
     throw new Error("No price configured for this package in your profile");
   }
+  
+  if (price === 0) {
+    const allowZero = await getSetting("allow_zero_price_orders", "true");
+    if (allowZero === "false") {
+      throw new Error("Free packages (zero price) are not allowed.");
+    }
+  }
 
   // Central MTN Number Verification Check (§16, §17)
   await validateMtnOrderRecipient(input.phoneNumber, input.network, input.userId, {

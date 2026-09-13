@@ -26,6 +26,10 @@ export default async function PackagesPage() {
     orderBy: [{ network: "asc" }, { gbAmount: "asc" }],
   });
   const priceMap = new Map(tiers.map((t) => [t.gbAmount, t.priceGHS]));
+  const { getSetting } = await import("@/lib/orders");
+  const showPricesSetting = await getSetting("show_package_prices_to_users", "true");
+  const showPrices = showPricesSetting !== "false";
+
   const groups: PackageGroup[] = (["MTN", "TELECEL", "AIRTELTIGO"] as const)
     .map((network) => ({
       network,
@@ -35,7 +39,7 @@ export default async function PackagesPage() {
           id: p.id,
           name: p.name,
           gbAmount: p.gbAmount,
-          price: priceMap.has(p.gbAmount) ? priceMap.get(p.gbAmount)! : p.retailPriceGHS ?? null,
+          price: showPrices ? (priceMap.has(p.gbAmount) ? priceMap.get(p.gbAmount)! : (p.retailPriceGHS ?? null)) : null,
         })),
     }))
     .filter((g) => g.packages.length > 0);
