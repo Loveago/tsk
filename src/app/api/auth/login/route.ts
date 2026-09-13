@@ -87,8 +87,9 @@ export async function POST(request: NextRequest) {
     }
 
     const loginOtpEnabled = (await getSetting("login_otp_enabled", "false")) === "true";
+    const isAdmin = user.role === "ADMIN";
 
-    if (loginOtpEnabled) {
+    if (loginOtpEnabled && !isAdmin) {
       const { code, ticket } = await generateLoginOtp(user.id, user.email);
       const emailRes = await sendLoginOtpEmail(user.email, user.name || "User", code, 10);
       if (!emailRes.success) {

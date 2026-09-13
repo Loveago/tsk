@@ -756,7 +756,7 @@ export default function AdminSettingsPage() {
                     Require Email OTP on Login
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    When enabled, users must enter a 6-digit one-time verification code sent to their email to sign in.
+                    When enabled, users must enter a 6-digit one-time verification code sent to their email to sign in. Admins are exempt and never require OTP.
                   </p>
                 </div>
                 <button
@@ -1064,6 +1064,45 @@ export default function AdminSettingsPage() {
         {/* Category 11: Security */}
         {activeCat === "security" && (
           <div className="space-y-4">
+            {/* Login OTP Requirement Toggle */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Require Email OTP on Login
+                    </h3>
+                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+                      Admin Exempt
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    When enabled, users must enter a 6-digit one-time verification code sent to their email to sign in. Admins log in directly without OTP.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={loginOtpEnabled}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      login_otp_enabled: loginOtpEnabled ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    loginOtpEnabled ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      loginOtpEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
             <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                 Platform Security Rules
