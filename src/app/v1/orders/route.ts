@@ -7,7 +7,7 @@ import {
   logApiRequestEntry,
   ApiError,
 } from "@/lib/developer-api";
-import { isOrderProcessingHalted, getDefaultProfileId } from "@/lib/orders";
+import { isOrderProcessingHalted, getDefaultProfileId, getPricingForProfile } from "@/lib/orders";
 import { dispatchWebhookEvent } from "@/lib/webhooks";
 import { phoneSchema } from "@/lib/validation";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
@@ -406,40 +406,24 @@ export async function POST(request: NextRequest) {
       throw new ApiError("FORBIDDEN", "User account not found", 403);
     }
 
-    let price = (pkg.retailPriceGHS != null && pkg.retailPriceGHS > 0) ? pkg.retailPriceGHS : 0;
-    if (price <= 0) {
-      if (user.pricingProfileId) {
-        const tier = await prisma.priceTier.findUnique({
-          where: {
-            profileId_gbAmount: {
-              profileId: user.pricingProfileId,
-              gbAmount: pkg.gbAmount,
-            },
-          },
-        });
-        if (tier && tier.priceGHS > 0) {
-          price = tier.priceGHS;
-        }
-      }
-      if (price <= 0) {
-        const defaultId = await getDefaultProfileId();
-        if (defaultId) {
-          const tier = await prisma.priceTier.findUnique({
-            where: {
-              profileId_gbAmount: {
-                profileId: defaultId,
-                gbAmount: pkg.gbAmount,
-              },
-            },
-          });
-          if (tier && tier.priceGHS > 0) {
-            price = tier.priceGHS;
-          }
-        }
-      }
+    const customProfile = user.pricingProfileId
+      ? await prisma.pricingProfile.findUnique({ where: { id: user.pricingProfileId } })
+      : null;
+    const isCustom = customProfile && !customProfile.isDefault;
+
+    let price: number | null = null;
+    if (isCustom && user.pricingProfileId) {
+      price = await getPricingForProfile(user.pricingProfileId, pkg.gbAmount, pkg.network);
+    }
+    if (price == null && pkg.retailPriceGHS != null && pkg.retailPriceGHS > 0) {
+      price = pkg.retailPriceGHS;
+    }
+    if (price == null) {
+      const effectiveProfileId = user.pricingProfileId ?? (await getDefaultProfileId());
+      price = await getPricingForProfile(effectiveProfileId, pkg.gbAmount, pkg.network);
     }
 
-    if (price <= 0) {
+    if (!price || price <= 0) {
       throw new ApiError("INVALID_PACKAGE", "No price configured for this package", 400);
     }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey, ApiKeyError, logApiRequest } from "@/lib/api-auth";
 import { publicOrderSchema } from "@/lib/validation";
-import { changeOrderStatus, isOrderProcessingHalted } from "@/lib/orders";
+import { changeOrderStatus, isOrderProcessingHalted, getPricingForProfile } from "@/lib/orders";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 import { handleRouteError } from "@/lib/api-helpers";
 import { z } from "zod";
@@ -73,19 +73,18 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return fail(request, keyId, endpoint, 403, "Account not found");
 
-    const tier = user.pricingProfileId
-      ? await prisma.priceTier.findUnique({
-          where: {
-            profileId_gbAmount: { profileId: user.pricingProfileId, gbAmount: pkg.gbAmount },
-          },
-        })
-      : null;
+    const network = input.network ?? pkg.network;
 
-    const amount = tier?.priceGHS ?? pkg.retailPriceGHS ?? 0;
+    let amount: number | null = null;
+    if (user.pricingProfileId) {
+      amount = await getPricingForProfile(user.pricingProfileId, pkg.gbAmount, network);
+    }
+    if (amount == null || amount <= 0) {
+      amount = pkg.retailPriceGHS ?? 0;
+    }
     if (amount <= 0) return fail(request, keyId, endpoint, 400, "No price configured for this package");
 
     // Central MTN Number Verification Check (§16, §17)
-    const network = input.network ?? pkg.network;
     const mtnCheck = await validateMtnOrderRecipient(input.phoneNumber, network, userId);
     if (!mtnCheck.allowed) {
       if (idemKey) {

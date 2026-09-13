@@ -30,9 +30,33 @@ export async function isOrderProcessingHalted(): Promise<boolean> {
 
 export async function getPricingForProfile(
   profileId: string | null,
-  gbAmount: number
+  gbAmount: number,
+  network?: string | null
 ): Promise<number | null> {
   if (!profileId) return null;
+
+  if (network) {
+    try {
+      const netUpper = network.toUpperCase();
+      const setting = await prisma.systemSetting.findUnique({
+        where: { key: `pricing_profile_network_rates:${profileId}` },
+      });
+      if (setting?.value) {
+        const netRates = JSON.parse(setting.value);
+        if (Array.isArray(netRates[netUpper])) {
+          const match = netRates[netUpper].find(
+            (t: { gbAmount: number; priceGHS: number }) => t.gbAmount === gbAmount
+          );
+          if (match && typeof match.priceGHS === "number" && match.priceGHS > 0) {
+            return match.priceGHS;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const tier = await prisma.priceTier.findUnique({
     where: { profileId_gbAmount: { profileId, gbAmount } },
   });
@@ -83,7 +107,11 @@ export async function createOrder(input: CreateOrderInput) {
 
   let price: number | null | undefined = input.amount;
   if (price == null) {
-    if (input.packageId) {
+    if (isCustomProfile && profileId) {
+      const customPrice = await getPricingForProfile(profileId, input.gbAmount, input.network);
+      if (customPrice != null) price = customPrice;
+    }
+    if (price == null && input.packageId) {
       const pkg = await prisma.dataPackage.findUnique({ where: { id: input.packageId } });
       if (pkg?.retailPriceGHS != null) price = pkg.retailPriceGHS;
     }
@@ -95,7 +123,7 @@ export async function createOrder(input: CreateOrderInput) {
     }
     if (price == null) {
       const effectiveProfileId = profileId ?? (await getDefaultProfileId());
-      price = await getPricingForProfile(effectiveProfileId, input.gbAmount);
+      price = await getPricingForProfile(effectiveProfileId, input.gbAmount, input.network);
     }
   }
 

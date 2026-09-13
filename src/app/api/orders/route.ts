@@ -108,13 +108,42 @@ export async function POST(request: NextRequest) {
       : [];
     const priceMap = new Map(tiers.map((t) => [t.gbAmount, t.priceGHS]));
 
+    // Check if custom profile has distinct per-network rates
+    let profileNetworkRates: Record<string, Array<{ gbAmount: number; priceGHS: number }>> | null = null;
+    if (isCustomProfile && profileId) {
+      const setting = await prisma.systemSetting.findUnique({
+        where: { key: `pricing_profile_network_rates:${profileId}` },
+      });
+      if (setting?.value) {
+        try {
+          profileNetworkRates = JSON.parse(setting.value);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
     const packages = await prisma.dataPackage.findMany({ where: { active: true } });
     const pkgMap = new Map(packages.map((p) => [`${p.network.toUpperCase()}:${p.gbAmount}`, p]));
 
     let total = 0;
     const priced = deduplicatedOrders.map((o) => {
-      const pkg = pkgMap.get(`${o.network.toUpperCase()}:${o.gbAmount}`);
-      const price = pkg?.retailPriceGHS ?? priceMap.get(o.gbAmount) ?? null;
+      const netUpper = o.network.toUpperCase();
+      const pkg = pkgMap.get(`${netUpper}:${o.gbAmount}`);
+
+      let price: number | null = null;
+      if (profileNetworkRates && Array.isArray(profileNetworkRates[netUpper])) {
+        const match = profileNetworkRates[netUpper].find((t) => t.gbAmount === o.gbAmount);
+        if (match && typeof match.priceGHS === "number" && match.priceGHS > 0) {
+          price = match.priceGHS;
+        }
+      }
+      if (price == null && isCustomProfile && priceMap.has(o.gbAmount)) {
+        price = priceMap.get(o.gbAmount)!;
+      }
+      if (price == null) {
+        price = pkg?.retailPriceGHS ?? priceMap.get(o.gbAmount) ?? null;
+      }
 
       if (price == null) {
         throw new Error(`No price configured for ${o.network} ${o.gbAmount}GB`);

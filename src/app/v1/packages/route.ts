@@ -59,19 +59,48 @@ export async function GET(request: NextRequest) {
 
     // Load price tiers for this user's custom profile if assigned
     const customProfileId = user?.pricingProfileId;
-    const priceTiers = customProfileId
+    const profile = customProfileId
+      ? await prisma.pricingProfile.findUnique({ where: { id: customProfileId } })
+      : null;
+    const isCustomProfile = profile && !profile.isDefault;
+
+    // Check if custom profile has distinct per-network rates
+    let profileNetworkRates: Record<string, Array<{ gbAmount: number; priceGHS: number }>> | null = null;
+    if (isCustomProfile && customProfileId) {
+      const setting = await prisma.systemSetting.findUnique({
+        where: { key: `pricing_profile_network_rates:${customProfileId}` },
+      });
+      if (setting?.value) {
+        try {
+          profileNetworkRates = JSON.parse(setting.value);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    const priceTiers = (isCustomProfile && customProfileId)
       ? await prisma.priceTier.findMany({
           where: { profileId: customProfileId },
         })
       : [];
-
-    const tierMap = new Map<number, number>();
-    for (const t of priceTiers) {
-      tierMap.set(t.gbAmount, t.priceGHS);
-    }
+    const tierMap = new Map<number, number>(priceTiers.map((t) => [t.gbAmount, t.priceGHS]));
 
     const formattedPackages = packages.map((pkg) => {
-      const price = pkg.retailPriceGHS ?? tierMap.get(pkg.gbAmount) ?? 0;
+      let distinctPrice: number | null = null;
+      if (profileNetworkRates && Array.isArray(profileNetworkRates[pkg.network.toUpperCase()])) {
+        const match = profileNetworkRates[pkg.network.toUpperCase()].find((t) => t.gbAmount === pkg.gbAmount);
+        if (match && typeof match.priceGHS === "number" && match.priceGHS > 0) {
+          distinctPrice = match.priceGHS;
+        }
+      }
+      if (distinctPrice == null && isCustomProfile && tierMap.has(pkg.gbAmount)) {
+        distinctPrice = tierMap.get(pkg.gbAmount)!;
+      }
+      if (distinctPrice == null) {
+        distinctPrice = pkg.retailPriceGHS ?? (tierMap.has(pkg.gbAmount) ? tierMap.get(pkg.gbAmount)! : 0);
+      }
+
       const slugId = `${pkg.network.toLowerCase()}-${pkg.gbAmount}gb`;
 
       return {
@@ -80,7 +109,7 @@ export async function GET(request: NextRequest) {
         network: pkg.network,
         name: pkg.name,
         dataGb: pkg.gbAmount,
-        price: Number(price.toFixed(2)),
+        price: Number((distinctPrice ?? 0).toFixed(2)),
         currency: "GHS",
         available: pkg.active,
       };

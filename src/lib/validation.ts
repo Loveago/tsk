@@ -181,7 +181,18 @@ export const pricingProfileSchema = z.object({
         priceGHS: z.coerce.number().min(0),
       })
     )
-    .min(1, "Add at least one price tier"),
+    .default([]),
+  networkTiers: z
+    .record(
+      z.string(),
+      z.array(
+        z.object({
+          gbAmount: z.coerce.number().positive(),
+          priceGHS: z.coerce.number().min(0),
+        })
+      )
+    )
+    .optional(),
 });
 
 export const packageSchema = z.object({
@@ -190,7 +201,12 @@ export const packageSchema = z.object({
   gbAmount: z.coerce.number().positive(),
   description: z.string().max(300).optional().or(z.literal("")),
   providerProductId: z.string().max(80).optional().or(z.literal("")),
-  retailPriceGHS: z.coerce.number().min(0).optional(),
+  retailPriceGHS: z
+    .preprocess(
+      (val) => (val === "" || val === null || val === undefined ? null : Number(val)),
+      z.number().min(0).nullable()
+    )
+    .optional(),
   active: z.boolean().default(true),
   sortOrder: z.coerce.number().int().min(0).default(0),
 });

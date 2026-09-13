@@ -7,8 +7,8 @@ import { PackageTable } from "@/components/admin/package-table";
 import { Button } from "@/components/ui/button";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { useToast } from "@/components/toast";
-import { formatGHS } from "@/lib/types";
-import { Package, Pencil, Trash2, Plus } from "lucide-react";
+import Link from "next/link";
+import { Package, Pencil, Trash2, Plus, Receipt } from "lucide-react";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"];
 
@@ -61,14 +61,21 @@ export default function AdminPackagesPage() {
         title="Packages"
         description="Manage the data bundle catalogue"
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setDialogOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> Add package
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/admin/pricing">
+              <Button variant="outline">
+                <Receipt className="h-4 w-4 mr-1.5" /> 3-Network Pricing Matrix
+              </Button>
+            </Link>
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setDialogOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Add package
+            </Button>
+          </div>
         }
       />
 

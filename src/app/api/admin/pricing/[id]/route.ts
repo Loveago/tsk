@@ -21,6 +21,23 @@ export async function PATCH(
     const body = await request.json();
     const input = pricingProfileSchema.parse(body);
 
+    const rawFallbackTiers =
+      input.tiers?.length > 0
+        ? input.tiers
+        : input.networkTiers?.MTN?.length
+        ? input.networkTiers.MTN
+        : existing.tiers;
+
+    // Deduplicate fallback tiers by gbAmount
+    const fallbackMap = new Map<number, number>();
+    for (const t of rawFallbackTiers) {
+      fallbackMap.set(t.gbAmount, t.priceGHS);
+    }
+    const fallbackTiers = Array.from(fallbackMap.entries()).map(([gbAmount, priceGHS]) => ({
+      gbAmount,
+      priceGHS,
+    }));
+
     // Replace all tiers in one transaction
     const profile = await prisma.$transaction(async (tx) => {
       await tx.priceTier.deleteMany({ where: { profileId: id } });
@@ -31,7 +48,7 @@ export async function PATCH(
           type: input.type,
           active: input.active,
           tiers: {
-            create: input.tiers.map((t) => ({
+            create: fallbackTiers.map((t) => ({
               gbAmount: t.gbAmount,
               priceGHS: t.priceGHS,
             })),
@@ -41,16 +58,32 @@ export async function PATCH(
       });
     });
 
+    if (input.networkTiers) {
+      await prisma.systemSetting.upsert({
+        where: { key: `pricing_profile_network_rates:${id}` },
+        update: { value: JSON.stringify(input.networkTiers) },
+        create: {
+          key: `pricing_profile_network_rates:${id}`,
+          value: JSON.stringify(input.networkTiers),
+        },
+      });
+    }
+
     await recordAudit({
       userId: actor.id,
       actorLabel: actor.email,
       action: "pricing_profile.update",
       target: `pricing_profile:${id}`,
       previousValue: JSON.stringify({ name: existing.name, tiers: existing.tiers.length }),
-      newValue: JSON.stringify({ name: input.name, tiers: input.tiers.length }),
+      newValue: JSON.stringify({ name: input.name, tiers: fallbackTiers.length }),
     });
 
-    return NextResponse.json({ profile });
+    return NextResponse.json({
+      profile: {
+        ...profile,
+        networkTiers: input.networkTiers ?? undefined,
+      },
+    });
   } catch (err) {
     return handleRouteError(err);
   }
@@ -73,6 +106,9 @@ export async function DELETE(
     }
 
     await prisma.pricingProfile.delete({ where: { id } });
+    await prisma.systemSetting.deleteMany({
+      where: { key: `pricing_profile_network_rates:${id}` },
+    });
     await recordAudit({
       userId: actor.id,
       actorLabel: actor.email,
