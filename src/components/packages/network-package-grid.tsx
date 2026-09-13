@@ -5,6 +5,7 @@ import { Signal } from "lucide-react";
 import { PriceMask } from "@/components/price-mask";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { cn } from "@/lib/utils";
+import { formatGHS } from "@/lib/types";
 
 export interface Pkg {
   id: string;
@@ -130,7 +131,16 @@ export function NetworkPackageGrid({ groups }: { groups: PackageGroup[] }) {
                     {p.name}
                   </p>
                   <div className="mt-2.5 border-t border-dashed border-slate-200 pt-2.5 dark:border-white/10">
-                    <PriceMask label="per bundle" className="text-center" />
+                    {p.price != null ? (
+                      <div className="text-center">
+                        <p className="font-mono text-sm font-bold text-slate-900 dark:text-white">
+                          {formatGHS(p.price)}
+                        </p>
+                        <p className="text-[10px] text-slate-400">per bundle</p>
+                      </div>
+                    ) : (
+                      <PriceMask label="per bundle" className="text-center" />
+                    )}
                   </div>
                 </div>
               ))}

@@ -57,11 +57,11 @@ export async function GET(request: NextRequest) {
       getDefaultProfileId(),
     ]);
 
-    // Load price tiers for this user's profile if assigned, or fallback to default pricing profile
-    const effectiveProfileId = user?.pricingProfileId ?? defaultProfileId;
-    const priceTiers = effectiveProfileId
+    // Load price tiers for this user's custom profile if assigned
+    const customProfileId = user?.pricingProfileId;
+    const priceTiers = customProfileId
       ? await prisma.priceTier.findMany({
-          where: { profileId: effectiveProfileId },
+          where: { profileId: customProfileId },
         })
       : [];
 
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     }
 
     const formattedPackages = packages.map((pkg) => {
-      const price = tierMap.get(pkg.gbAmount) ?? pkg.retailPriceGHS ?? 0;
+      const price = pkg.retailPriceGHS ?? tierMap.get(pkg.gbAmount) ?? 0;
       const slugId = `${pkg.network.toLowerCase()}-${pkg.gbAmount}gb`;
 
       return {

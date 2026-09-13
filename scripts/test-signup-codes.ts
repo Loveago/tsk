@@ -97,7 +97,7 @@ async function runTests() {
       userId: user1.id,
       ip: "127.0.0.1",
     });
-  });
+  }, { maxWait: 15000, timeout: 20000 });
 
   const ref1 = await prisma.signupCode.findUnique({ where: { id: codeRecord.id } });
   assert(ref1?.usageCount === 1, "Usage count incremented to 1");
@@ -126,7 +126,7 @@ async function runTests() {
       userId: user2.id,
       ip: "127.0.0.1",
     });
-  });
+  }, { maxWait: 15000, timeout: 20000 });
 
   const ref2 = await prisma.signupCode.findUnique({ where: { id: codeRecord.id } });
   assert(
@@ -151,7 +151,7 @@ async function runTests() {
         rawCode: testCodeStr,
         userId: user3.id,
       });
-    });
+    }, { maxWait: 15000, timeout: 20000 });
   } catch {
     failedExhausted = true;
   }
@@ -178,7 +178,7 @@ async function runTests() {
         rawCode: expCodeStr,
         userId: user3.id,
       });
-    });
+    }, { maxWait: 15000, timeout: 20000 });
   } catch {
     failedExpUse = true;
   }
@@ -206,10 +206,10 @@ async function runTests() {
   const concurrentResults = await Promise.allSettled([
     prisma.$transaction(async (tx) => {
       return applySignupCodeInTx(tx, { rawCode: singleUseCodeStr, userId: userA.id });
-    }),
+    }, { maxWait: 15000, timeout: 20000 }),
     prisma.$transaction(async (tx) => {
       return applySignupCodeInTx(tx, { rawCode: singleUseCodeStr, userId: userB.id });
-    }),
+    }, { maxWait: 15000, timeout: 20000 }),
   ]);
 
   const concFulfilled = concurrentResults.filter((r) => r.status === "fulfilled");

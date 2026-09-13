@@ -23,6 +23,22 @@ export function MomoSettingsCard() {
   const [settings, setSettings] = React.useState<Settings | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [serverWebhookUrl, setServerWebhookUrl] = React.useState("");
+  const [origin, setOrigin] = React.useState(() => {
+    if (typeof window !== "undefined") return window.location.origin;
+    return "";
+  });
+  const [copiedWebhook, setCopiedWebhook] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && !origin) {
+      setOrigin(window.location.origin);
+    }
+  }, [origin]);
+
+  const webhookUrl =
+    serverWebhookUrl ||
+    (origin ? `${origin}/api/webhooks/momo/sms` : "/api/webhooks/momo/sms");
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -30,6 +46,7 @@ export function MomoSettingsCard() {
       const res = await fetch("/api/admin/momo/settings");
       const json = await res.json();
       setSettings(json.settings ?? null);
+      if (json.webhookUrl) setServerWebhookUrl(json.webhookUrl);
     } catch {
       toast("Failed to load settings", "error");
     } finally {
@@ -225,9 +242,23 @@ export function MomoSettingsCard() {
 
         <div className="mt-4 space-y-3 font-mono text-xs">
           <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
-            <span className="text-slate-500 block">Webhook URL:</span>
-            <span className="font-semibold text-brand-600 dark:text-brand-400 select-all">
-              https://clickyfied.com/api/webhooks/momo/sms
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 block">Webhook URL:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(webhookUrl);
+                  setCopiedWebhook(true);
+                  toast("Webhook URL copied to clipboard", "success");
+                  setTimeout(() => setCopiedWebhook(false), 2000);
+                }}
+                className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400 font-sans"
+              >
+                {copiedWebhook ? "Copied!" : "Copy URL"}
+              </button>
+            </div>
+            <span className="mt-1 block font-semibold text-brand-600 dark:text-brand-400 select-all break-all">
+              {webhookUrl}
             </span>
           </div>
 

@@ -132,18 +132,18 @@ async function main() {
     { network: "MTN", name: "MTN 4GB", gbAmount: 4, providerProductId: "MTN-4GB", retailPriceGHS: 12.0, sortOrder: 4 },
     { network: "MTN", name: "MTN 5GB", gbAmount: 5, providerProductId: "MTN-5GB", retailPriceGHS: 15.0, sortOrder: 5 },
     { network: "MTN", name: "MTN 10GB", gbAmount: 10, providerProductId: "MTN-10GB", retailPriceGHS: 28.0, sortOrder: 6 },
-    { network: "TELECEL", name: "Telecel 1GB", gbAmount: 1, providerProductId: "TLC-1GB", retailPriceGHS: 3.5, sortOrder: 7 },
-    { network: "TELECEL", name: "Telecel 2GB", gbAmount: 2, providerProductId: "TLC-2GB", retailPriceGHS: 6.5, sortOrder: 8 },
-    { network: "TELECEL", name: "Telecel 5GB", gbAmount: 5, providerProductId: "TLC-5GB", retailPriceGHS: 15.0, sortOrder: 9 },
-    { network: "AIRTELTIGO", name: "AirtelTigo 1GB", gbAmount: 1, providerProductId: "AT-1GB", retailPriceGHS: 3.5, sortOrder: 10 },
-    { network: "AIRTELTIGO", name: "AirtelTigo 2GB", gbAmount: 2, providerProductId: "AT-2GB", retailPriceGHS: 6.5, sortOrder: 11 },
-    { network: "AIRTELTIGO", name: "AirtelTigo 5GB", gbAmount: 5, providerProductId: "AT-5GB", retailPriceGHS: 15.0, sortOrder: 12 },
+    { network: "TELECEL", name: "Telecel 1GB", gbAmount: 1, providerProductId: "TLC-1GB", retailPriceGHS: 3.4, sortOrder: 7 },
+    { network: "TELECEL", name: "Telecel 2GB", gbAmount: 2, providerProductId: "TLC-2GB", retailPriceGHS: 6.2, sortOrder: 8 },
+    { network: "TELECEL", name: "Telecel 5GB", gbAmount: 5, providerProductId: "TLC-5GB", retailPriceGHS: 14.5, sortOrder: 9 },
+    { network: "AIRTELTIGO", name: "AirtelTigo 1GB", gbAmount: 1, providerProductId: "AT-1GB", retailPriceGHS: 3.2, sortOrder: 10 },
+    { network: "AIRTELTIGO", name: "AirtelTigo 2GB", gbAmount: 2, providerProductId: "AT-2GB", retailPriceGHS: 6.0, sortOrder: 11 },
+    { network: "AIRTELTIGO", name: "AirtelTigo 5GB", gbAmount: 5, providerProductId: "AT-5GB", retailPriceGHS: 14.0, sortOrder: 12 },
   ];
 
   for (const pkg of packages) {
     await prisma.dataPackage.upsert({
       where: { network_gbAmount: { network: pkg.network, gbAmount: pkg.gbAmount } },
-      update: {},
+      update: { retailPriceGHS: pkg.retailPriceGHS, name: pkg.name, providerProductId: pkg.providerProductId },
       create: pkg,
     });
   }

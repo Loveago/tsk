@@ -75,10 +75,30 @@ export async function createOrder(input: CreateOrderInput) {
     where: { id: input.userId },
     select: { pricingProfileId: true },
   });
-  const profileId =
-    userRecord?.pricingProfileId ?? (await getDefaultProfileId());
-  const price =
-    input.amount ?? (await getPricingForProfile(profileId, input.gbAmount));
+  const profileId = userRecord?.pricingProfileId ?? null;
+  const profile = profileId
+    ? await prisma.pricingProfile.findUnique({ where: { id: profileId } })
+    : null;
+  const isCustomProfile = profile && !profile.isDefault;
+
+  let price: number | null | undefined = input.amount;
+  if (price == null) {
+    if (input.packageId) {
+      const pkg = await prisma.dataPackage.findUnique({ where: { id: input.packageId } });
+      if (pkg?.retailPriceGHS != null) price = pkg.retailPriceGHS;
+    }
+    if (price == null && input.network && input.gbAmount) {
+      const pkg = await prisma.dataPackage.findUnique({
+        where: { network_gbAmount: { network: input.network, gbAmount: input.gbAmount } },
+      });
+      if (pkg?.retailPriceGHS != null) price = pkg.retailPriceGHS;
+    }
+    if (price == null) {
+      const effectiveProfileId = profileId ?? (await getDefaultProfileId());
+      price = await getPricingForProfile(effectiveProfileId, input.gbAmount);
+    }
+  }
+
   if (price == null) {
     throw new Error("No price configured for this package in your profile");
   }

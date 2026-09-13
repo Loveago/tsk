@@ -142,6 +142,8 @@ async function runApiTests() {
   });
 
   assert(userA.id !== userB.id, "Distinct test users created");
+  await setSetting("order_processing_halted", "false");
+  await setSetting("mtn_number_verification_enabled", "false");
 
   // Setup Approved Application for User A
   const appA = await prisma.apiApplication.upsert({

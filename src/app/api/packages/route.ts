@@ -11,13 +11,13 @@ export async function GET(request: NextRequest) {
       orderBy: [{ network: "asc" }, { sortOrder: "asc" }],
     });
 
-    // Attach the user's profile price to each package
-    const profileId =
-      user.pricingProfileId ??
-      (await prisma.pricingProfile.findFirst({ where: { isDefault: true }, select: { id: true } }))?.id ??
-      null;
+    const profileId = user.pricingProfileId ?? null;
+    const profile = profileId
+      ? await prisma.pricingProfile.findUnique({ where: { id: profileId } })
+      : null;
+    const isCustomProfile = profile && !profile.isDefault;
 
-    const tiers = profileId
+    const tiers = (isCustomProfile && profileId)
       ? await prisma.priceTier.findMany({ where: { profileId } })
       : [];
     const priceMap = new Map(tiers.map((t) => [t.gbAmount, t.priceGHS]));
@@ -26,15 +26,19 @@ export async function GET(request: NextRequest) {
     const showPricesSetting = await getSetting("show_package_prices_to_users", "true");
     const showPrices = showPricesSetting !== "false";
 
-    const data = packages.map((p) => ({
-      id: p.id,
-      network: p.network,
-      name: p.name,
-      gbAmount: p.gbAmount,
-      description: p.description,
-      retailPriceGHS: showPrices ? p.retailPriceGHS : null,
-      price: showPrices ? (priceMap.has(p.gbAmount) ? priceMap.get(p.gbAmount) : (p.retailPriceGHS ?? null)) : null,
-    }));
+    const data = packages.map((p) => {
+      const distinctPrice = p.retailPriceGHS ?? (priceMap.has(p.gbAmount) ? priceMap.get(p.gbAmount)! : null);
+
+      return {
+        id: p.id,
+        network: p.network,
+        name: p.name,
+        gbAmount: p.gbAmount,
+        description: p.description,
+        retailPriceGHS: showPrices ? p.retailPriceGHS : null,
+        price: showPrices ? distinctPrice : null,
+      };
+    });
 
     const killSwitch = await prisma.systemSetting.findUnique({
       where: { key: "number_submission_page_enabled" },

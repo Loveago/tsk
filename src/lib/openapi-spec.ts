@@ -7,14 +7,10 @@ export const openApiSpec = {
       "Production-ready developer API for Clickyfied. Automate Ghanaian mobile data bundles (MTN, Telecel, AirtelTigo) directly from your applications, reseller stores, websites, and platforms.",
     contact: {
       name: "Clickyfied Developer Support",
-      url: "https://clickyfied.com",
+      url: "/",
     },
   },
   servers: [
-    {
-      url: "https://api.clickyfied.com/v1",
-      description: "Production API Server",
-    },
     {
       url: "/v1",
       description: "Relative API Endpoint",
@@ -374,3 +370,32 @@ export const openApiSpec = {
     },
   },
 };
+
+/**
+ * Returns the OpenAPI specification customized with the dynamic origin of the deployment/host.
+ */
+export function getOpenApiSpec(origin?: string) {
+  const cleanOrigin = origin ? origin.replace(/\/$/, "") : "";
+  const serverUrl = cleanOrigin ? `${cleanOrigin}/v1` : "/v1";
+  return {
+    ...openApiSpec,
+    info: {
+      ...openApiSpec.info,
+      contact: {
+        ...openApiSpec.info.contact,
+        url: cleanOrigin || openApiSpec.info.contact.url,
+      },
+    },
+    servers: [
+      {
+        url: serverUrl,
+        description: cleanOrigin ? "Current API Host" : "Production API Server",
+      },
+      {
+        url: "/v1",
+        description: "Relative API Endpoint",
+      },
+    ],
+  };
+}
+

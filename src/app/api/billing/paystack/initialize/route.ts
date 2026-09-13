@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requireUser, getClientIp } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
-import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { handleRouteError, apiError, getRequestOrigin } from "@/lib/api-helpers";
 import { paystackTopupSchema } from "@/lib/validation";
 import {
   isPaystackConfigured,
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      const origin = request.nextUrl.origin;
+      const origin = getRequestOrigin(request);
       const authorization = await initializeTransaction({
         email: user.email,
         amountPesewas: Math.round(amount * 100),

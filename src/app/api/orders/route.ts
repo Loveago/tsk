@@ -97,24 +97,30 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve prices & total
-    const profileId =
-      user.pricingProfileId ??
-      (await prisma.pricingProfile.findFirst({ where: { isDefault: true }, select: { id: true } }))?.id ??
-      null;
+    const profileId = user.pricingProfileId ?? null;
+    const profile = profileId
+      ? await prisma.pricingProfile.findUnique({ where: { id: profileId } })
+      : null;
+    const isCustomProfile = profile && !profile.isDefault;
 
-    const tiers = profileId
+    const tiers = (isCustomProfile && profileId)
       ? await prisma.priceTier.findMany({ where: { profileId } })
       : [];
     const priceMap = new Map(tiers.map((t) => [t.gbAmount, t.priceGHS]));
 
+    const packages = await prisma.dataPackage.findMany({ where: { active: true } });
+    const pkgMap = new Map(packages.map((p) => [`${p.network.toUpperCase()}:${p.gbAmount}`, p]));
+
     let total = 0;
     const priced = deduplicatedOrders.map((o) => {
-      const price = priceMap.get(o.gbAmount) ?? null;
+      const pkg = pkgMap.get(`${o.network.toUpperCase()}:${o.gbAmount}`);
+      const price = pkg?.retailPriceGHS ?? priceMap.get(o.gbAmount) ?? null;
+
       if (price == null) {
-        throw new Error(`No price configured for ${o.gbAmount}GB`);
+        throw new Error(`No price configured for ${o.network} ${o.gbAmount}GB`);
       }
       total += price;
-      return { ...o, price };
+      return { ...o, price, packageId: pkg?.id ?? null };
     });
 
     // Validate MTN numbers before balance deduction (§2, §16)

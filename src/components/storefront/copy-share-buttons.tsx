@@ -6,14 +6,25 @@ import { Check, Copy, Share2 } from "lucide-react";
 /** Copy-to-clipboard (and optional WhatsApp share) for the public store link. */
 export function CopyShareButtons({ url, storeName }: { url: string; storeName: string }) {
   const [copied, setCopied] = React.useState(false);
+  const [fullUrl, setFullUrl] = React.useState(url);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (url.startsWith("/")) {
+        setFullUrl(`${window.location.origin}${url}`);
+      } else {
+        setFullUrl(url);
+      }
+    }
+  }, [url]);
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(fullUrl);
     } catch {
       // Clipboard API can be unavailable (http/permissions) — still show feedback
       const ta = document.createElement("textarea");
-      ta.value = url;
+      ta.value = fullUrl;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand("copy");
@@ -24,8 +35,9 @@ export function CopyShareButtons({ url, storeName }: { url: string; storeName: s
   }
 
   const shareText = encodeURIComponent(
-    `Shop data bundles at ${storeName} — fast delivery on all networks: ${url}`
+    `Shop data bundles at ${storeName} — fast delivery on all networks: ${fullUrl}`
   );
+
 
   return (
     <div className="flex flex-wrap items-center gap-2">

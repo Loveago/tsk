@@ -20,10 +20,16 @@ export async function sendEmail(payload: EmailPayload): Promise<{ success: boole
 }
 
 export async function sendApiApprovalEmail(userEmail: string, userName: string, businessName: string): Promise<void> {
+  const appUrl = (
+    process.env.APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://clickyfied.com")
+  ).replace(/\/$/, "");
+
   await sendEmail({
     to: userEmail,
     subject: "Your Clickyfied API Access Has Been Approved!",
-    text: `Hello ${userName},\n\nCongratulations! Your developer API access application for "${businessName}" has been approved by the Clickyfied admin team.\n\nYou can now log in to your developer dashboard, generate production API credentials (ck_live_...), configure your webhooks, and start submitting live automated data orders.\n\nDashboard: https://clickyfied.com/dashboard/api?tab=credentials\nDocs: https://clickyfied.com/dashboard/api?tab=docs\n\nBest regards,\nThe Clickyfied Team`,
+    text: `Hello ${userName},\n\nCongratulations! Your developer API access application for "${businessName}" has been approved by the Clickyfied admin team.\n\nYou can now log in to your developer dashboard, generate production API credentials (ck_live_...), configure your webhooks, and start submitting live automated data orders.\n\nDashboard: ${appUrl}/dashboard/api?tab=credentials\nDocs: ${appUrl}/dashboard/api?tab=docs\n\nBest regards,\nThe Clickyfied Team`,
   });
 }
 

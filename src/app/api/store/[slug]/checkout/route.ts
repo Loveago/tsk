@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { handleRouteError, apiError, getRequestOrigin } from "@/lib/api-helpers";
 import { storefrontCheckoutSchema } from "@/lib/validation";
 import {
   getEnabledStorefrontBySlug,
@@ -82,7 +82,7 @@ export async function POST(
     });
 
     try {
-      const origin = request.nextUrl.origin;
+      const origin = getRequestOrigin(request);
       const owner = await prisma.user.findUniqueOrThrow({
         where: { id: storefront.userId },
         select: { email: true },

@@ -658,5 +658,5 @@ export async function adminManualCreditWallet(input: {
       walletTransactionId: walletTx.id,
       reference: ref,
     };
-  });
+  }, { maxWait: 15000, timeout: 20000 });
 }

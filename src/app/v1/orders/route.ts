@@ -406,19 +406,36 @@ export async function POST(request: NextRequest) {
       throw new ApiError("FORBIDDEN", "User account not found", 403);
     }
 
-    const effectiveProfileId = user.pricingProfileId ?? (await getDefaultProfileId());
-    let price = pkg.retailPriceGHS ?? 0;
-    if (effectiveProfileId) {
-      const tier = await prisma.priceTier.findUnique({
-        where: {
-          profileId_gbAmount: {
-            profileId: effectiveProfileId,
-            gbAmount: pkg.gbAmount,
+    let price = (pkg.retailPriceGHS != null && pkg.retailPriceGHS > 0) ? pkg.retailPriceGHS : 0;
+    if (price <= 0) {
+      if (user.pricingProfileId) {
+        const tier = await prisma.priceTier.findUnique({
+          where: {
+            profileId_gbAmount: {
+              profileId: user.pricingProfileId,
+              gbAmount: pkg.gbAmount,
+            },
           },
-        },
-      });
-      if (tier && tier.priceGHS > 0) {
-        price = tier.priceGHS;
+        });
+        if (tier && tier.priceGHS > 0) {
+          price = tier.priceGHS;
+        }
+      }
+      if (price <= 0) {
+        const defaultId = await getDefaultProfileId();
+        if (defaultId) {
+          const tier = await prisma.priceTier.findUnique({
+            where: {
+              profileId_gbAmount: {
+                profileId: defaultId,
+                gbAmount: pkg.gbAmount,
+              },
+            },
+          });
+          if (tier && tier.priceGHS > 0) {
+            price = tier.priceGHS;
+          }
+        }
       }
     }
 

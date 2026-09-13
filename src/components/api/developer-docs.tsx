@@ -10,6 +10,18 @@ export function DeveloperDocs() {
   const { toast } = useToast();
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [langTab, setLangTab] = React.useState<"curl" | "javascript" | "nodejs" | "python" | "php">("curl");
+  const [origin, setOrigin] = React.useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return window.location.origin;
+    }
+    return "";
+  });
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && !origin) {
+      setOrigin(window.location.origin);
+    }
+  }, [origin]);
 
   const copy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -18,7 +30,11 @@ export function DeveloperDocs() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const curlOrderExample = `curl -X POST "https://api.clickyfied.com/v1/orders" \\
+  const effectiveOrigin = origin || (typeof window !== "undefined" ? window.location.origin : "");
+  const apiBaseUrl = effectiveOrigin ? `${effectiveOrigin}/v1` : "/v1";
+  const ordersEndpoint = effectiveOrigin ? `${effectiveOrigin}/v1/orders` : "/v1/orders";
+
+  const curlOrderExample = `curl -X POST "${ordersEndpoint}" \\
   -H "Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx" \\
   -H "Idempotency-Key: SHOP-ORD-10001" \\
   -H "Content-Type: application/json" \\
@@ -29,7 +45,7 @@ export function DeveloperDocs() {
     "reference": "SHOP-ORD-10001"
   }'`;
 
-  const jsOrderExample = `const response = await fetch("https://api.clickyfied.com/v1/orders", {
+  const jsOrderExample = `const response = await fetch("${ordersEndpoint}", {
   method: "POST",
   headers: {
     "Authorization": "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
@@ -51,7 +67,7 @@ console.log(data);`;
 
 async function placeOrder() {
   const { data } = await axios.post(
-    "https://api.clickyfied.com/v1/orders",
+    "${ordersEndpoint}",
     {
       network: "MTN",
       packageId: "mtn-1gb",
@@ -73,7 +89,7 @@ placeOrder();`;
 
   const pythonOrderExample = `import requests
 
-url = "https://api.clickyfied.com/v1/orders"
+url = "${ordersEndpoint}"
 headers = {
     "Authorization": "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
     "Idempotency-Key": "SHOP-ORD-10001",
@@ -90,7 +106,7 @@ response = requests.post(url, json=payload, headers=headers)
 print(response.json())`;
 
   const phpOrderExample = `<?php
-$ch = curl_init("https://api.clickyfied.com/v1/orders");
+$ch = curl_init("${ordersEndpoint}");
 $payload = json_encode([
     "network" => "MTN",
     "packageId" => "mtn-1gb",
@@ -149,11 +165,21 @@ function verifyClickyfiedWebhook(rawBody, signatureHeader, timestampHeader, secr
 
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/60">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Base URL</p>
-            <p className="mt-1 font-mono text-sm font-semibold text-blue-600 dark:text-blue-400">
-              https://api.clickyfied.com/v1
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Base URL</p>
+              <button
+                type="button"
+                onClick={() => copy("base-url", apiBaseUrl)}
+                className="text-[10px] font-semibold text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {copiedId === "base-url" ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <p className="mt-1 font-mono text-xs font-semibold text-blue-600 dark:text-blue-400 break-all select-all">
+              {apiBaseUrl}
             </p>
           </div>
+
           <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/60">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Auth Header</p>
             <p className="mt-1 font-mono text-xs font-semibold">
