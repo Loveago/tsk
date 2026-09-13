@@ -31,7 +31,7 @@ export async function POST(
     if (!storefront || storefront.status !== "ENABLED") {
       return apiError(404, "Store not found");
     }
-    if (!isPaystackConfigured()) {
+    if (!(await isPaystackConfigured())) {
       return apiError(503, "Online payment is not available right now.");
     }
 

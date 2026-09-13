@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { getSetting } from "@/lib/orders";
 
 /**
  * Paystack payment gateway client (Ghana: GHS, pesewas).
@@ -12,13 +13,15 @@ export const PAYSTACK_CURRENCY = "GHS";
 export const PAYSTACK_MIN_AMOUNT = 1; // GHS
 export const PAYSTACK_MAX_AMOUNT = 5000; // GHS
 
-export function getPaystackSecretKey(): string | null {
+export async function getPaystackSecretKey(): Promise<string | null> {
+  const dbKey = (await getSetting("paystack_secret_key")).trim();
+  if (dbKey) return dbKey;
   const key = process.env.PAYSTACK_SECRET_KEY?.trim();
   return key ? key : null;
 }
 
-export function isPaystackConfigured(): boolean {
-  return getPaystackSecretKey() !== null;
+export async function isPaystackConfigured(): Promise<boolean> {
+  return (await getPaystackSecretKey()) !== null;
 }
 
 async function paystackRequest<T>(
@@ -26,7 +29,7 @@ async function paystackRequest<T>(
   path: string,
   body?: unknown
 ): Promise<T> {
-  const secret = getPaystackSecretKey();
+  const secret = await getPaystackSecretKey();
   if (!secret) throw new Error("Paystack is not configured (missing PAYSTACK_SECRET_KEY)");
 
   const res = await fetch(`${PAYSTACK_BASE}${path}`, {
@@ -93,8 +96,8 @@ export async function verifyTransaction(reference: string): Promise<PaystackVeri
  * Webhook authenticity: HMAC SHA512 of the raw request body with the secret
  * key, compared (timing-safe) against the x-paystack-signature header.
  */
-export function verifyWebhookSignature(rawBody: string, signature: string | null): boolean {
-  const secret = getPaystackSecretKey();
+export async function verifyWebhookSignature(rawBody: string, signature: string | null): Promise<boolean> {
+  const secret = await getPaystackSecretKey();
   if (!secret || !signature) return false;
   const expected = createHmac("sha512", secret).update(rawBody, "utf8").digest("hex");
   const a = Buffer.from(expected, "utf8");

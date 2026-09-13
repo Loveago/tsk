@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { loginSchema } from "@/lib/validation";
+import { loginSchema, verifyOtpSchema } from "@/lib/validation";
 import { createSession, getClientIp } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { rateLimit } from "@/lib/rate-limit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 import { getSetting } from "@/lib/orders";
+import { generateLoginOtp, verifyLoginOtp } from "@/lib/otp";
+import { sendLoginOtpEmail } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,6 +19,58 @@ export async function POST(request: NextRequest) {
     if (!rl.allowed) return apiError(429, `Too many login attempts. Try again in ${lockoutMins} minutes.`);
 
     const body = await request.json();
+
+    // Support direct OTP verification payload: { ticket, code }
+    if (body.ticket && body.code) {
+      const otpInput = verifyOtpSchema.parse(body);
+      const result = await verifyLoginOtp(otpInput.ticket, otpInput.code);
+      if (!result.valid || !result.userId) {
+        return apiError(400, result.error || "Invalid or expired OTP code.");
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: result.userId },
+      });
+
+      if (!user || user.status !== "ACTIVE") {
+        return apiError(403, "Account is disabled or not found.");
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+
+      await createSession({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tokenVersion: user.tokenVersion,
+      });
+
+      await recordAudit({
+        userId: user.id,
+        actorLabel: user.email,
+        action: "auth.login_otp_verified",
+        target: `user:${user.id}`,
+        ip,
+        userAgent: request.headers.get("user-agent"),
+      });
+
+      return NextResponse.json({
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          status: user.status,
+          balance: user.balance,
+        },
+      });
+    }
+
+    // Standard credential submission: { email, password }
     const input = loginSchema.parse(body);
 
     const user = await prisma.user.findUnique({
@@ -30,6 +84,35 @@ export async function POST(request: NextRequest) {
 
     if (user.status !== "ACTIVE") {
       return apiError(403, "This account has been disabled. Contact support.");
+    }
+
+    const loginOtpEnabled = (await getSetting("login_otp_enabled", "false")) === "true";
+
+    if (loginOtpEnabled) {
+      const { code, ticket } = await generateLoginOtp(user.id, user.email);
+      const emailRes = await sendLoginOtpEmail(user.email, user.name || "User", code, 10);
+      if (!emailRes.success) {
+        return apiError(
+          500,
+          emailRes.error || "Failed to dispatch verification code to your email. Please try again or contact support."
+        );
+      }
+
+      await recordAudit({
+        userId: user.id,
+        actorLabel: user.email,
+        action: "auth.login_otp_dispatched",
+        target: `user:${user.id}`,
+        ip,
+        userAgent: request.headers.get("user-agent"),
+      });
+
+      return NextResponse.json({
+        requireOtp: true,
+        ticket,
+        email: user.email,
+        ...(process.env.NODE_ENV !== "production" ? { devOtp: code } : {}),
+      });
     }
 
     await prisma.user.update({

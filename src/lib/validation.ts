@@ -242,7 +242,14 @@ export const settingsSchema = z.object({
   paystack_topup_enabled: z.enum(["true", "false"]).optional(),
   paystack_min_topup: z.string().max(20).optional(),
   paystack_max_topup: z.string().max(20).optional(),
+  paystack_secret_key: z.string().max(255).optional(),
   api_feature_enabled: z.enum(["true", "false"]).optional(),
+
+  // Brevo & Email
+  brevo_api_key: z.string().max(255).optional(),
+  brevo_sender_email: z.string().max(120).optional(),
+  brevo_sender_name: z.string().max(100).optional(),
+  login_otp_enabled: z.enum(["true", "false"]).optional(),
   
   // Send Claim / MoMo
   send_claim_enabled: z.enum(["true", "false"]).optional(),
@@ -490,4 +497,16 @@ export const mtnImportConfirmSchema = z.object({
   source: z.string().min(1).default("IMPORT_TXT"),
   batchReference: z.string().optional(),
 });
+
+// ---------- Login OTP ----------
+export const verifyOtpSchema = z.object({
+  ticket: z.string().min(1, "OTP ticket is required"),
+  code: z.string().min(6, "Code must be 6 digits").max(6, "Code must be 6 digits"),
+});
+export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
+
+export const resendOtpSchema = z.object({
+  ticket: z.string().min(1, "OTP ticket is required"),
+});
+export type ResendOtpInput = z.infer<typeof resendOtpSchema>;
 

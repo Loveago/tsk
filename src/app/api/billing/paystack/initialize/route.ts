@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       return apiError(503, "Paystack top-ups are currently disabled.");
     }
 
-    if (!isPaystackConfigured()) {
+    if (!(await isPaystackConfigured())) {
       return apiError(503, "Paystack is not configured yet. Please use the MoMo top-up method.");
     }
 

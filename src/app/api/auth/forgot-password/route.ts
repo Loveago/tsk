@@ -5,8 +5,9 @@ import { forgotPasswordSchema } from "@/lib/validation";
 import { getClientIp } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { rateLimit } from "@/lib/rate-limit";
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError, getRequestOrigin } from "@/lib/api-helpers";
 import { getSetting } from "@/lib/orders";
+import { sendPasswordResetEmail } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,6 +39,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const origin = getRequestOrigin(request);
+    const resetUrl = `${origin}/reset-password?token=${token}`;
+
+    await sendPasswordResetEmail(
+      user.email,
+      user.name || "User",
+      resetUrl,
+      expiryMinutes
+    );
+
     await recordAudit({
       userId: user.id,
       actorLabel: user.email,
@@ -46,7 +57,7 @@ export async function POST(request: NextRequest) {
       ip,
     });
 
-    // No mail provider configured: return the link directly in non-production
+    // In non-production, also return resetPath for automated tests and dev convenience
     if (process.env.NODE_ENV !== "production") {
       return NextResponse.json({
         ok: true,

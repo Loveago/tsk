@@ -18,9 +18,13 @@ import {
   Lock,
   MessageSquare,
   FileText,
+  Mail,
+  Eye,
+  EyeOff,
+  Send,
 } from "lucide-react";
 
-type Category = "orders" | "users" | "mtn" | "storefront" | "billing" | "api" | "general" | "momo" | "wallet" | "maintenance" | "security" | "notifications" | "reports";
+type Category = "orders" | "users" | "mtn" | "storefront" | "billing" | "email" | "api" | "general" | "momo" | "wallet" | "maintenance" | "security" | "notifications" | "reports";
 
 const CATEGORIES: Array<{ id: Category; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "orders", label: "Orders & Submission", icon: Layers },
@@ -28,6 +32,7 @@ const CATEGORIES: Array<{ id: Category; label: string; icon: React.ComponentType
   { id: "mtn", label: "MTN Verification", icon: ShieldCheck },
   { id: "storefront", label: "Storefront & Markup", icon: Store },
   { id: "billing", label: "Billing & Payments", icon: Globe },
+  { id: "email", label: "Email & Brevo", icon: Mail },
   { id: "api", label: "API Access", icon: Layers },
   { id: "general", label: "General & Branding", icon: Globe },
   { id: "momo", label: "Send Claim / MoMo", icon: Wallet },
@@ -44,6 +49,10 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [activeCat, setActiveCat] = React.useState<Category>("orders");
+  const [showPaystackKey, setShowPaystackKey] = React.useState(false);
+  const [showBrevoKey, setShowBrevoKey] = React.useState(false);
+  const [testEmailTo, setTestEmailTo] = React.useState("");
+  const [sendingTestEmail, setSendingTestEmail] = React.useState(false);
 
   React.useEffect(() => {
     fetch("/api/admin/settings")
@@ -69,6 +78,32 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const handleSendTestEmail = async () => {
+    setSendingTestEmail(true);
+    try {
+      const res = await fetch("/api/admin/email/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toEmail: testEmailTo.trim() || undefined,
+          apiKey: settings.brevo_api_key?.trim() || undefined,
+          senderEmail: settings.brevo_sender_email?.trim() || undefined,
+          senderName: settings.brevo_sender_name?.trim() || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error || "Failed to send test email", "error");
+        return;
+      }
+      toast(`Test email sent successfully to ${json.recipient}!`, "success");
+    } catch {
+      toast("Failed to trigger test email", "error");
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -85,6 +120,7 @@ export default function AdminSettingsPage() {
   const storefrontEnabled = settings.storefront_feature_enabled !== "false";
   const storefrontApplyEnabled = settings.storefront_apply_enabled !== "false";
   const paystackTopupEnabled = settings.paystack_topup_enabled === "true";
+  const loginOtpEnabled = settings.login_otp_enabled === "true";
   const apiFeatureEnabled = settings.api_feature_enabled === "true";
   const defaultRole = settings.default_register_role || "USER";
 
@@ -616,6 +652,167 @@ export default function AdminSettingsPage() {
                     placeholder="5000"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <Label>Paystack Secret Key</Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPaystackKey(!showPaystackKey)}
+                    className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 inline-flex items-center gap-1 font-medium"
+                  >
+                    {showPaystackKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {showPaystackKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <Input
+                  type={showPaystackKey ? "text" : "password"}
+                  value={settings.paystack_secret_key ?? ""}
+                  onChange={(e) => setSettings((s) => ({ ...s, paystack_secret_key: e.target.value }))}
+                  placeholder="sk_live_... or sk_test_..."
+                  className="font-mono text-sm"
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Stored securely in database settings. Overrides PAYSTACK_SECRET_KEY in environment variables when provided.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category: Email & Brevo */}
+        {activeCat === "email" && (
+          <div className="space-y-4">
+            {/* Brevo API Credentials */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Brevo Email API Configuration
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Configure Brevo (formerly Sendinblue) as your platform transactional email provider.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label>Brevo API Key</Label>
+                    <button
+                      type="button"
+                      onClick={() => setShowBrevoKey(!showBrevoKey)}
+                      className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 inline-flex items-center gap-1 font-medium"
+                    >
+                      {showBrevoKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {showBrevoKey ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  <Input
+                    type={showBrevoKey ? "text" : "password"}
+                    value={settings.brevo_api_key ?? ""}
+                    onChange={(e) => setSettings((s) => ({ ...s, brevo_api_key: e.target.value }))}
+                    placeholder="xkeysib-..."
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Obtain your API key from Brevo dashboard &rarr; SMTP &amp; API &rarr; API Keys.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Brevo Sender Email</Label>
+                    <Input
+                      type="email"
+                      value={settings.brevo_sender_email ?? ""}
+                      onChange={(e) => setSettings((s) => ({ ...s, brevo_sender_email: e.target.value }))}
+                      placeholder="support@yourdomain.com"
+                    />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Must be a verified sender in your Brevo account.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Brevo Sender Name</Label>
+                    <Input
+                      value={settings.brevo_sender_name ?? ""}
+                      onChange={(e) => setSettings((s) => ({ ...s, brevo_sender_name: e.target.value }))}
+                      placeholder="Clickyfied"
+                    />
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Friendly display name shown on outgoing emails.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Login OTP Toggle */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Require Email OTP on Login
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    When enabled, users must enter a 6-digit one-time verification code sent to their email to sign in.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={loginOtpEnabled}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      login_otp_enabled: loginOtpEnabled ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    loginOtpEnabled ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      loginOtpEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Test Email Verification */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Test Email Dispatch
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Verify that your Brevo credentials work properly. Note: Make sure to click &quot;Save Changes&quot; above first.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2.5 items-end">
+                <div className="space-y-1.5 flex-1 w-full">
+                  <Label>Recipient Email</Label>
+                  <Input
+                    type="email"
+                    value={testEmailTo}
+                    onChange={(e) => setTestEmailTo(e.target.value)}
+                    placeholder="Leave empty to send to your admin email"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleSendTestEmail}
+                  disabled={sendingTestEmail}
+                  variant="outline"
+                  className="gap-1.5 shrink-0"
+                >
+                  {sendingTestEmail ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                  Send Test Email
+                </Button>
               </div>
             </div>
           </div>

@@ -33,12 +33,24 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
+    const auditSafeInput: Record<string, unknown> = { ...input };
+    if (typeof auditSafeInput.paystack_secret_key === "string" && auditSafeInput.paystack_secret_key) {
+      auditSafeInput.paystack_secret_key = auditSafeInput.paystack_secret_key.length <= 8
+        ? "********"
+        : `${auditSafeInput.paystack_secret_key.slice(0, 4)}...${auditSafeInput.paystack_secret_key.slice(-4)}`;
+    }
+    if (typeof auditSafeInput.brevo_api_key === "string" && auditSafeInput.brevo_api_key) {
+      auditSafeInput.brevo_api_key = auditSafeInput.brevo_api_key.length <= 8
+        ? "********"
+        : `${auditSafeInput.brevo_api_key.slice(0, 4)}...${auditSafeInput.brevo_api_key.slice(-4)}`;
+    }
+
     await recordAudit({
       userId: actor.id,
       actorLabel: actor.email,
       action: "settings.update",
       target: "settings",
-      newValue: JSON.stringify(input),
+      newValue: JSON.stringify(auditSafeInput),
     });
 
     const settings = await prisma.systemSetting.findMany();
