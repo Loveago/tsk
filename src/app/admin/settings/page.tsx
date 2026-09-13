@@ -18,10 +18,9 @@ import {
   Lock,
   MessageSquare,
   FileText,
-  Tag,
 } from "lucide-react";
 
-type Category = "orders" | "users" | "mtn" | "storefront" | "billing" | "api" | "general" | "momo" | "wallet" | "maintenance" | "security" | "notifications" | "reports" | "pricing";
+type Category = "orders" | "users" | "mtn" | "storefront" | "billing" | "api" | "general" | "momo" | "wallet" | "maintenance" | "security" | "notifications" | "reports";
 
 const CATEGORIES: Array<{ id: Category; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "orders", label: "Orders & Submission", icon: Layers },
@@ -37,7 +36,6 @@ const CATEGORIES: Array<{ id: Category; label: string; icon: React.ComponentType
   { id: "security", label: "Security", icon: Lock },
   { id: "notifications", label: "Notifications & Contact", icon: MessageSquare },
   { id: "reports", label: "Reports", icon: FileText },
-  { id: "pricing", label: "Pricing & Packages", icon: Tag },
 ];
 
 export default function AdminSettingsPage() {
@@ -1016,84 +1014,7 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
-        {/* Category 14: Pricing & Packages */}
-        {activeCat === "pricing" && (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                    Show Package Prices
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Whether users see package retail prices on the packages page.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={settings.show_package_prices_to_users === "true"}
-                  onClick={() =>
-                    setSettings((s) => ({
-                      ...s,
-                      show_package_prices_to_users: s.show_package_prices_to_users === "true" ? "false" : "true",
-                    }))
-                  }
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                    settings.show_package_prices_to_users === "true" ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                      settings.show_package_prices_to_users === "true" ? "left-[22px]" : "left-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
 
-              <div className="flex items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                    Allow Free Packages
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Whether orders with GHS 0 cost are allowed.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={settings.allow_zero_price_orders === "true"}
-                  onClick={() =>
-                    setSettings((s) => ({
-                      ...s,
-                      allow_zero_price_orders: s.allow_zero_price_orders === "true" ? "false" : "true",
-                    }))
-                  }
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                    settings.allow_zero_price_orders === "true" ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                      settings.allow_zero_price_orders === "true" ? "left-[22px]" : "left-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="space-y-1.5 pt-4 border-t border-slate-100 dark:border-slate-800">
-                <Label>Low Balance Warning Threshold (GHS)</Label>
-                <Input
-                  type="number"
-                  value={settings.low_balance_warning_threshold ?? "5"}
-                  onChange={(e) => setSettings((s) => ({ ...s, low_balance_warning_threshold: e.target.value }))}
-                  placeholder="5"
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
