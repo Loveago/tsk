@@ -39,19 +39,21 @@ export const updateProfileSchema = z.object({
 });
 
 // ---------- Orders ----------
-export const normalizeGhanaPhone = (raw: string): string => {
-  let p = raw.replace(/[^\d+]/g, "").replace(/^\+/, "");
-  if (p.startsWith("233") && p.length === 12) p = `0${p.slice(3)}`;
-  if (p.length === 9) p = `0${p}`;
-  return p;
-};
+export {
+  normalizeGhanaPhoneNumber,
+  normalizeGhanaPhone,
+} from "./phone-utils";
 
-const ghanaPhoneRegex = /^0(24|25|53|54|55|59|20|50|26|27|56|57)\d{7}$/;
+import {
+  GHANA_PHONE_REGEX as ghanaPhoneRegex,
+  MTN_PHONE_REGEX as mtnPhoneRegex,
+  normalizeGhanaPhoneNumber,
+} from "./phone-utils";
 
 export const phoneSchema = z.preprocess(
   (val) =>
     typeof val === "string" || typeof val === "number"
-      ? normalizeGhanaPhone(String(val).trim())
+      ? normalizeGhanaPhoneNumber(String(val).trim())
       : val,
   z
     .string()
@@ -59,6 +61,20 @@ export const phoneSchema = z.preprocess(
     .regex(
       ghanaPhoneRegex,
       "Enter a valid Ghanaian number e.g. 0241234567"
+    )
+);
+
+export const mtnPhoneSchema = z.preprocess(
+  (val) =>
+    typeof val === "string" || typeof val === "number"
+      ? normalizeGhanaPhoneNumber(String(val).trim())
+      : val,
+  z
+    .string()
+    .trim()
+    .regex(
+      mtnPhoneRegex,
+      "Enter a valid Ghanaian MTN number e.g. 0241234567"
     )
 );
 
@@ -193,6 +209,8 @@ export const settingsSchema = z.object({
   support_whatsapp: z.string().max(40).optional(),
   site_name: z.string().max(80).optional(),
   default_momo_number: z.string().max(40).optional(),
+  mtn_number_verification_enabled: z.enum(["true", "false"]).optional(),
+  mtn_verification_instructions: z.string().max(2000).optional(),
 });
 
 export const pricingProfileUpdateSchema = pricingProfileSchema;
@@ -366,4 +384,33 @@ export const signupCodeUpdateSchema = z.object({
 
 export type SendClaimSubmitInput = z.infer<typeof sendClaimSubmitSchema>;
 export type SignupCodeCreateInput = z.infer<typeof signupCodeCreateSchema>;
+
+// ---------- MTN Number Verification ----------
+export const mtnVerificationSubmitSchema = z.object({
+  phoneNumber: mtnPhoneSchema,
+});
+
+export const mtnBatchCreateSchema = z.object({
+  requestIds: z.array(z.string().min(1)).min(1, "Select at least one request to create a batch"),
+});
+
+export const mtnBatchVerifySchema = z.object({
+  mode: z.enum(["ALL", "SELECTED", "REJECT"]),
+  verifiedNumberIds: z.array(z.string()).optional(),
+  rejectionReason: z.string().max(300).optional().or(z.literal("")),
+});
+
+export const mtnAcceptedAddSchema = z.object({
+  phoneNumber: mtnPhoneSchema,
+});
+
+export const mtnAcceptedBulkDeleteSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1, "Select at least one record to delete"),
+});
+
+export const mtnImportConfirmSchema = z.object({
+  numbers: z.array(z.string().min(9)).min(1, "No valid numbers to import"),
+  source: z.string().min(1).default("IMPORT_TXT"),
+  batchReference: z.string().optional(),
+});
 

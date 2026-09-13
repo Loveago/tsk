@@ -22,6 +22,8 @@ import {
   Ticket,
   FileWarning,
   FileSpreadsheet,
+  CheckCircle2,
+  ShieldCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -73,6 +75,7 @@ export function resolveNavIcon(name: NavIconName | undefined): React.ComponentTy
 export const userNav: NavItem[] = [
   { href: "/dashboard/send", label: "Send Order", icon: Send },
   { href: "/dashboard/orders", label: "Sent Orders", icon: ClipboardList, badge: true },
+  { href: "/dashboard/mtn-verification", label: "MTN Verification", icon: CheckCircle2 },
   { href: "/dashboard/not-received", label: "Not Received", icon: FileWarning },
   { href: "/dashboard/reports", label: "Reports", icon: FileBarChart },
   { href: "/dashboard/packages", label: "Packages", icon: Package },
@@ -84,6 +87,7 @@ export const userNav: NavItem[] = [
 export const adminNav: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/orders", label: "Orders", icon: ClipboardList },
+  { href: "/admin/mtn-verification", label: "MTN Verification", icon: ShieldCheck },
   { href: "/admin/exports", label: "Exports", icon: FileSpreadsheet },
   { href: "/admin/delivery-reports", label: "Not Received", icon: FileWarning },
   { href: "/admin/users", label: "Users", icon: Users },

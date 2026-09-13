@@ -11,6 +11,7 @@ import {
   storefrontOrderCode,
 } from "@/lib/storefront";
 import { isPaystackConfigured, initializeTransaction } from "@/lib/paystack";
+import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 
 /**
  * Public storefront checkout (no sign-in): validates the bundle + recipient
@@ -40,6 +41,16 @@ export async function POST(
     });
     if (!product || !product.isActive) {
       return apiError(404, "That bundle is not available");
+    }
+
+    // Central MTN Number Verification Check (§16, §17)
+    const mtnCheck = await validateMtnOrderRecipient(
+      input.customerPhone,
+      product.dataPackage.network,
+      storefront.userId
+    );
+    if (!mtnCheck.allowed) {
+      return apiError(400, mtnCheck.reason ?? "MTN number verification required.");
     }
 
     // Server-side only commission: sellingPrice - current reseller cost (§48).

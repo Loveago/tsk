@@ -18,6 +18,7 @@ import {
   Ticket,
   Clock,
   ArrowDownLeft,
+  ShieldCheck,
 } from "lucide-react";
 
 export default async function AdminDashboardPage() {
@@ -41,6 +42,11 @@ export default async function AdminDashboardPage() {
     claimsTodayCount,
     activeSignupCodesCount,
     codeRegistrationsCount,
+    acceptedMtnCount,
+    pendingMtnCount,
+    processingMtnCount,
+    rejectedMtnCount,
+    blockedMtnCount,
   ] = await Promise.all([
     getOrderStats({}),
     prisma.user.count(),
@@ -80,6 +86,12 @@ export default async function AdminDashboardPage() {
     }),
     // CODE REGISTRATIONS
     prisma.signupCodeUsage.count(),
+    // MTN NUMBER VERIFICATION (§24)
+    prisma.acceptedMtnNumber.count(),
+    prisma.mtnVerificationRequest.count({ where: { status: "SUBMITTED" } }),
+    prisma.mtnVerificationRequest.count({ where: { status: "PROCESSING" } }),
+    prisma.mtnVerificationRequest.count({ where: { status: "REJECTED" } }),
+    prisma.blockedMtnNumber.count(),
   ]);
 
   return (
@@ -172,6 +184,53 @@ export default async function AdminDashboardPage() {
             value={String(codeRegistrationsCount)}
             icon={Users}
             hint="Total invited users"
+          />
+        </div>
+      </div>
+
+      {/* MTN Number Verification (§24) */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+            MTN Number Verification
+          </h2>
+          <div className="flex gap-3 text-xs">
+            <Link href="/admin/mtn-verification" className="text-brand-600 hover:underline dark:text-brand-400 font-medium">
+              Manage Verification →
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+          <StatCard
+            title="Accepted Numbers"
+            value={acceptedMtnCount.toLocaleString()}
+            icon={CheckCircle2}
+            hint="Active whitelist"
+          />
+          <StatCard
+            title="Pending Verification"
+            value={pendingMtnCount.toLocaleString()}
+            icon={Clock}
+            hint="Awaiting batching"
+          />
+          <StatCard
+            title="Processing"
+            value={processingMtnCount.toLocaleString()}
+            icon={Smartphone}
+            hint="In verification batches"
+          />
+          <StatCard
+            title="Rejected"
+            value={rejectedMtnCount.toLocaleString()}
+            icon={AlertTriangle}
+            hint="Failed verification"
+          />
+          <StatCard
+            title="Unverified / Blocked"
+            value={blockedMtnCount.toLocaleString()}
+            icon={Users}
+            hint="Ordered when OFF"
           />
         </div>
       </div>

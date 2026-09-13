@@ -10,6 +10,7 @@ import {
 import { isOrderProcessingHalted, getDefaultProfileId } from "@/lib/orders";
 import { dispatchWebhookEvent } from "@/lib/webhooks";
 import { phoneSchema } from "@/lib/validation";
+import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -423,6 +424,20 @@ export async function POST(request: NextRequest) {
 
     if (price <= 0) {
       throw new ApiError("INVALID_PACKAGE", "No price configured for this package", 400);
+    }
+
+    // Central MTN Number Verification Check (§16, §17)
+    const mtnCheck = await validateMtnOrderRecipient(
+      recipient,
+      pkg.network,
+      authContext.userId
+    );
+    if (!mtnCheck.allowed) {
+      throw new ApiError(
+        "MTN_NUMBER_NOT_VERIFIED",
+        mtnCheck.reason ?? "This MTN number has not been verified yet. Please submit the number for verification before purchasing an MTN package.",
+        422
+      );
     }
 
     // Transactionally create order and deduct balance

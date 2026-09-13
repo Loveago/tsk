@@ -9,6 +9,8 @@ import {
   type OrderStatus,
 } from "./types";
 
+import { validateMtnOrderRecipient } from "./mtn-verification";
+
 export async function getSetting(key: string, fallback = ""): Promise<string> {
   const row = await prisma.systemSetting.findUnique({ where: { key } });
   return row?.value ?? fallback;
@@ -80,6 +82,11 @@ export async function createOrder(input: CreateOrderInput) {
   if (price == null) {
     throw new Error("No price configured for this package in your profile");
   }
+
+  // Central MTN Number Verification Check (§16, §17)
+  await validateMtnOrderRecipient(input.phoneNumber, input.network, input.userId, {
+    throwOnFailure: true,
+  });
 
   const status = input.status ?? "PENDING";
   const createdAt = input.createdAt ?? new Date();

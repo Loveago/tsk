@@ -39,6 +39,7 @@ model User {
   apiWebhook     ApiWebhook?
   sendClaims     SendClaim[]
   signupCodeUsage SignupCodeUsage?
+  mtnVerificationRequests MtnVerificationRequest[]
 
   @@index([role])
   @@index([status])
@@ -685,5 +686,114 @@ model SignupCodeUsage {
   @@index([signupCodeId])
   @@index([userId])
   @@index([usedAt])
+}
+
+// ---------------------------------------------------------------------------
+// MTN Number Verification System
+// ---------------------------------------------------------------------------
+
+model AcceptedMtnNumber {
+  id               String                @id @default(cuid())
+  number           String
+  normalizedNumber String                @unique
+  source           String                @default("MANUAL") // MANUAL | IMPORT_TXT | IMPORT_CSV | BATCH_VERIFICATION
+  batchId          String?
+  batch            MtnVerificationBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  verifiedAt       DateTime              @default(now())
+  verifiedBy       String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([normalizedNumber])
+  @@index([source])
+  @@index([createdAt])
+  @@index([batchId])
+}
+
+model MtnVerificationRequest {
+  id              String                 @id @default(cuid())
+  userId          String
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number          String
+  normalizedNumber String
+  status          String                 @default("SUBMITTED") // SUBMITTED | PROCESSING | VERIFIED | REJECTED
+  batchId         String?
+  batch           MtnVerificationBatch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  submittedAt     DateTime               @default(now())
+  processedAt     DateTime?
+  verifiedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  batchNumbers    MtnVerificationBatchNumber[]
+
+  @@index([userId])
+  @@index([normalizedNumber])
+  @@index([status])
+  @@index([batchId])
+  @@index([createdAt])
+}
+
+model MtnVerificationBatch {
+  id             String    @id @default(cuid())
+  batchReference String    @unique
+  status         String    @default("READY") // READY | EXPORTED | PROCESSING | COMPLETED | REJECTED | PARTIALLY_VERIFIED
+  createdBy      String?
+  exportedAt     DateTime?
+  submittedAt    DateTime?
+  completedAt    DateTime?
+  totalNumbers   Int       @default(0)
+  verifiedCount  Int       @default(0)
+  rejectedCount  Int       @default(0)
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  numbers         MtnVerificationBatchNumber[]
+  requests        MtnVerificationRequest[]
+  acceptedNumbers AcceptedMtnNumber[]
+
+  @@index([batchReference])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model MtnVerificationBatchNumber {
+  id                    String                  @id @default(cuid())
+  batchId               String
+  batch                 MtnVerificationBatch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  verificationRequestId String?
+  verificationRequest   MtnVerificationRequest? @relation(fields: [verificationRequestId], references: [id], onDelete: SetNull)
+  number                String
+  normalizedNumber      String
+  status                String                  @default("READY") // READY | EXPORTED | PROCESSING | VERIFIED | REJECTED
+  rejectionReason       String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@index([batchId])
+  @@index([verificationRequestId])
+  @@index([normalizedNumber])
+  @@index([status])
+}
+
+model BlockedMtnNumber {
+  id               String   @id @default(cuid())
+  number           String
+  normalizedNumber String   @unique
+  firstSeenAt      DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+  firstUserId      String?
+  lastUserId       String?
+  orderCount       Int      @default(1)
+  status           String   @default("UNVERIFIED") // UNVERIFIED | SUBMITTED | PROCESSING | ACCEPTED | REJECTED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([normalizedNumber])
+  @@index([status])
+  @@index([lastSeenAt])
 }
 

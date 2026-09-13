@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { sendOrdersSchema } from "@/lib/validation";
 import { createOrder, isOrderProcessingHalted } from "@/lib/orders";
+import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 import { nextBatchCode } from "@/lib/batches";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
@@ -59,6 +60,16 @@ export async function POST(request: NextRequest) {
       total += price;
       return { ...o, price };
     });
+
+    // Validate MTN numbers before balance deduction (§2, §16)
+    for (const o of input.orders) {
+      const check = await validateMtnOrderRecipient(o.phoneNumber, o.network, user.id, {
+        recordUnverified: false,
+      });
+      if (!check.allowed) {
+        return apiError(400, check.reason ?? "MTN number verification failed.");
+      }
+    }
 
     if (user.balance < total) {
       return apiError(402, `Insufficient balance. You need GHS ${total.toFixed(2)} but have GHS ${user.balance.toFixed(2)}.`);

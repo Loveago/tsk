@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { AuthError } from "./auth";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
+import { validateMtnOrderRecipient } from "./mtn-verification";
 
 // ---------------------------------------------------------------------------
 // Money — all storefront money is stored as integer pesewas (GHS x 100) so
@@ -342,6 +343,20 @@ export async function settleStorefrontPayment(
   if (!storefront) return { settled: false, reason: "storefront missing" };
 
   const wallet = await ensureWallet(storefront.userId);
+
+  // Central MTN Number Verification Check (§16, §17)
+  const mtnCheck = await validateMtnOrderRecipient(
+    row.customerPhone,
+    row.product.dataPackage.network,
+    storefront.userId,
+    { recordUnverified: false }
+  );
+  if (!mtnCheck.allowed) {
+    return {
+      settled: false,
+      reason: mtnCheck.reason ?? "MTN recipient phone number verification required",
+    };
+  }
 
   await prisma.$transaction(async (tx) => {
     // 1. Underlying Clickyfied order so the order lifecycle stays uniform.
