@@ -81,6 +81,17 @@ export interface ExportOrdersInput {
   to?: string;
   isReexport?: boolean;
   reason?: string;
+  /**
+   * Status to move the exported orders into. Defaults to PROCESSING.
+   * When set to PENDING the orders are exported but their status is unchanged.
+   */
+  targetStatus?: string;
+  /** Exact volume filter in MB (overrides min/max when set). */
+  volumeExactMb?: number;
+  /** Minimum volume filter in MB (inclusive). */
+  volumeMinMb?: number;
+  /** Maximum volume filter in MB (inclusive). */
+  volumeMaxMb?: number;
 }
 
 export interface ExportOrdersResult {
@@ -99,7 +110,7 @@ export interface ExportOrdersResult {
  *  1. select eligible orders
  *  2. verify them
  *  3. generate the Excel file (before ANY status change)
- *  4. only if generation succeeded -> create ExportBatch, move PENDING -> PROCESSING
+ *  4. only if generation succeeded -> create ExportBatch, move PENDING -> targetStatus
  *  5. record status history + audit log + submit to provider
  * If file generation fails, orders stay untouched in the pending queue (§31).
  */
@@ -119,6 +130,15 @@ export async function exportOrdersToExcel(
     where.createdAt = {} as Record<string, Date>;
     if (input.from) (where.createdAt as Record<string, Date>).gte = new Date(input.from);
     if (input.to) (where.createdAt as Record<string, Date>).lte = new Date(input.to);
+  }
+  // Volume filters: MB values from the dialog are converted to GB (orders store gbAmount in GB)
+  if (input.volumeExactMb !== undefined) {
+    where.gbAmount = input.volumeExactMb / 1024;
+  } else if (input.volumeMinMb !== undefined || input.volumeMaxMb !== undefined) {
+    const gbFilter: Record<string, number> = {};
+    if (input.volumeMinMb !== undefined) gbFilter.gte = input.volumeMinMb / 1024;
+    if (input.volumeMaxMb !== undefined) gbFilter.lte = input.volumeMaxMb / 1024;
+    where.gbAmount = gbFilter;
   }
 
   // 2. Verify eligible orders right before export
@@ -184,7 +204,7 @@ export async function exportOrdersToExcel(
       const previousStatus = order.status;
       const nextStatus: OrderStatus = isReexport
         ? (order.status as OrderStatus)
-        : "PROCESSING";
+        : ((input.targetStatus ?? "PROCESSING") as OrderStatus);
 
       await tx.order.update({
         where: { id: order.id },

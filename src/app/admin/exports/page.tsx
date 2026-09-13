@@ -1,16 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { PageHeader, StatCard, EmptyState, Spinner } from "@/components/shared";
-import { BatchStatusBadge, downloadBase64 } from "@/components/batches/batch-ui";
+import { PageHeader, EmptyState, Spinner } from "@/components/shared";
+import { BatchStatusBadge } from "@/components/batches/batch-ui";
 import { ExportDetailSheet } from "@/components/admin/export-detail-sheet";
+import { NetworkExportDialog } from "@/components/admin/network-export-dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS } from "@/lib/types";
 import { FileSpreadsheet, Download, RefreshCw, ChevronRight } from "lucide-react";
-
-const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 
 interface NetworkStat {
   network: string;
@@ -42,15 +40,16 @@ interface ExportRow {
 }
 
 export default function AdminExportsPage() {
-  const { toast } = useToast();
   const [stats, setStats] = React.useState<NetworkStat[]>([]);
   const [rows, setRows] = React.useState<ExportRow[]>([]);
   const [pages, setPages] = React.useState(1);
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(true);
-  const [exporting, setExporting] = React.useState<string | null>(null);
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = React.useState(false);
+
+  // Dialog state for per-network export
+  const [dialogNetwork, setDialogNetwork] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -74,31 +73,6 @@ export default function AdminExportsPage() {
   React.useEffect(() => {
     load();
   }, [load]);
-
-  const exportNetwork = async (network: string) => {
-    setExporting(network);
-    try {
-      const res = await fetch("/api/admin/exports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ network }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        toast(json.error ?? "Export failed", "error");
-        return;
-      }
-      if (!json.count) {
-        toast("No PENDING recipients to export for this network", "error");
-        return;
-      }
-      downloadBase64(json.fileName, json.fileBase64);
-      toast(`Export ${json.exportCode} created — ${json.count} recipient(s) moved to PROCESSING`, "success");
-      await load();
-    } finally {
-      setExporting(null);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -128,15 +102,10 @@ export default function AdminExportsPage() {
               </div>
               <Button
                 size="sm"
-                onClick={() => exportNetwork(s.network)}
-                disabled={exporting !== null || s.pending === 0}
+                onClick={() => setDialogNetwork(s.network)}
                 className="gap-1.5"
               >
-                {exporting === s.network ? (
-                  <Spinner className="h-3.5 w-3.5" />
-                ) : (
-                  <FileSpreadsheet className="h-3.5 w-3.5" />
-                )}
+                <FileSpreadsheet className="h-3.5 w-3.5" />
                 Export
               </Button>
             </div>
@@ -244,6 +213,17 @@ export default function AdminExportsPage() {
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         onChanged={load}
+      />
+
+      {/* Per-network export dialog with filters */}
+      <NetworkExportDialog
+        network={dialogNetwork ?? ""}
+        pendingCount={stats.find((st) => st.network === dialogNetwork)?.pending ?? 0}
+        pendingGb={stats.find((st) => st.network === dialogNetwork)?.pendingGb ?? 0}
+        pendingAmount={stats.find((st) => st.network === dialogNetwork)?.pendingAmount ?? 0}
+        open={dialogNetwork !== null}
+        onClose={() => setDialogNetwork(null)}
+        onExported={load}
       />
     </div>
   );

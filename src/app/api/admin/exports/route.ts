@@ -105,6 +105,10 @@ export async function POST(request: NextRequest) {
       to: input.to || undefined,
       isReexport: input.isReexport,
       reason: input.reason || undefined,
+      targetStatus: input.targetStatus || undefined,
+      volumeExactMb: input.volumeExactMb,
+      volumeMinMb: input.volumeMinMb,
+      volumeMaxMb: input.volumeMaxMb,
     });
 
     return NextResponse.json({

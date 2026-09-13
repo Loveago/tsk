@@ -124,6 +124,14 @@ export const exportOrdersSchema = z.object({
   to: z.string().optional().or(z.literal("")),
   isReexport: z.boolean().optional(),
   reason: z.string().max(300).optional().or(z.literal("")),
+  /** Status to move exported orders into. Defaults to PROCESSING when omitted. */
+  targetStatus: z.enum(ORDER_STATUSES as [string, ...string[]]).optional(),
+  /** Exact volume filter in MB (overrides min/max when set). */
+  volumeExactMb: z.coerce.number().positive().optional(),
+  /** Minimum volume filter in MB (inclusive). */
+  volumeMinMb: z.coerce.number().positive().optional(),
+  /** Maximum volume filter in MB (inclusive). */
+  volumeMaxMb: z.coerce.number().positive().optional(),
 });
 
 export const deliveryReportActionSchema = z.object({
