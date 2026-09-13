@@ -32,7 +32,12 @@ export async function GET(request: NextRequest) {
       price: priceMap.has(p.gbAmount) ? priceMap.get(p.gbAmount) : p.retailPriceGHS ?? null,
     }));
 
-    return NextResponse.json({ packages: data });
+    const killSwitch = await prisma.systemSetting.findUnique({
+      where: { key: "number_submission_page_enabled" },
+    });
+    const submissionEnabled = killSwitch?.value !== "false";
+
+    return NextResponse.json({ packages: data, submissionEnabled });
   } catch (err) {
     return handleRouteError(err);
   }

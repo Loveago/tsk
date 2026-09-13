@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
 
 export default async function AdminLayout({
@@ -10,5 +11,18 @@ export default async function AdminLayout({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "ADMIN" && user.role !== "MANAGER") redirect("/dashboard");
-  return <AppShell user={user} admin>{children}</AppShell>;
+
+  const supportWhatsappSetting = await prisma.systemSetting.findUnique({
+    where: { key: "support_whatsapp" },
+  });
+
+  return (
+    <AppShell
+      user={user}
+      admin
+      supportWhatsapp={supportWhatsappSetting?.value || undefined}
+    >
+      {children}
+    </AppShell>
+  );
 }

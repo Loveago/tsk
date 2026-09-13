@@ -8,6 +8,7 @@ interface Initial {
   description: string;
   whatsapp: string;
   phone: string;
+  whatsappGroupLink: string;
   location: string;
   contactText: string;
   whatsappLabel: string;
@@ -36,6 +37,8 @@ export function StorefrontSettingsForm({ initial }: { initial: Initial }) {
         body: JSON.stringify({
           storeName: form.name,
           description: form.description,
+          phone: form.phone,
+          whatsappGroupLink: form.whatsappGroupLink,
           supportPhone: form.whatsapp,
           contactText: form.contactText,
           whatsappLabel: form.whatsappLabel,
@@ -97,8 +100,24 @@ export function StorefrontSettingsForm({ initial }: { initial: Initial }) {
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-transparent"
         />
         <div className="grid gap-3 sm:grid-cols-2">
-          <input value={form.whatsapp} onChange={set("whatsapp")} placeholder="WhatsApp number e.g. 0241234567" inputMode="tel" className={inputCls} />
-          <input value={form.location} onChange={set("location")} placeholder="Location (optional)" className={inputCls} />
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Contact Number</label>
+            <input value={form.phone} onChange={set("phone")} placeholder="Primary contact e.g. 0241234567" inputMode="tel" className={inputCls} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">WhatsApp Group Link</label>
+            <input value={form.whatsappGroupLink} onChange={set("whatsappGroupLink")} placeholder="https://chat.whatsapp.com/..." className={inputCls} />
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Support WhatsApp Number</label>
+            <input value={form.whatsapp} onChange={set("whatsapp")} placeholder="WhatsApp support e.g. 0241234567" inputMode="tel" className={inputCls} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Location (optional)</label>
+            <input value={form.location} onChange={set("location")} placeholder="e.g. Accra, Ghana" className={inputCls} />
+          </div>
         </div>
         <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">

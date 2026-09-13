@@ -29,6 +29,8 @@ interface ApplicationRow {
   userId: string;
   name: string;
   slug: string;
+  phone?: string | null;
+  whatsappGroupLink?: string | null;
   owner: string;
   status: string;
   rejectionNote: string | null;
@@ -144,6 +146,25 @@ export function AdminStorefrontPanel({
                     {a.owner} · applied {a.requestedAt}
                     {a.rejectionNote ? ` · last note: “${a.rejectionNote}”` : ""}
                   </p>
+                  {(a.phone || a.whatsappGroupLink) && (
+                    <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
+                      {a.phone && (
+                        <span className="text-slate-600 dark:text-slate-300">
+                          <strong>Tel:</strong> {a.phone}
+                        </span>
+                      )}
+                      {a.whatsappGroupLink && (
+                        <a
+                          href={a.whatsappGroupLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-emerald-600 hover:underline dark:text-emerald-400"
+                        >
+                          WhatsApp Group Link ↗
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {a.status === "PENDING" ? (
                   <div className="flex flex-wrap items-center gap-2">

@@ -31,14 +31,47 @@ export default function ReportsPage() {
   const [to, setTo] = React.useState("");
   const [loading, setLoading] = React.useState(true);
 
+  const [error, setError] = React.useState<string | null>(null);
+
   const load = React.useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
-    const res = await fetch(`/api/reports?${params}`);
-    setData(await res.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const res = await fetch(`/api/reports?${params}`);
+      const json = await res.json();
+      if (res.ok) {
+        setData({
+          statusCounts: json.statusCounts ?? {},
+          totalOrders: json.totalOrders ?? 0,
+          totalSpend: json.totalSpend ?? 0,
+          daily: json.daily ?? [],
+          byPackage: json.byPackage ?? [],
+        });
+      } else {
+        setError(json.error ?? "Failed to load report data");
+        setData({
+          statusCounts: {},
+          totalOrders: 0,
+          totalSpend: 0,
+          daily: [],
+          byPackage: [],
+        });
+      }
+    } catch {
+      setError("Failed to load report data");
+      setData({
+        statusCounts: {},
+        totalOrders: 0,
+        totalSpend: 0,
+        daily: [],
+        byPackage: [],
+      });
+    } finally {
+      setLoading(false);
+    }
   }, [from, to]);
 
   React.useEffect(() => {
@@ -63,6 +96,12 @@ export default function ReportsPage() {
           <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          {error}
+        </div>
+      )}
 
       {loading || !data ? (
         <div className="flex justify-center py-16">

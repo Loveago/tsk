@@ -84,9 +84,13 @@ export async function PATCH(
     const body = await request.json().catch(() => ({}));
     if (body?.action !== "CANCEL") return apiError(400, "Unsupported action");
 
+    if (user.role !== "ADMIN" && user.role !== "MANAGER") {
+      return apiError(403, "Order cancellation feature has been disabled.");
+    }
+
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order) return apiError(404, "Order not found");
-    if (order.userId !== user.id) return apiError(403, "Not allowed");
+    if (order.userId !== user.id && user.role !== "ADMIN" && user.role !== "MANAGER") return apiError(403, "Not allowed");
     if (order.status !== "PENDING") {
       return apiError(409, "Only pending orders can be cancelled");
     }

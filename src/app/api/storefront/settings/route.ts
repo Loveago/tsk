@@ -31,6 +31,8 @@ export async function PATCH(request: NextRequest) {
       data: {
         name: input.storeName,
         description: input.description || null,
+        phone: input.phone || null,
+        whatsappGroupLink: input.whatsappGroupLink || null,
         whatsapp: input.supportPhone || null,
         contactText: input.contactText || null,
         whatsappLabel: input.whatsappLabel || null,

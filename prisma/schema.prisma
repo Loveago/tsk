@@ -353,6 +353,7 @@ model Storefront {
   bannerUrl   String?
   phone       String?
   whatsapp    String?
+  whatsappGroupLink String?
   email       String?
   location    String?
   // Saved MoMo payout account (§27/§28)

@@ -31,6 +31,14 @@ async function generateUniqueSlug(storeName: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser();
+
+    const storefrontEnabledSetting = await prisma.systemSetting.findUnique({
+      where: { key: "storefront_feature_enabled" },
+    });
+    if (storefrontEnabledSetting?.value === "false") {
+      return apiError(503, "Storefront applications are currently disabled by administrator.");
+    }
+
     const input = storefrontApplySchema.parse(await request.json());
 
     const existing = await prisma.storefront.findUnique({ where: { userId: user.id } });
@@ -50,6 +58,8 @@ export async function POST(request: NextRequest) {
           where: { id: existing.id },
           data: {
             name: input.storeName,
+            phone: input.contactNumber,
+            whatsappGroupLink: input.whatsappGroupLink,
             description: input.description || null,
             status: "PENDING",
             rejectionNote: null,
@@ -60,6 +70,8 @@ export async function POST(request: NextRequest) {
             userId: user.id,
             slug,
             name: input.storeName,
+            phone: input.contactNumber,
+            whatsappGroupLink: input.whatsappGroupLink,
             description: input.description || null,
             status: "PENDING",
           },

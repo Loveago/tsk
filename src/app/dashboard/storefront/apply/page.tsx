@@ -35,6 +35,8 @@ export default async function StoreApplyPage() {
         rejected={storefront?.status === "REJECTED"}
         rejectionNote={storefront?.rejectionNote ?? null}
         previousName={storefront?.name ?? ""}
+        previousPhone={storefront?.phone ?? ""}
+        previousWhatsappGroupLink={storefront?.whatsappGroupLink ?? ""}
         previousDescription={storefront?.description ?? ""}
       />
     </div>

@@ -63,6 +63,8 @@ export default async function AdminStorefrontsPage() {
           userId: a.userId,
           name: a.name,
           slug: a.slug,
+          phone: a.phone,
+          whatsappGroupLink: a.whatsappGroupLink,
           owner: `${a.user.name} (${a.user.email})`,
           status: a.status,
           rejectionNote: a.rejectionNote,

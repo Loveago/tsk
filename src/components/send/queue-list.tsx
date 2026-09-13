@@ -1,6 +1,5 @@
-"use client";
-
 import { formatGHS } from "@/lib/types";
+import { isMtnPrefix } from "@/lib/phone-utils";
 import { Send, ShoppingBag, Trash2 } from "lucide-react";
 
 export interface Line {
@@ -40,7 +39,14 @@ export function QueueList({
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-500 dark:bg-white/5 dark:text-slate-400">
               {i + 1}
             </span>
-            <span className="min-w-0 flex-1 truncate font-semibold">{l.phoneNumber}</span>
+            <div className="min-w-0 flex-1 truncate">
+              <span className="font-semibold">{l.phoneNumber}</span>
+              {l.network === "MTN" && !isMtnPrefix(l.phoneNumber) && (
+                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                  Ported to MTN
+                </span>
+              )}
+            </div>
             <span className="hidden w-24 text-xs text-slate-500 sm:inline">{l.network}</span>
             <span className="inline-flex items-center rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] font-bold text-violet-600 dark:text-violet-400">
               {l.gbAmount} GB

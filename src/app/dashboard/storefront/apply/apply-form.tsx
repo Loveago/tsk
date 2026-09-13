@@ -8,15 +8,23 @@ export function StoreApplyForm({
   rejected,
   rejectionNote,
   previousName,
+  previousPhone,
+  previousWhatsappGroupLink,
   previousDescription,
 }: {
   rejected: boolean;
   rejectionNote: string | null;
   previousName: string;
+  previousPhone?: string;
+  previousWhatsappGroupLink?: string;
   previousDescription: string;
 }) {
   const router = useRouter();
   const [storeName, setStoreName] = React.useState(rejected ? "" : previousName);
+  const [contactNumber, setContactNumber] = React.useState(rejected ? "" : (previousPhone ?? ""));
+  const [whatsappGroupLink, setWhatsappGroupLink] = React.useState(
+    rejected ? "" : (previousWhatsappGroupLink ?? "")
+  );
   const [description, setDescription] = React.useState(previousDescription);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -27,10 +35,20 @@ export function StoreApplyForm({
     setBusy(true);
     setError(null);
     try {
+      const cleanLink = whatsappGroupLink.trim();
+      const normalizedLink = cleanLink.startsWith("http://") || cleanLink.startsWith("https://")
+        ? cleanLink
+        : `https://${cleanLink}`;
+
       const res = await fetch("/api/storefront/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storeName, description }),
+        body: JSON.stringify({
+          storeName: storeName.trim(),
+          contactNumber: contactNumber.trim(),
+          whatsappGroupLink: normalizedLink,
+          description,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not submit your application");
@@ -61,6 +79,11 @@ export function StoreApplyForm({
     );
   }
 
+  const isValid =
+    storeName.trim().length >= 2 &&
+    contactNumber.trim().length >= 9 &&
+    whatsappGroupLink.trim().length >= 5;
+
   return (
     <form onSubmit={submit} className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
       {rejected && (
@@ -74,7 +97,7 @@ export function StoreApplyForm({
       )}
       <div>
         <label htmlFor="storeName" className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-          Store name
+          Storefront name <span className="text-red-500">*</span>
         </label>
         <input
           id="storeName"
@@ -90,6 +113,47 @@ export function StoreApplyForm({
           Shown to buyers. Your public address is assigned when the store is approved.
         </p>
       </div>
+
+      <div>
+        <label htmlFor="contactNumber" className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+          Contact number <span className="text-red-500">*</span>
+        </label>
+        <input
+          id="contactNumber"
+          type="tel"
+          value={contactNumber}
+          onChange={(e) => setContactNumber(e.target.value)}
+          placeholder="e.g. 0241234567"
+          required
+          minLength={9}
+          maxLength={20}
+          className={inputCls}
+        />
+        <p className="mt-1 text-xs text-slate-400">
+          Primary phone number for administrative contact and customer queries.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="whatsappGroupLink" className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+          WhatsApp group link <span className="text-red-500">*</span>
+        </label>
+        <input
+          id="whatsappGroupLink"
+          type="text"
+          value={whatsappGroupLink}
+          onChange={(e) => setWhatsappGroupLink(e.target.value)}
+          placeholder="https://chat.whatsapp.com/..."
+          required
+          minLength={5}
+          maxLength={255}
+          className={inputCls}
+        />
+        <p className="mt-1 text-xs text-slate-400">
+          Your customer community or announcement WhatsApp group invite link.
+        </p>
+      </div>
+
       <div>
         <label htmlFor="storeDesc" className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">
           Short description <span className="font-normal text-slate-400">(optional)</span>
@@ -104,14 +168,16 @@ export function StoreApplyForm({
           className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-transparent"
         />
       </div>
+
       {error && (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
           {error}
         </p>
       )}
+
       <button
         type="submit"
-        disabled={busy || storeName.trim().length < 2}
+        disabled={busy || !isValid}
         className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-violet-600 text-sm font-bold text-white hover:bg-violet-500 disabled:opacity-50"
       >
         {busy && <Loader2 className="h-4 w-4 animate-spin" />}

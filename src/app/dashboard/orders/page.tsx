@@ -6,12 +6,12 @@ import { StatusBadge } from "@/components/status-badge";
 import { BatchStatusBadge, BatchStatsChips, type BatchStats } from "@/components/batches/batch-ui";
 import { ProgressBar } from "@/components/ui/progress";
 import { Dialog } from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { FileWarning, Layers, Search } from "lucide-react";
+import { ChevronRight, FileWarning, Layers, Search } from "lucide-react";
+
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "PARTIALLY_COMPLETED", "COMPLETED", "FAILED", "CANCELLED"];
 const REPORT_REASONS = ["Data not received", "Partial data received", "Wrong number sent", "Other"];
@@ -64,7 +64,6 @@ export default function OrdersPage() {
   const [loading, setLoading] = React.useState(true);
   const [detail, setDetail] = React.useState<BatchDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
-  const [cancelOrder, setCancelOrder] = React.useState<DetailOrder | null>(null);
   const [reportOrder, setReportOrder] = React.useState<DetailOrder | null>(null);
   const [reason, setReason] = React.useState(REPORT_REASONS[0]);
   const [message, setMessage] = React.useState("");
@@ -102,29 +101,6 @@ export default function OrdersPage() {
       else toast(json.error ?? "Failed to load batch", "error");
     } finally {
       setDetailLoading(false);
-    }
-  };
-
-  const cancelPending = async () => {
-    if (!cancelOrder) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/orders/${cancelOrder.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "CANCEL" }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        toast(json.error ?? "Cancel failed", "error");
-        return;
-      }
-      toast("Order cancelled", "success");
-      setCancelOrder(null);
-      await load();
-      if (detail) await openDetail(detail.batch.id);
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -219,43 +195,75 @@ export default function OrdersPage() {
           />
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => openDetail(b.id)}
-              className="rounded-2xl border border-slate-100 bg-white p-5 text-left shadow-sm transition hover:border-brand-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-500/30"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-mono text-xs font-bold tracking-wide text-brand-600 dark:text-brand-400">
-                    {b.batchCode}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-400">{formatDateTime(b.createdAt)}</p>
-                </div>
-                <BatchStatusBadge status={b.status} />
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
-                <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5">
-                  <p className="text-lg font-bold">{b.stats.total || b.totalRecipients}</p>
-                  <p className="text-[11px] text-slate-500">recipients</p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5">
-                  <p className="text-lg font-bold">{b.totalGb}</p>
-                  <p className="text-[11px] text-slate-500">GB · {b.network}</p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5">
-                  <p className="text-lg font-bold">{formatGHS(b.totalAmount)}</p>
-                  <p className="text-[11px] text-slate-500">value</p>
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <ProgressBar value={b.stats.completed + b.stats.cancelled} total={b.stats.total} />
-                <span className="text-xs font-semibold text-slate-500">{b.progress}%</span>
-              </div>
-              <BatchStatsChips stats={b.stats} className="mt-2" />
-            </button>
-          ))}
+        /* Horizontal line order history layout */
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="border-b border-slate-200/80 bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-white/5 dark:text-slate-400">
+                <tr>
+                  <th className="px-5 py-3.5">Batch Code</th>
+                  <th className="px-4 py-3.5">Network</th>
+                  <th className="px-4 py-3.5">Recipients</th>
+                  <th className="px-4 py-3.5">Total GB</th>
+                  <th className="px-4 py-3.5">Total Value</th>
+                  <th className="px-4 py-3.5">Progress</th>
+                  <th className="px-4 py-3.5">Status</th>
+                  <th className="px-5 py-3.5 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                {rows.map((b) => (
+                  <tr
+                    key={b.id}
+                    onClick={() => openDetail(b.id)}
+                    className="cursor-pointer transition-colors hover:bg-slate-50/80 dark:hover:bg-white/[0.03]"
+                  >
+                    <td className="px-5 py-3.5">
+                      <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                        {b.batchCode}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">{formatDateTime(b.createdAt)}</p>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                        {b.network}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                      {b.stats.total || b.totalRecipients}
+                    </td>
+                    <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                      {b.totalGb} GB
+                    </td>
+                    <td className="px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
+                      {formatGHS(b.totalAmount)}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="flex w-32 items-center gap-2">
+                        <ProgressBar value={b.stats.completed + b.stats.cancelled} total={b.stats.total} />
+                        <span className="text-xs font-semibold text-slate-500">{b.progress}%</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <BatchStatusBadge status={b.status} />
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDetail(b.id);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-brand-500/40 dark:hover:text-brand-400"
+                      >
+                        Details <ChevronRight className="h-3 w-3" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -329,12 +337,9 @@ export default function OrdersPage() {
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex justify-end gap-1.5">
-                          {o.status === "PENDING" && (
-                            <Button size="sm" variant="outline" onClick={() => setCancelOrder(o)}>
-                              Cancel
-                            </Button>
-                          )}
-                          {o.status !== "PENDING" && o.status !== "CANCELLED" && o.status !== "REFUNDED" && (
+                          {/* Cancel order feature removed per user request */}
+                          {/* Report only shows on completed orders (SUCCESS or COMPLETED) */}
+                          {(o.status === "SUCCESS" || o.status === "COMPLETED") && (
                             <Button size="sm" variant="ghost" className="text-amber-600 dark:text-amber-400" onClick={() => setReportOrder(o)}>
                               <FileWarning className="h-3.5 w-3.5" /> Report
                             </Button>
@@ -355,21 +360,6 @@ export default function OrdersPage() {
           </div>
         )}
       </Dialog>
-      <ConfirmDialog
-        open={!!cancelOrder}
-        onClose={() => setCancelOrder(null)}
-        onConfirm={cancelPending}
-        title="Cancel order"
-        message={
-          <>
-            Cancel order <strong className="font-mono">{cancelOrder ? orderCode(cancelOrder.id) : ""}</strong> to{" "}
-            {cancelOrder?.phoneNumber} ({cancelOrder?.gbAmount} GB)? The amount is returned to your balance.
-          </>
-        }
-        confirmLabel="Cancel order"
-        variant="destructive"
-        loading={busy}
-      />
 
       <Dialog open={!!reportOrder} onClose={() => setReportOrder(null)} title="Report not received">
         <div className="space-y-4">

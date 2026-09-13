@@ -4,21 +4,27 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { handleRouteError } from "@/lib/api-helpers";
 
+function parseDateParam(str: string | null, endOfDay = false): Date | null {
+  if (!str) return null;
+  const d = new Date(str.length === 10 && endOfDay ? `${str}T23:59:59.999Z` : str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await requireUser();
     const { searchParams } = new URL(request.url);
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
+    const fromDate = parseDateParam(searchParams.get("from"), false);
+    const toDate = parseDateParam(searchParams.get("to"), true);
 
     const where: Record<string, unknown> = { userId: user.id };
-    if (from || to) {
+    if (fromDate || toDate) {
       where.createdAt = {};
-      if (from) (where.createdAt as Record<string, Date>).gte = new Date(from);
-      if (to) (where.createdAt as Record<string, Date>).lte = new Date(to);
+      if (fromDate) (where.createdAt as Record<string, Date>).gte = fromDate;
+      if (toDate) (where.createdAt as Record<string, Date>).lte = toDate;
     }
 
-    const [statusCounts, spendAgg, daily, byPackage] = await Promise.all([
+    const [statusCounts, spendAgg, dailyOrders, byPackage] = await Promise.all([
       prisma.order.groupBy({
         by: ["status"],
         where,
@@ -29,16 +35,11 @@ export async function GET(request: NextRequest) {
         _sum: { amount: true },
         _count: { _all: true },
       }),
-      prisma.$queryRaw<{ day: string; count: bigint; amount: number | null }[]>`
-        SELECT date(createdAt / 1000, 'unixepoch') as day, COUNT(*) as count, COALESCE(SUM(amount), 0) as amount
-        FROM "Order"
-        WHERE userId = ${user.id}
-          ${from ? Prisma.sql`AND createdAt >= ${new Date(from)}` : Prisma.empty}
-          ${to ? Prisma.sql`AND createdAt <= ${new Date(to)}` : Prisma.empty}
-        GROUP BY day
-        ORDER BY day ASC
-        LIMIT 60
-      `,
+      prisma.order.findMany({
+        where,
+        select: { createdAt: true, amount: true },
+        orderBy: { createdAt: "asc" },
+      }),
       prisma.order.groupBy({
         by: ["network", "gbAmount"],
         where,
@@ -51,11 +52,25 @@ export async function GET(request: NextRequest) {
     const counts: Record<string, number> = {};
     for (const s of statusCounts) counts[s.status] = s._count._all;
 
+    const dailyMap = new Map<string, { count: number; amount: number }>();
+    for (const o of dailyOrders) {
+      const day = o.createdAt.toISOString().slice(0, 10);
+      const entry = dailyMap.get(day) ?? { count: 0, amount: 0 };
+      entry.count += 1;
+      entry.amount += o.amount;
+      dailyMap.set(day, entry);
+    }
+    const daily = Array.from(dailyMap.entries()).map(([day, val]) => ({
+      day,
+      count: val.count,
+      amount: val.amount,
+    }));
+
     return NextResponse.json({
       statusCounts: counts,
       totalOrders: spendAgg._count._all,
       totalSpend: spendAgg._sum.amount ?? 0,
-      daily: daily.map((d) => ({ day: d.day, count: Number(d.count), amount: Number(d.amount) })),
+      daily,
       byPackage: byPackage.map((b) => ({
         network: b.network,
         gbAmount: b.gbAmount,

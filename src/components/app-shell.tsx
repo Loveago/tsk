@@ -112,6 +112,7 @@ export function AppShell({
   admin,
   announcement,
   extraNavItems,
+  supportWhatsapp,
 }: {
   user: AuthUser;
   children: React.ReactNode;
@@ -120,6 +121,7 @@ export function AppShell({
   /** Additional items (e.g. gated "My Storefront") appended to the base nav.
    *  Must be plain data — icon components can't cross the RSC boundary. */
   extraNavItems?: ExtraNavItem[];
+  supportWhatsapp?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -249,13 +251,13 @@ export function AppShell({
         Clickyfied4u © 2026
       </footer>
 
-      {/* Floating support chat — bottom left, as per the reference design */}
+      {/* Floating support chat — bottom right */}
       <a
-        href="https://wa.me/233000000000"
+        href={`https://wa.me/${(supportWhatsapp || "233000000000").replace(/[^0-9]/g, "")}`}
         target="_blank"
         rel="noreferrer"
         aria-label="Chat with support on WhatsApp"
-        className="fixed bottom-5 left-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-lg shadow-blue-600/30 transition-transform hover:scale-105"
+        className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-lg shadow-blue-600/30 transition-transform hover:scale-105"
       >
         <MessageCircle className="h-5 w-5" />
         <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-[#060b16]" />

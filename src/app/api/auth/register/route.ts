@@ -33,6 +33,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const [regSetting, defaultRoleSetting] = await Promise.all([
+      prisma.systemSetting.findUnique({ where: { key: "allow_user_registration" } }),
+      prisma.systemSetting.findUnique({ where: { key: "default_register_role" } }),
+    ]);
+
+    if (regSetting?.value === "false") {
+      return apiError(403, "New user registration is currently closed by administrator.");
+    }
+
+    const assignedRole = defaultRoleSetting?.value === "RESELLER" ? "RESELLER" : "USER";
+
     const existing = await prisma.user.findUnique({
       where: { email: input.email.toLowerCase() },
     });
@@ -48,7 +59,7 @@ export async function POST(request: NextRequest) {
           name: input.name,
           email: input.email.toLowerCase(),
           passwordHash,
-          role: "USER",
+          role: assignedRole,
           status: "ACTIVE",
           pricingProfileId: defaultProfileId,
         },

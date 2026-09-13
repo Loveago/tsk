@@ -16,8 +16,37 @@ export async function POST(request: NextRequest) {
       return apiError(503, "Order processing is temporarily halted. Please try again later.");
     }
 
+    const killSwitch = await prisma.systemSetting.findUnique({
+      where: { key: "number_submission_page_enabled" },
+    });
+    if (killSwitch?.value === "false") {
+      return apiError(503, "Number submission is currently disabled by administrator.");
+    }
+
     const body = await request.json();
     const input = sendOrdersSchema.parse(body);
+
+    // Deduplicate within the submission batch so only one order per phone number is processed
+    const seenPhones = new Set<string>();
+    const deduplicatedOrders: typeof input.orders = [];
+    for (const o of input.orders) {
+      if (!seenPhones.has(o.phoneNumber)) {
+        seenPhones.add(o.phoneNumber);
+        deduplicatedOrders.push(o);
+      }
+    }
+
+    if (deduplicatedOrders.length === 0) {
+      return apiError(400, "No valid orders provided.");
+    }
+
+    const maxOrdersSetting = await prisma.systemSetting.findUnique({
+      where: { key: "max_orders_per_submission" },
+    });
+    const maxAllowed = maxOrdersSetting?.value ? parseInt(maxOrdersSetting.value, 10) : 500;
+    if (deduplicatedOrders.length > maxAllowed) {
+      return apiError(400, `Maximum ${maxAllowed} orders allowed per submission.`);
+    }
 
     // Enforce package availability: admin-disabled packages must not be
     // orderable, even from a stale page or a crafted request.
@@ -27,7 +56,7 @@ export async function POST(request: NextRequest) {
     });
     const activeKeys = new Set(activePackages.map((p) => `${p.network}:${p.gbAmount}`));
     const activeIds = new Set(activePackages.map((p) => p.id));
-    for (const o of input.orders) {
+    for (const o of deduplicatedOrders) {
       if (o.packageId) {
         if (!activeIds.has(o.packageId)) {
           return apiError(400, "One or more selected packages are currently unavailable.");
@@ -37,6 +66,33 @@ export async function POST(request: NextRequest) {
           400,
           `${o.network} ${o.gbAmount}GB is currently unavailable. Please refresh the page and try again.`
         );
+      }
+    }
+
+    // MTN single order per number a day toggle check
+    const singleOrderPerDay = await prisma.systemSetting.findUnique({
+      where: { key: "mtn_single_order_per_day_enabled" },
+    });
+    if (singleOrderPerDay?.value === "true") {
+      const now = new Date();
+      const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+      for (const o of deduplicatedOrders) {
+        if (o.network === "MTN") {
+          const existingToday = await prisma.order.findFirst({
+            where: {
+              phoneNumber: o.phoneNumber,
+              network: "MTN",
+              createdAt: { gte: startOfDay },
+              status: { notIn: ["CANCELLED", "REFUNDED"] },
+            },
+          });
+          if (existingToday) {
+            return apiError(
+              400,
+              `MTN number ${o.phoneNumber} already has an order placed today. Only 1 order per MTN number per day is permitted.`
+            );
+          }
+        }
       }
     }
 
@@ -52,7 +108,7 @@ export async function POST(request: NextRequest) {
     const priceMap = new Map(tiers.map((t) => [t.gbAmount, t.priceGHS]));
 
     let total = 0;
-    const priced = input.orders.map((o) => {
+    const priced = deduplicatedOrders.map((o) => {
       const price = priceMap.get(o.gbAmount) ?? null;
       if (price == null) {
         throw new Error(`No price configured for ${o.gbAmount}GB`);
@@ -62,7 +118,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Validate MTN numbers before balance deduction (§2, §16)
-    for (const o of input.orders) {
+    for (const o of deduplicatedOrders) {
       const check = await validateMtnOrderRecipient(o.phoneNumber, o.network, user.id, {
         recordUnverified: false,
       });

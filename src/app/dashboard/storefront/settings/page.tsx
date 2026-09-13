@@ -20,6 +20,7 @@ export default async function StorefrontSettingsPage() {
           description: storefront.description ?? "",
           whatsapp: storefront.whatsapp ?? "",
           phone: storefront.phone ?? "",
+          whatsappGroupLink: storefront.whatsappGroupLink ?? "",
           location: storefront.location ?? "",
           contactText: storefront.contactText ?? "",
           whatsappLabel: storefront.whatsappLabel ?? "",

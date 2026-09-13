@@ -206,28 +206,46 @@ export const paystackTopupSchema = z.object({
 // ---------- Admin ----------
 export const settingsSchema = z.object({
   order_processing_halted: z.enum(["true", "false"]).optional(),
+  number_submission_page_enabled: z.enum(["true", "false"]).optional(),
+  mtn_single_order_per_day_enabled: z.enum(["true", "false"]).optional(),
+  default_register_role: z.enum(["USER", "RESELLER"]).optional(),
+  allow_user_registration: z.enum(["true", "false"]).optional(),
   support_whatsapp: z.string().max(40).optional(),
   site_name: z.string().max(80).optional(),
+  site_announcement: z.string().max(300).optional(),
   default_momo_number: z.string().max(40).optional(),
+  contact_email: z.string().max(80).optional(),
   mtn_number_verification_enabled: z.enum(["true", "false"]).optional(),
   mtn_verification_instructions: z.string().max(2000).optional(),
+  storefront_feature_enabled: z.enum(["true", "false"]).optional(),
+  storefront_min_markup: z.string().max(20).optional(),
+  storefront_max_markup: z.string().max(20).optional(),
+  storefront_min_withdrawal: z.string().max(20).optional(),
+  max_orders_per_submission: z.string().max(10).optional(),
 });
 
 export const pricingProfileUpdateSchema = pricingProfileSchema;
 
 // ---------- Storefront ----------
 export const storefrontSettingsSchema = z.object({
-  storeName: z.string().min(2, "Store name is required").max(60),
-  tagline: z.string().max(120).optional().or(z.literal("")),
+  storeName: z.string().min(2).max(60),
   description: z.string().max(600).optional().or(z.literal("")),
-  supportPhone: z.string().max(20).optional().or(z.literal("")),
-  contactText: z.string().max(120).optional().or(z.literal("")),
+  phone: z.string().max(40).optional().or(z.literal("")),
+  whatsappGroupLink: z.string().max(255).optional().or(z.literal("")),
+  supportPhone: z.string().max(40).optional().or(z.literal("")),
+  contactText: z.string().max(160).optional().or(z.literal("")),
   whatsappLabel: z.string().max(40).optional().or(z.literal("")),
 });
 
-/** User-side store application: the user only supplies their store identity. */
+/** User-side store application: store name, contact number, and WhatsApp group link are mandatory. */
 export const storefrontApplySchema = z.object({
-  storeName: z.string().min(2, "Store name is required").max(60),
+  storeName: z.string().trim().min(2, "Store name is required").max(60),
+  contactNumber: z.string().trim().min(9, "Valid contact number is required").max(20),
+  whatsappGroupLink: z
+    .string()
+    .trim()
+    .min(5, "WhatsApp group link is required")
+    .max(255),
   description: z.string().max(600).optional().or(z.literal("")),
 });
 

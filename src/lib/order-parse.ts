@@ -72,6 +72,20 @@ function isCompletePhone(raw: string): boolean {
 }
 
 /**
+ * Splits bulk order text into individual order lines.
+ * Handles newlines and inline orders separated by commas/semicolons where
+ * a comma/semicolon is followed by a new Ghanaian phone number.
+ */
+export function splitOrderLines(text: string): string[] {
+  const cleanText = normalizeTextNumbers(text);
+  return cleanText
+    .replace(/[,;]\s*(?=(?:\+?233|0)?[25]\d{8}\b)/g, "\n")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+/**
  * Parses one order line in the form "number gb" (e.g. `0535308873,1` or
  * `0507904981 10gb`, or just `535308873` defaulting to 1GB). The selected network
  * applies unless the line carries an explicit network token.
@@ -82,7 +96,7 @@ export function parseOrderLine(
   line: string,
   packages: OrderParsePackage[],
   defaultNetwork: string,
-  defaultGb: number = 1
+  defaultGb?: number
 ): ParsedOrderLine | null {
   const tokens = splitTokens(line);
   if (!tokens.length) return null;
@@ -112,6 +126,7 @@ export function parseOrderLine(
   const resolved = network ?? defaultNetwork;
   if (!phone) return null;
   const effectiveGb = gb ?? defaultGb;
+  if (effectiveGb == null) return null;
   if (!phoneSchema.safeParse(phone).success) return null;
   const price =
     packages.find((q) => q.network === resolved && q.gbAmount === effectiveGb)?.price ?? null;

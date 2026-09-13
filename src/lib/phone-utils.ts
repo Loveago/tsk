@@ -66,3 +66,17 @@ export function getNetworkFromGhanaPhone(
   if (AIRTELTIGO_PREFIXES.includes(prefix)) return "AIRTELTIGO";
   return null;
 }
+
+export function isMtnPrefix(raw: string): boolean {
+  const normalized = normalizeGhanaPhoneNumber(raw);
+  return MTN_PREFIXES.includes(normalized.slice(0, 3));
+}
+
+export function detectNetworkNameByPrefix(raw: string): string {
+  const normalized = normalizeGhanaPhoneNumber(raw);
+  const prefix = normalized.slice(0, 3);
+  if (MTN_PREFIXES.includes(prefix)) return "MTN";
+  if (TELECEL_PREFIXES.includes(prefix)) return "Telecel";
+  if (AIRTELTIGO_PREFIXES.includes(prefix)) return "AirtelTigo";
+  return "Unknown";
+}
