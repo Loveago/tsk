@@ -48,8 +48,14 @@ export async function GET(request: NextRequest) {
     outcome = "failed";
   }
 
-  const target = slug
-    ? `/store/${slug}?payment=${outcome}&reference=${encodeURIComponent(reference)}`
-    : `/store?payment=${outcome}`;
+  // On success redirect to the dedicated order detail page; on failure back to the store homepage banner.
+  let target: string;
+  if (slug && outcome === "success" && reference) {
+    target = `/store/${slug}/order/${encodeURIComponent(reference)}`;
+  } else if (slug) {
+    target = `/store/${slug}?payment=${outcome}&reference=${encodeURIComponent(reference)}`;
+  } else {
+    target = `/store?payment=${outcome}`;
+  }
   return NextResponse.redirect(new URL(target, origin));
 }

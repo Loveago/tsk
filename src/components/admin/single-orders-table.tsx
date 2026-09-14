@@ -5,7 +5,7 @@ import { EmptyState, Spinner } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDateTime, formatGHS } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Store } from "lucide-react";
 
 export interface AdminOrderRow {
   id: number;
@@ -14,9 +14,15 @@ export interface AdminOrderRow {
   gbAmount: number;
   amount: number;
   status: string;
+  source?: string;
   createdAt: string;
   batch?: { batchCode: string } | null;
   user?: { name: string; email: string } | null;
+  storefrontOrder?: {
+    seq: number;
+    paymentReference: string;
+    storefront: { name: string; slug: string };
+  } | null;
 }
 
 export function SingleOrdersTable({
@@ -73,6 +79,7 @@ export function SingleOrdersTable({
                 <th className="px-4 py-3 font-medium">Bundle</th>
                 <th className="px-4 py-3 font-medium">Amount</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Storefront</th>
                 <th className="px-4 py-3 font-medium">Batch</th>
                 <th className="px-4 py-3 font-medium">User</th>
                 {onChangeStatus && <th className="px-4 py-3 font-medium">Quick Status</th>}
@@ -117,6 +124,24 @@ export function SingleOrdersTable({
                   <td className="px-4 py-3 font-semibold">{formatGHS(o.amount)}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={o.status} />
+                  </td>
+                  {/* Storefront column */}
+                  <td className="px-4 py-3">
+                    {o.storefrontOrder ? (
+                      <div className="flex items-start gap-1.5">
+                        <Store className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
+                        <div className="min-w-0">
+                          <p className="truncate max-w-[120px] text-xs font-semibold text-slate-800 dark:text-slate-200">
+                            {o.storefrontOrder.storefront.name}
+                          </p>
+                          <p className="font-mono text-[10px] text-slate-400">
+                            {o.storefrontOrder.paymentReference}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-slate-300 dark:text-slate-600">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-500">
                     {o.batch?.batchCode ?? "—"}

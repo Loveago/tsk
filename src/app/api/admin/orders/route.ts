@@ -15,10 +15,12 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const network = searchParams.get("network");
     const q = searchParams.get("q");
+    const source = searchParams.get("source"); // WEB | API | STOREFRONT
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (network) where.network = network;
+    if (source) where.source = source;
     if (q) {
       where.OR = [
         { phoneNumber: { contains: q } },
@@ -36,6 +38,13 @@ export async function GET(request: NextRequest) {
         include: {
           user: { select: { name: true, email: true } },
           batch: { select: { batchCode: true } },
+          storefrontOrder: {
+            select: {
+              seq: true,
+              paymentReference: true,
+              storefront: { select: { name: true, slug: true } },
+            },
+          },
         },
       }),
       prisma.order.count({ where }),

@@ -10,7 +10,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
-import { Layers, Search, CheckSquare } from "lucide-react";
+import { Layers, Search } from "lucide-react";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
@@ -34,14 +34,18 @@ export default function AdminOrdersPage() {
   const [status, setStatus] = React.useState("");
   const [q, setQ] = React.useState("");
   const [quick, setQuick] = React.useState("");
+  const [source, setSource] = React.useState(""); // "" | "WEB" | "API" | "STOREFRONT"
   const [loading, setLoading] = React.useState(true);
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = React.useState(false);
 
-  // View mode: automatic switch when searching a phone number, or manual toggle
+  // View mode: automatic switch when searching a phone number, filtering by source, or manual toggle
   const [viewMode, setViewMode] = React.useState<"auto" | "batches" | "single">("auto");
   const isPhoneSearch =
-    viewMode === "single" || (viewMode === "auto" && /\d{3,}/.test(q.trim()));
+    viewMode === "single" ||
+    (viewMode === "auto" && /\d{3,}/.test(q.trim())) ||
+    source === "STOREFRONT" ||
+    source === "API";
 
   // Single orders state
   const [singleOrders, setSingleOrders] = React.useState<AdminOrderRow[]>([]);
@@ -60,6 +64,7 @@ export default function AdminOrdersPage() {
         if (network) params.set("network", network);
         if (status) params.set("status", status);
         if (q) params.set("q", q);
+        if (source) params.set("source", source);
         const res = await fetch(`/api/admin/orders?${params}`);
         const json = await res.json();
         setSingleOrders(json.data ?? []);
@@ -80,7 +85,7 @@ export default function AdminOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, network, status, q, quick, isPhoneSearch]);
+  }, [page, network, status, q, quick, source, isPhoneSearch]);
 
   React.useEffect(() => {
     const t = setTimeout(load, 250);
@@ -168,9 +173,17 @@ export default function AdminOrdersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={isPhoneSearch ? "Order Lookup" : "Batch Ops Center"}
+        title={
+          source === "STOREFRONT"
+            ? "Storefront Orders"
+            : isPhoneSearch
+            ? "Order Lookup"
+            : "Batch Ops Center"
+        }
         description={
-          isPhoneSearch
+          source === "STOREFRONT"
+            ? `${singleTotal} storefront order${singleTotal === 1 ? "" : "s"} from public storefronts`
+            : isPhoneSearch
             ? `${singleTotal} order${singleTotal === 1 ? "" : "s"} matching "${q}"`
             : `${total} batch${total === 1 ? "" : "es"} — orders grouped per network`
         }
@@ -253,6 +266,20 @@ export default function AdminOrdersPage() {
                 {s.replaceAll("_", " ")}
               </option>
             ))}
+          </select>
+          {/* Source filter — Storefront + API auto-switch to single orders view */}
+          <select
+            className={selectCls}
+            value={source}
+            onChange={(e) => {
+              setSource(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All sources</option>
+            <option value="WEB">Web</option>
+            <option value="API">API</option>
+            <option value="STOREFRONT">🏪 Storefront</option>
           </select>
           <input
             className={selectCls + " w-60"}
