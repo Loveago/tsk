@@ -22,13 +22,36 @@ import {
   Eye,
   EyeOff,
   Send,
+  Megaphone,
+  Plus,
+  Trash2,
+  CheckCircle2,
+  AlertTriangle,
+  Sparkles,
+  Check,
 } from "lucide-react";
 
-type Category = "orders" | "users" | "mtn" | "storefront" | "billing" | "email" | "api" | "general" | "momo" | "wallet" | "maintenance" | "security" | "notifications" | "reports";
+type Category =
+  | "orders"
+  | "users"
+  | "announcements"
+  | "mtn"
+  | "storefront"
+  | "billing"
+  | "email"
+  | "api"
+  | "general"
+  | "momo"
+  | "wallet"
+  | "maintenance"
+  | "security"
+  | "notifications"
+  | "reports";
 
 const CATEGORIES: Array<{ id: Category; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "orders", label: "Orders & Submission", icon: Layers },
   { id: "users", label: "Users & Roles", icon: Users },
+  { id: "announcements", label: "Announcement Banner", icon: Megaphone },
   { id: "mtn", label: "MTN Verification", icon: ShieldCheck },
   { id: "storefront", label: "Storefront & Markup", icon: Store },
   { id: "billing", label: "Billing & Payments", icon: Globe },
@@ -53,6 +76,70 @@ export default function AdminSettingsPage() {
   const [showBrevoKey, setShowBrevoKey] = React.useState(false);
   const [testEmailTo, setTestEmailTo] = React.useState("");
   const [sendingTestEmail, setSendingTestEmail] = React.useState(false);
+  const [newTemplateText, setNewTemplateText] = React.useState("");
+  const [newCategoryText, setNewCategoryText] = React.useState("");
+
+  const DEFAULT_ANNOUNCEMENT_TEMPLATES = React.useMemo(
+    () => [
+      "⚠️ MTN network downtime currently affecting orders. Processing will resume shortly.",
+      "🛠️ Scheduled maintenance tonight at 11:00 PM GMT. Service will be briefly unavailable.",
+      "🎉 Promo Alert! Enjoy special reseller data bundle rates this weekend.",
+      "⏳ Telecel bundle deliveries are experiencing slight delays. We are actively monitoring.",
+      "✅ System updates completed. All services are running at normal capacity.",
+    ],
+    []
+  );
+
+  const ADMIN_PAGE_OPTIONS = React.useMemo(
+    () => [
+      { href: "/admin", label: "Dashboard Overview" },
+      { href: "/admin/orders", label: "Orders" },
+      { href: "/admin/exports", label: "Exports" },
+      { href: "/admin/delivery-reports", label: "Not Received (Reports)" },
+      { href: "/admin/mtn-verification", label: "MTN Verification" },
+      { href: "/admin/storefronts", label: "Storefronts" },
+      { href: "/admin/packages", label: "Package Catalogue" },
+      { href: "/admin/pricing", label: "Pricing Matrix" },
+      { href: "/admin/billing", label: "Billing & Payments" },
+      { href: "/admin/reports", label: "Reports & Analytics" },
+      { href: "/admin/users", label: "Users & Accounts" },
+      { href: "/admin/users/signup-codes", label: "Signup Codes" },
+      { href: "/admin/api", label: "Developer API" },
+      { href: "/admin/settings", label: "Platform Settings" },
+      { href: "/admin/audit-logs", label: "Audit Logs" },
+    ],
+    []
+  );
+
+  const SYSTEM_DEFAULT_CATEGORIES = React.useMemo(() => ["MTN", "TELECEL", "AIRTELTIGO"], []);
+
+  const customAnnouncementTemplates: string[] = React.useMemo(() => {
+    try {
+      return settings.announcement_templates ? JSON.parse(settings.announcement_templates) : [];
+    } catch {
+      return [];
+    }
+  }, [settings.announcement_templates]);
+
+  const secretaryAllowedPages: string[] = React.useMemo(() => {
+    try {
+      return settings.secretary_allowed_pages
+        ? JSON.parse(settings.secretary_allowed_pages)
+        : ["/admin", "/admin/orders", "/admin/exports", "/admin/delivery-reports"];
+    } catch {
+      return ["/admin", "/admin/orders", "/admin/exports", "/admin/delivery-reports"];
+    }
+  }, [settings.secretary_allowed_pages]);
+
+  const customCategories: string[] = React.useMemo(() => {
+    try {
+      return settings.custom_package_categories
+        ? JSON.parse(settings.custom_package_categories)
+        : [];
+    } catch {
+      return [];
+    }
+  }, [settings.custom_package_categories]);
 
   React.useEffect(() => {
     fetch("/api/admin/settings")
@@ -314,6 +401,87 @@ export default function AdminSettingsPage() {
                 </p>
               </div>
             </div>
+
+            {/* Package & Order Categories (Custom Categories) */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Package &amp; Order Categories
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Manage network bundle categories beyond the default 3 (MTN, Telecel, AirtelTigo).
+                  Custom categories appear in the package manager, pricing matrix, and ordering filters.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Active Categories</Label>
+                <div className="flex flex-wrap gap-2">
+                  {SYSTEM_DEFAULT_CATEGORIES.map((cat) => (
+                    <span
+                      key={cat}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      {cat}
+                      <span className="text-[10px] text-slate-400 font-normal">(System)</span>
+                    </span>
+                  ))}
+                  {customCategories.map((cat) => (
+                    <span
+                      key={cat}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50/60 px-3 py-1.5 text-xs font-semibold text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                      {cat}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = customCategories.filter((c) => c !== cat);
+                          setSettings((s) => ({ ...s, custom_package_categories: JSON.stringify(next) }));
+                          toast(`Category "${cat}" removed`, "info");
+                        }}
+                        className="ml-1 rounded-full p-0.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                        title="Remove category"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <Label>Add Custom Category</Label>
+                <div className="mt-1.5 flex gap-2">
+                  <Input
+                    value={newCategoryText}
+                    onChange={(e) => setNewCategoryText(e.target.value.toUpperCase())}
+                    placeholder="e.g. SURFLINE or SPECTRANET"
+                    className="uppercase font-mono text-xs max-w-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const trimmed = newCategoryText.trim().toUpperCase();
+                      if (!trimmed) return;
+                      if (SYSTEM_DEFAULT_CATEGORIES.includes(trimmed) || customCategories.includes(trimmed)) {
+                        toast("Category already exists", "error");
+                        return;
+                      }
+                      const next = [...customCategories, trimmed];
+                      setSettings((s) => ({ ...s, custom_package_categories: JSON.stringify(next) }));
+                      setNewCategoryText("");
+                      toast(`Category "${trimmed}" added`, "success");
+                    }}
+                    className="gap-1"
+                  >
+                    <Plus className="h-4 w-4" /> Add Category
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -374,6 +542,331 @@ export default function AdminSettingsPage() {
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+
+            {/* Secretary Role & Permissions */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Secretary Role &amp; Permissions
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Configure access control and authentication behavior for staff members assigned the SECRETARY role.
+                </p>
+              </div>
+
+              {/* Secretary OTP Bypass */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                    Secretary Login Without OTP
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    When enabled, accounts with the SECRETARY role bypass email OTP verification on login for faster operational access.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.secretary_login_without_otp === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      secretary_login_without_otp: s.secretary_login_without_otp === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.secretary_login_without_otp === "true" ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.secretary_login_without_otp === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Secretary Allowed Pages Checklist */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                      Secretary Page Access Permissions
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      Select which admin dashboard sections Secretaries are permitted to view and manage.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings((s) => ({
+                          ...s,
+                          secretary_allowed_pages: JSON.stringify(ADMIN_PAGE_OPTIONS.map((o) => o.href)),
+                        }))
+                      }
+                      className="text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings((s) => ({
+                          ...s,
+                          secretary_allowed_pages: JSON.stringify(["/admin"]),
+                        }))
+                      }
+                      className="text-[11px] font-semibold text-slate-500 hover:underline dark:text-slate-400"
+                    >
+                      Reset to Minimal
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
+                  {ADMIN_PAGE_OPTIONS.map((page) => {
+                    const isChecked = secretaryAllowedPages.includes(page.href);
+                    return (
+                      <label
+                        key={page.href}
+                        className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs transition-colors cursor-pointer ${
+                          isChecked
+                            ? "border-brand-500/40 bg-brand-50/40 text-slate-900 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-white"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            const next = isChecked
+                              ? secretaryAllowedPages.filter((p) => p !== page.href)
+                              : [...secretaryAllowedPages, page.href];
+                            setSettings((s) => ({ ...s, secretary_allowed_pages: JSON.stringify(next) }));
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold truncate">{page.label}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{page.href}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category: Announcement Banner */}
+        {activeCat === "announcements" && (
+          <div className="space-y-4">
+            {/* Live Preview Card */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Megaphone className="h-4 w-4 text-brand-600" />
+                    Global Announcement Banner
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Displays continuously across the top of all user dashboard pages with right-to-left continuous slide-and-fade animation.
+                  </p>
+                </div>
+                {settings.site_announcement?.trim() ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    Inactive (Empty)
+                  </span>
+                )}
+              </div>
+
+              {/* Active Text Input */}
+              <div className="space-y-1.5 pt-2">
+                <div className="flex items-center justify-between">
+                  <Label>Current Active Announcement</Label>
+                  {settings.site_announcement && (
+                    <button
+                      type="button"
+                      onClick={() => setSettings((s) => ({ ...s, site_announcement: "" }))}
+                      className="text-[11px] font-medium text-red-500 hover:underline"
+                    >
+                      Clear Banner
+                    </button>
+                  )}
+                </div>
+                <Textarea
+                  rows={2}
+                  value={settings.site_announcement ?? ""}
+                  onChange={(e) => setSettings((s) => ({ ...s, site_announcement: e.target.value }))}
+                  placeholder="Enter global announcement text (or choose from pre-typed templates below)..."
+                />
+              </div>
+
+              {/* Live Animated Preview */}
+              <div className="pt-2">
+                <Label className="text-xs text-slate-400 uppercase tracking-wider">Live User Preview</Label>
+                <div className="mt-1.5 overflow-hidden rounded-xl border border-amber-300/60 bg-amber-400/15 py-2.5 px-3 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 shadow-inner">
+                  {settings.site_announcement?.trim() ? (
+                    <div className="overflow-hidden whitespace-nowrap">
+                      <p className="inline-block text-xs font-semibold animate-banner-slide">
+                        📢 {settings.site_announcement} &nbsp;&nbsp;&nbsp; • &nbsp;&nbsp;&nbsp; 📢 {settings.site_announcement}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-center italic text-slate-400 py-1">
+                      No announcement active. Enter text above or click "Use Template" below to preview.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Pre-typed Templates Management */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-500" /> Pre-typed Announcement Templates
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Select a pre-typed message for instant activation, or save your own custom announcements for reuse.
+                </p>
+              </div>
+
+              {/* Add Custom Template */}
+              <div className="flex gap-2">
+                <Input
+                  value={newTemplateText}
+                  onChange={(e) => setNewTemplateText(e.target.value)}
+                  placeholder="Create a new reusable announcement template..."
+                  className="text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const trimmed = newTemplateText.trim();
+                    if (!trimmed) return;
+                    const next = [...customAnnouncementTemplates, trimmed];
+                    setSettings((s) => ({ ...s, announcement_templates: JSON.stringify(next) }));
+                    setNewTemplateText("");
+                    toast("New template saved", "success");
+                  }}
+                  className="gap-1 shrink-0"
+                >
+                  <Plus className="h-4 w-4" /> Save Template
+                </Button>
+              </div>
+
+              {/* Templates List */}
+              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Ready-to-Use Templates
+                </p>
+                <div className="space-y-2">
+                  {DEFAULT_ANNOUNCEMENT_TEMPLATES.map((tmpl, idx) => {
+                    const isCurrent = settings.site_announcement === tmpl;
+                    return (
+                      <div
+                        key={`default-${idx}`}
+                        className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-xs transition-colors ${
+                          isCurrent
+                            ? "border-emerald-500/40 bg-emerald-50/40 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                            : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                            Preset
+                          </span>
+                          <p className="truncate font-medium text-slate-800 dark:text-slate-200">{tmpl}</p>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          {isCurrent ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                              <Check className="h-3.5 w-3.5" /> Active
+                            </span>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSettings((s) => ({ ...s, site_announcement: tmpl }));
+                                toast("Applied template to active announcement", "info");
+                              }}
+                              className="h-7 text-xs"
+                            >
+                              Use Template
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {customAnnouncementTemplates.map((tmpl, idx) => {
+                    const isCurrent = settings.site_announcement === tmpl;
+                    return (
+                      <div
+                        key={`custom-${idx}`}
+                        className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-xs transition-colors ${
+                          isCurrent
+                            ? "border-emerald-500/40 bg-emerald-50/40 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                            : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
+                            Custom
+                          </span>
+                          <p className="truncate font-medium text-slate-800 dark:text-slate-200">{tmpl}</p>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          {isCurrent ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                              <Check className="h-3.5 w-3.5" /> Active
+                            </span>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSettings((s) => ({ ...s, site_announcement: tmpl }));
+                                toast("Applied template to active announcement", "info");
+                              }}
+                              className="h-7 text-xs"
+                            >
+                              Use Template
+                            </Button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = customAnnouncementTemplates.filter((_, i) => i !== idx);
+                              setSettings((s) => ({ ...s, announcement_templates: JSON.stringify(next) }));
+                              toast("Template removed", "info");
+                            }}
+                            className="rounded p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                            title="Delete template"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -446,10 +939,11 @@ export default function AdminSettingsPage() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                    Storefront Feature Switch
+                    Bulk Storefront Feature Switch (Master Toggle)
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Enable or pause the public customer reseller stores and store applications.
+                    Admin master switch to bulk disable/pause or re-enable all customer reseller storefronts.
+                    When paused, all public storefront pages and store checkouts are immediately blocked.
                   </p>
                 </div>
                 <button
@@ -463,7 +957,7 @@ export default function AdminSettingsPage() {
                     }))
                   }
                   className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                    storefrontEnabled ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                    storefrontEnabled ? "bg-emerald-600" : "bg-red-500"
                   }`}
                 >
                   <span
@@ -471,6 +965,32 @@ export default function AdminSettingsPage() {
                       storefrontEnabled ? "left-[22px]" : "left-0.5"
                     }`}
                   />
+                </button>
+              </div>
+
+              <div
+                className={`mt-3 rounded-xl px-3 py-2 text-xs font-medium flex items-center justify-between ${
+                  storefrontEnabled
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                    : "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400"
+                }`}
+              >
+                <span>
+                  {storefrontEnabled
+                    ? "✓ All storefronts are ACTIVE — Resellers can take orders and customers can purchase."
+                    : "⚠ All storefronts are BULK DISABLED / PAUSED — Public store visitors see maintenance notice."}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      storefront_feature_enabled: storefrontEnabled ? "false" : "true",
+                    }))
+                  }
+                  className="font-bold underline ml-2 shrink-0"
+                >
+                  {storefrontEnabled ? "Pause All Now" : "Re-Enable All"}
                 </button>
               </div>
 
@@ -1226,7 +1746,17 @@ export default function AdminSettingsPage() {
                   />
                 </button>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-1.5">
+                  <Label>Not Received Window (Hours)</Label>
+                  <Input
+                    type="number"
+                    value={settings.report_not_received_window_hours ?? "24"}
+                    onChange={(e) => setSettings((s) => ({ ...s, report_not_received_window_hours: e.target.value }))}
+                    placeholder="24"
+                  />
+                  <p className="text-[11px] text-slate-400">Hours after order completes that user can report</p>
+                </div>
                 <div className="space-y-1.5">
                   <Label>Max Date Range for Admin Queries (Days)</Label>
                   <Input

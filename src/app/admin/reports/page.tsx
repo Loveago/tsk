@@ -20,16 +20,34 @@ interface ReportData {
 export default function AdminReportsPage() {
   const [data, setData] = React.useState<ReportData | null>(null);
   const [range, setRange] = React.useState("90");
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    setLoading(true);
+    setError(null);
     const from = new Date();
     from.setDate(from.getDate() - Number(range));
     fetch(`/api/admin/reports?from=${from.toISOString()}`)
-      .then((r) => r.json())
-      .then(setData);
+      .then(async (r) => {
+        const json = await r.json();
+        if (!r.ok) throw new Error(json.error || "Failed to load reports data");
+        setData({
+          statusCounts: json.statusCounts ?? {},
+          totalOrders: json.totalOrders ?? 0,
+          totalRevenue: json.totalRevenue ?? 0,
+          daily: json.daily ?? [],
+          byPackage: json.byPackage ?? [],
+          topUsers: json.topUsers ?? [],
+        });
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to load reports data");
+      })
+      .finally(() => setLoading(false));
   }, [range]);
 
-  if (!data) {
+  if (loading) {
     return (
       <div className="flex justify-center py-20">
         <Spinner className="h-6 w-6 text-brand-600" />
@@ -37,10 +55,33 @@ export default function AdminReportsPage() {
     );
   }
 
-  const daily = data.daily.map((d) => ({ ...d, amount: Number(d.amount) }));
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+        <p className="font-semibold">{error}</p>
+        <button
+          onClick={() => setRange((r) => r)}
+          className="mt-3 inline-flex items-center rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  const safeData = data ?? {
+    statusCounts: {},
+    totalOrders: 0,
+    totalRevenue: 0,
+    daily: [],
+    byPackage: [],
+    topUsers: [],
+  };
+
+  const daily = (safeData.daily ?? []).map((d) => ({ ...d, amount: Number(d.amount) }));
   const successRate =
-    data.totalOrders > 0
-      ? Math.round(((data.statusCounts.SUCCESS ?? 0) / data.totalOrders) * 100)
+    safeData.totalOrders > 0
+      ? Math.round(((safeData.statusCounts?.SUCCESS ?? 0) / safeData.totalOrders) * 100)
       : 0;
 
   return (
@@ -62,12 +103,12 @@ export default function AdminReportsPage() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="Orders" value={String(data.totalOrders)} icon={ClipboardList} />
-        <StatCard title="Revenue" value={formatGHS(data.totalRevenue)} icon={TrendingUp} />
+        <StatCard title="Orders" value={String(safeData.totalOrders)} icon={ClipboardList} />
+        <StatCard title="Revenue" value={formatGHS(safeData.totalRevenue)} icon={TrendingUp} />
         <StatCard title="Success rate" value={`${successRate}%`} icon={FileBarChart} />
         <StatCard
           title="Active buyers"
-          value={String(data.topUsers.length)}
+          value={String(safeData.topUsers.length)}
           icon={Users}
           hint="Top spenders in range"
         />
@@ -97,7 +138,7 @@ export default function AdminReportsPage() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={data.byPackage.map((b) => ({
+                data={safeData.byPackage.map((b) => ({
                   name: `${b.network} ${b.gbAmount}GB`,
                   count: b.count,
                 }))}
@@ -114,11 +155,11 @@ export default function AdminReportsPage() {
 
         <div className="rounded-2xl border border-slate-100 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <h3 className="mb-4 text-sm font-semibold">Top users by spend</h3>
-          {data.topUsers.length === 0 ? (
+          {safeData.topUsers.length === 0 ? (
             <p className="text-sm text-slate-500">No orders in this range.</p>
           ) : (
             <ul className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
-              {data.topUsers.map((u, i) => (
+              {safeData.topUsers.map((u, i) => (
                 <li key={u.id} className="flex items-center gap-3 py-2.5">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
                     {i + 1}

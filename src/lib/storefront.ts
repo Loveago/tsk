@@ -60,7 +60,22 @@ export function isValidSlug(slug: string): boolean {
   return /^[a-z0-9][a-z0-9-]{2,31}$/.test(slug) && !slug.includes("--");
 }
 
-export function storefrontOrderCode(seq: number): string {
+export function generateStorefrontOrderCode(): string {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const year = String(now.getFullYear());
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let random6 = "";
+  for (let i = 0; i < 6; i++) {
+    random6 += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `GH-${day}-${year}-${random6}`;
+}
+
+export function storefrontOrderCode(seq: number, reference?: string | null): string {
+  if (reference && (reference.startsWith("GH-") || reference.startsWith("STF-"))) {
+    return reference;
+  }
   return `CF-ST-${String(seq).padStart(5, "0")}`;
 }
 
@@ -308,7 +323,7 @@ export async function syncCommissionForOrder(
 // ---------------------------------------------------------------------------
 
 export function isStorefrontReference(reference: string): boolean {
-  return reference.startsWith("STF-");
+  return reference.startsWith("STF-") || reference.startsWith("GH-");
 }
 
 /** 10-digit local Ghanaian mobile number starting with 0 (§14). */
@@ -370,6 +385,7 @@ export async function settleStorefrontPayment(
         amount: fromPesewas(row.sellingPrice),
         status: "PENDING",
         source: "STOREFRONT",
+        externalReference: row.paymentReference,
       },
     });
 

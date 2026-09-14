@@ -26,6 +26,34 @@
   }
 }
 
+@keyframes banner-slide-fade {
+  0% {
+    transform: translateX(100vw);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+.animate-banner-slide {
+  display: inline-block;
+  white-space: nowrap;
+  animation: banner-slide-fade 20s linear infinite;
+  will-change: transform, opacity;
+}
+
+.animate-banner-slide:hover {
+  animation-play-state: paused;
+}
+
 @layer base {
   * {
     @apply border-slate-200 dark:border-white/10;

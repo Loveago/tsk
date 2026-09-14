@@ -318,10 +318,24 @@ export default function SendOrderPage() {
             <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
               Network
             </p>
-            <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5">
+            <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-100 p-1.5 dark:bg-white/5">
               {NETWORKS.map((n) => {
                 const unavailable =
                   !loading && packages.length > 0 && !packages.some((p) => p.network === n);
+                const isSelected = network === n;
+                let activeStyle = "";
+                let inactiveStyle = "";
+                if (n === "MTN") {
+                  activeStyle = "bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/30 ring-2 ring-amber-400 border border-amber-500";
+                  inactiveStyle = "text-amber-800 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-500/10";
+                } else if (n === "TELECEL") {
+                  activeStyle = "bg-red-600 text-white font-bold shadow-md shadow-red-600/30 ring-2 ring-red-500 border border-red-700";
+                  inactiveStyle = "text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10";
+                } else {
+                  activeStyle = "bg-blue-600 text-white font-bold shadow-md shadow-blue-600/30 ring-2 ring-blue-500 border border-blue-700";
+                  inactiveStyle = "text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10";
+                }
+
                 return (
                   <button
                     key={n}
@@ -329,10 +343,8 @@ export default function SendOrderPage() {
                     disabled={unavailable || !submissionEnabled}
                     title={unavailable ? "No packages available for this network" : undefined}
                     className={cn(
-                      "flex h-9 items-center justify-center rounded-lg text-sm font-semibold transition-all",
-                      network === n
-                        ? "bg-white text-brand-600 shadow-sm dark:bg-[#1a2438] dark:text-brand-400"
-                        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
+                      "flex h-10 items-center justify-center rounded-lg text-sm font-bold transition-all duration-150",
+                      isSelected ? activeStyle : inactiveStyle,
                       unavailable &&
                         "cursor-not-allowed opacity-40 hover:text-slate-500 dark:hover:text-slate-400"
                     )}

@@ -20,9 +20,21 @@ export default async function PublicStorePage({
   const { slug } = await params;
   const { payment, reference } = await searchParams;
 
-  // Read access is allowed for ENABLED storefronts only on the public page (§6).
-  const storefront = await prisma.storefront.findUnique({ where: { slug } });
+  const [storefront, featureSetting] = await Promise.all([
+    prisma.storefront.findUnique({ where: { slug } }),
+    prisma.systemSetting.findUnique({ where: { key: "storefront_feature_enabled" } }),
+  ]);
   if (!storefront || storefront.status !== "ENABLED") notFound();
+  if (featureSetting?.value === "false") {
+    return (
+      <div className="mx-auto mt-20 max-w-md p-8 text-center bg-white rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Storefronts Temporarily Paused</h2>
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          Reseller storefront orders are currently paused by administration for scheduled maintenance. Please check back soon.
+        </p>
+      </div>
+    );
+  }
 
   const products = await prisma.storefrontProduct.findMany({
     where: { storefrontId: storefront.id, isActive: true, dataPackage: { active: true } },

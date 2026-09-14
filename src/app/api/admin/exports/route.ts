@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/auth";
 import { exportOrdersSchema } from "@/lib/validation";
 import { exportOrdersToExcel } from "@/lib/order-export";
 import { computeExportStatusFromCounts } from "@/lib/orders";
+import { quickDateRange } from "@/lib/batches";
 import { handleRouteError } from "@/lib/api-helpers";
 
 /** Export history list (§29). */
@@ -16,6 +17,10 @@ export async function GET(request: NextRequest) {
     const network = searchParams.get("network");
     const status = searchParams.get("status");
     const q = searchParams.get("q");
+    const quick = searchParams.get("quick");
+    const range = quick ? quickDateRange(quick) : {};
+    const from = searchParams.get("from") ?? range.from ?? null;
+    const to = searchParams.get("to") ?? range.to ?? null;
 
     const where: Record<string, unknown> = {};
     if (network) where.network = network;
@@ -25,6 +30,11 @@ export async function GET(request: NextRequest) {
         { exportCode: { contains: q } },
         { adminLabel: { contains: q } },
       ];
+    }
+    if (from || to) {
+      where.createdAt = {};
+      if (from) (where.createdAt as Record<string, Date>).gte = new Date(from);
+      if (to) (where.createdAt as Record<string, Date>).lte = new Date(to);
     }
 
     const [data, total] = await Promise.all([

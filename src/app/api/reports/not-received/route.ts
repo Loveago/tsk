@@ -197,8 +197,9 @@ export async function POST(request: NextRequest) {
     }
 
     const completedAt = deriveCompletedAt(order);
-    if (!isWithinReportWindow(completedAt)) {
-      return apiError(409, "The 24-hour reporting window for this order has ended");
+    const windowHours = parseInt(await getSetting("report_not_received_window_hours", "24"), 10);
+    if (!isWithinReportWindow(completedAt, new Date(), windowHours)) {
+      return apiError(409, `The ${windowHours}-hour reporting window for this order has ended`);
     }
 
     const existing = await prisma.deliveryReport.findFirst({

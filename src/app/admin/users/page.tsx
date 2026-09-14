@@ -8,9 +8,11 @@ import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
 import { ExportButtons } from "@/components/admin/export-buttons";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Label } from "@/components/ui/input";
+import { useToast } from "@/components/toast";
 import { Users } from "lucide-react";
 
 export default function AdminUsersPage() {
+  const { toast } = useToast();
   const [data, setData] = React.useState<UserRow[]>([]);
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
@@ -52,6 +54,20 @@ export default function AdminUsersPage() {
       );
   }, []);
 
+  const handleFreeze = async (u: UserRow) => {
+    const actionName = u.status === "FROZEN" ? "unfreeze" : "freeze";
+    if (!confirm(`Are you sure you want to ${actionName} ${u.name}'s account?`)) return;
+    try {
+      const res = await fetch(`/api/admin/users/${u.id}/freeze`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) return toast(json.error ?? `Failed to ${actionName} user`, "error");
+      toast(json.user?.status === "FROZEN" ? `User ${u.name} account frozen` : `User ${u.name} account unfrozen`, "success");
+      load();
+    } catch {
+      toast(`Failed to ${actionName} user`, "error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -72,20 +88,31 @@ export default function AdminUsersPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="space-y-1.5">
-          <Label>Role</Label>
-          <Select value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }}>
-            <option value="">All</option>
-            {["USER", "RESELLER", "MANAGER", "ADMIN"].map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </Select>
-        </div>
-        <div className="col-span-2 space-y-1.5">
-          <Label>Search name / email</Label>
-          <Input value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} placeholder="kwame…" />
-        </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          placeholder="Search name or email…"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(1);
+          }}
+          className="max-w-xs"
+        />
+        <Select
+          value={role}
+          onChange={(e) => {
+            setRole(e.target.value);
+            setPage(1);
+          }}
+          className="w-40"
+        >
+          <option value="">All roles</option>
+          <option value="USER">USER</option>
+          <option value="RESELLER">RESELLER</option>
+          <option value="MANAGER">MANAGER</option>
+          <option value="SECRETARY">SECRETARY</option>
+          <option value="ADMIN">ADMIN</option>
+        </Select>
       </div>
 
       <AdminUsersTable
@@ -99,6 +126,7 @@ export default function AdminUsersPage() {
           setCreditingUser(u);
           setCreditDialogOpen(true);
         }}
+        onToggleFreeze={handleFreeze}
       />
 
       {pages > 1 && (

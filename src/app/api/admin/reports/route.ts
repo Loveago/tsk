@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     
     if (!fromDate) {
       fromDate = new Date(toDate.getTime() - maxMs);
-    } else if (toDate.getTime() - fromDate.getTime() > maxMs) {
+    } else if (toDate.getTime() - fromDate.getTime() > maxMs + 172800000) {
       return apiError(400, `Date range cannot exceed ${maxDays} days`);
     }
 

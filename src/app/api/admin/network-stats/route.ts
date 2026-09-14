@@ -25,7 +25,7 @@ export async function GET() {
         }),
         prisma.orderBatch.groupBy({
           by: ["network"],
-          where: { status: { in: ["PENDING", "PROCESSING", "PARTIALLY_COMPLETED"] } },
+          where: { status: { in: ["PENDING", "PROCESSING"] } },
           _count: { _all: true },
         }),
         prisma.order.groupBy({

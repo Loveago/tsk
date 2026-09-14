@@ -42,19 +42,49 @@ export function AdminStorefrontPanel({
   candidates,
   pendingWithdrawals,
   applications,
+  initialStorefrontEnabled = true,
 }: {
   storefronts: StorefrontRow[];
   candidates: Candidate[];
   pendingWithdrawals: WithdrawalRow[];
   applications: ApplicationRow[];
+  initialStorefrontEnabled?: boolean;
 }) {
   const router = useRouter();
+  const [storefrontsActive, setStorefrontsActive] = React.useState(initialStorefrontEnabled);
+  const [togglingMaster, setTogglingMaster] = React.useState(false);
   const [userId, setUserId] = React.useState(candidates[0]?.id ?? "");
   const [slug, setSlug] = React.useState("");
   const [notes, setNotes] = React.useState<Record<string, string>>({});
   const [approveSlugs, setApproveSlugs] = React.useState<Record<string, string>>({});
   const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
+
+  async function toggleMasterStorefronts() {
+    setTogglingMaster(true);
+    setMsg(null);
+    try {
+      const nextVal = !storefrontsActive;
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storefront_feature_enabled: nextVal ? "true" : "false" }),
+      });
+      if (!res.ok) throw new Error("Failed to update master storefront status");
+      setStorefrontsActive(nextVal);
+      setMsg({
+        kind: "ok",
+        text: nextVal
+          ? "All storefronts have been enabled successfully."
+          : "All storefronts have been disabled (maintenance mode active).",
+      });
+      router.refresh();
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Failed to update storefronts" });
+    } finally {
+      setTogglingMaster(false);
+    }
+  }
 
   async function call(url: string, body: unknown, okText: string) {
     setBusy(true);
@@ -120,6 +150,39 @@ export function AdminStorefrontPanel({
           {msg.text}
         </p>
       )}
+
+      {/* Master Storefront Killswitch Card */}
+      <div className={`rounded-2xl border p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 transition ${
+        storefrontsActive
+          ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-500/20 dark:bg-emerald-500/5"
+          : "border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10"
+      }`}>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className={`inline-block h-2.5 w-2.5 rounded-full ${storefrontsActive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+              Master Storefront Status: {storefrontsActive ? "All Storefronts Active" : "All Storefronts Disabled"}
+            </h3>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            {storefrontsActive
+              ? "All customer-facing storefronts are operational and accepting orders."
+              : "All customer storefront links are currently disabled and show maintenance mode."}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={busy || togglingMaster}
+          onClick={toggleMasterStorefronts}
+          className={`rounded-xl px-4 py-2 text-xs font-bold transition shadow-sm ${
+            storefrontsActive
+              ? "bg-amber-600 text-white hover:bg-amber-700"
+              : "bg-emerald-600 text-white hover:bg-emerald-700"
+          }`}
+        >
+          {togglingMaster ? "Updating…" : storefrontsActive ? "Disable All Storefronts" : "Enable All Storefronts"}
+        </button>
+      </div>
 
       {/* Store applications (user-submitted) */}
       <section>

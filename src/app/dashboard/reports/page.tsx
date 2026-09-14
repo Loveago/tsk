@@ -120,7 +120,7 @@ export default function ReportsPage() {
             <h2 className="text-sm font-semibold">Orders per day</h2>
             <div className="mt-4 h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data.daily}>
+                <LineChart data={data.daily ?? []}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#8884" />
                   <XAxis dataKey="day" fontSize={11} tickLine={false} />
                   <YAxis fontSize={11} tickLine={false} allowDecimals={false} />
@@ -137,7 +137,7 @@ export default function ReportsPage() {
               <div className="mt-4 h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={data.byPackage.map((b) => ({
+                    data={(data.byPackage ?? []).map((b) => ({
                       name: `${b.network} ${b.gbAmount}GB`,
                       amount: b.amount,
                     }))}
@@ -154,13 +154,13 @@ export default function ReportsPage() {
             <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
               <h2 className="text-sm font-semibold">Status breakdown</h2>
               <ul className="mt-4 space-y-2 text-sm">
-                {Object.entries(data.statusCounts).map(([s, c]) => (
+                {Object.entries(data.statusCounts ?? {}).map(([s, c]) => (
                   <li key={s} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0 dark:border-slate-800">
                     <span className="text-slate-600 dark:text-slate-300">{s}</span>
                     <span className="font-semibold">{c}</span>
                   </li>
                 ))}
-                {Object.keys(data.statusCounts).length === 0 && (
+                {Object.keys(data.statusCounts ?? {}).length === 0 && (
                   <li className="text-sm text-slate-500">No orders in this range.</li>
                 )}
               </ul>

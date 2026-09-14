@@ -10,7 +10,7 @@ import { useToast } from "@/components/toast";
 import Link from "next/link";
 import { Package, Pencil, Trash2, Plus, Receipt } from "lucide-react";
 
-const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"];
+const DEFAULT_NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"];
 
 export default function AdminPackagesPage() {
   const { toast } = useToast();
@@ -19,18 +19,45 @@ export default function AdminPackagesPage() {
   const [loading, setLoading] = React.useState(true);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<AdminPackage | null>(null);
+  const [customCategories, setCustomCategories] = React.useState<string[]>([]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/admin/packages");
-    const json = await res.json();
-    setPackages(json.packages ?? []);
+    const [pkgRes, setRes] = await Promise.all([
+      fetch("/api/admin/packages"),
+      fetch("/api/admin/settings"),
+    ]);
+    const pkgJson = await pkgRes.json();
+    setPackages(pkgJson.packages ?? []);
+
+    if (setRes.ok) {
+      const setJson = await setRes.json();
+      const raw = setJson.settings?.custom_package_categories;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setCustomCategories(parsed.map((c) => String(c).trim().toUpperCase()));
+          }
+        } catch {
+          // ignore parsing error
+        }
+      }
+    }
     setLoading(false);
   }, []);
 
   React.useEffect(() => {
     load();
   }, [load]);
+
+  const allCategories = React.useMemo(() => {
+    const set = new Set([...DEFAULT_NETWORKS, ...customCategories]);
+    packages.forEach((p) => {
+      if (p.network) set.add(p.network);
+    });
+    return Array.from(set);
+  }, [customCategories, packages]);
 
   const remove = async (pkg: AdminPackage) => {
     if (!confirm(`Delete "${pkg.name}"? Packages with orders are deactivated instead.`)) return;
@@ -82,7 +109,7 @@ export default function AdminPackagesPage() {
       <ScrollableTabs
         tabs={[
           { key: "", label: "All Networks", badge: packages.length },
-          ...NETWORKS.map((n) => ({
+          ...allCategories.map((n) => ({
             key: n,
             label: n,
             badge: packages.filter((p) => p.network === n).length,
@@ -108,6 +135,7 @@ export default function AdminPackagesPage() {
         onClose={() => setDialogOpen(false)}
         pkg={editing}
         onSaved={load}
+        categories={allCategories}
       />
     </div>
   );

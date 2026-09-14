@@ -19,21 +19,25 @@ export interface AdminPackage {
   sortOrder: number;
 }
 
-const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"];
+const DEFAULT_NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"];
 
 export function PackageFormDialog({
   open,
   onClose,
   pkg,
   onSaved,
+  categories = DEFAULT_NETWORKS,
 }: {
   open: boolean;
   onClose: () => void;
   pkg: AdminPackage | null;
   onSaved: () => void;
+  categories?: string[];
 }) {
   const { toast } = useToast();
   const [network, setNetwork] = React.useState("MTN");
+  const [customNetwork, setCustomNetwork] = React.useState("");
+  const [isCustomNetwork, setIsCustomNetwork] = React.useState(false);
   const [name, setName] = React.useState("");
   const [gb, setGb] = React.useState("1");
   const [description, setDescription] = React.useState("");
@@ -43,9 +47,24 @@ export function PackageFormDialog({
   const [sortOrder, setSortOrder] = React.useState("0");
   const [saving, setSaving] = React.useState(false);
 
+  const availableCategories = React.useMemo(() => {
+    const set = new Set([...DEFAULT_NETWORKS, ...categories]);
+    if (pkg?.network) set.add(pkg.network);
+    return Array.from(set);
+  }, [categories, pkg]);
+
   React.useEffect(() => {
     if (open) {
-      setNetwork(pkg?.network ?? "MTN");
+      const currentNet = pkg?.network ?? "MTN";
+      if (availableCategories.includes(currentNet)) {
+        setNetwork(currentNet);
+        setIsCustomNetwork(false);
+        setCustomNetwork("");
+      } else {
+        setNetwork("__CUSTOM__");
+        setIsCustomNetwork(true);
+        setCustomNetwork(currentNet);
+      }
       setName(pkg?.name ?? "");
       setGb(String(pkg?.gbAmount ?? 1));
       setDescription(pkg?.description ?? "");
@@ -54,13 +73,17 @@ export function PackageFormDialog({
       setActive(pkg?.active ?? true);
       setSortOrder(String(pkg?.sortOrder ?? 0));
     }
-  }, [open, pkg]);
+  }, [open, pkg, availableCategories]);
 
   const save = async () => {
+    const resolvedNetwork = isCustomNetwork ? customNetwork.trim().toUpperCase() : network;
+    if (!resolvedNetwork) {
+      return toast("Please specify a network/category", "error");
+    }
     setSaving(true);
     try {
       const body = {
-        network,
+        network: resolvedNetwork,
         name,
         gbAmount: Number(gb),
         description,
@@ -89,12 +112,31 @@ export function PackageFormDialog({
       <div className="space-y-3 text-sm">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label>Network</Label>
-            <Select value={network} onChange={(e) => setNetwork(e.target.value)}>
-              {NETWORKS.map((n) => (
+            <Label>Network / Category</Label>
+            <Select
+              value={isCustomNetwork ? "__CUSTOM__" : network}
+              onChange={(e) => {
+                if (e.target.value === "__CUSTOM__") {
+                  setIsCustomNetwork(true);
+                } else {
+                  setIsCustomNetwork(false);
+                  setNetwork(e.target.value);
+                }
+              }}
+            >
+              {availableCategories.map((n) => (
                 <option key={n} value={n}>{n}</option>
               ))}
+              <option value="__CUSTOM__">+ Custom Category...</option>
             </Select>
+            {isCustomNetwork && (
+              <Input
+                placeholder="e.g. SURFLINE"
+                value={customNetwork}
+                onChange={(e) => setCustomNetwork(e.target.value.toUpperCase())}
+                className="mt-1.5 uppercase font-mono text-xs"
+              />
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Data size (GB)</Label>

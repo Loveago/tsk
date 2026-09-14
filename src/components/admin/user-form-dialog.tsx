@@ -21,7 +21,7 @@ export interface AdminUser {
   } | null;
 }
 
-const ROLES = ["USER", "RESELLER", "MANAGER", "ADMIN"];
+const ROLES = ["USER", "RESELLER", "MANAGER", "SECRETARY", "ADMIN"];
 
 export function UserFormDialog({
   open,
@@ -131,6 +131,7 @@ export function UserFormDialog({
             <Select value={status} onChange={(e) => setStatus(e.target.value)} disabled={!!user && user.role === "ADMIN"}>
               <option value="ACTIVE">ACTIVE</option>
               <option value="DISABLED">DISABLED</option>
+              <option value="FROZEN">FROZEN</option>
             </Select>
           </div>
         </div>

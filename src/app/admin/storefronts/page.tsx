@@ -5,7 +5,7 @@ import { AdminStorefrontPanel } from "./admin-panel";
 
 export default async function AdminStorefrontsPage() {
   await requireAdmin();
-  const [storefronts, users, withdrawals, applications] = await Promise.all([
+  const [storefronts, users, withdrawals, applications, storefrontEnabledSetting] = await Promise.all([
     prisma.storefront.findMany({
       include: { user: { select: { name: true, email: true } } },
       orderBy: { createdAt: "desc" },
@@ -25,6 +25,7 @@ export default async function AdminStorefrontsPage() {
       include: { user: { select: { name: true, email: true } } },
       orderBy: { updatedAt: "asc" },
     }),
+    prisma.systemSetting.findUnique({ where: { key: "storefront_feature_enabled" } }),
   ]);
 
   const storefrontUserIds = new Set(storefronts.map((s) => s.userId));
@@ -70,6 +71,7 @@ export default async function AdminStorefrontsPage() {
           rejectionNote: a.rejectionNote,
           requestedAt: a.updatedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
         }))}
+        initialStorefrontEnabled={storefrontEnabledSetting?.value !== "false"}
       />
     </div>
   );

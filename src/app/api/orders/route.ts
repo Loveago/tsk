@@ -69,6 +69,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (user.status === "FROZEN") {
+      return apiError(403, "Your account is frozen. You cannot place orders. Please contact support.");
+    }
+
+    // Check if any number already has an active order (PENDING or PROCESSING)
+    const activeOrder = await prisma.order.findFirst({
+      where: {
+        phoneNumber: { in: deduplicatedOrders.map((o) => o.phoneNumber) },
+        status: { in: ["PENDING", "PROCESSING"] },
+      },
+      select: { phoneNumber: true, status: true },
+    });
+    if (activeOrder) {
+      return apiError(
+        400,
+        `Cannot place order for ${activeOrder.phoneNumber}: this number currently has an active order in ${activeOrder.status.toLowerCase()} status.`
+      );
+    }
+
     // MTN single order per number a day toggle check
     const singleOrderPerDay = await prisma.systemSetting.findUnique({
       where: { key: "mtn_single_order_per_day_enabled" },

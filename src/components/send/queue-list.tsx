@@ -47,7 +47,17 @@ export function QueueList({
                 </span>
               )}
             </div>
-            <span className="hidden w-24 text-xs text-slate-500 sm:inline">{l.network}</span>
+            <span
+              className={`hidden sm:inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                l.network === "MTN"
+                  ? "bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30"
+                  : l.network === "TELECEL"
+                  ? "bg-red-100 text-red-800 border border-red-300 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30"
+                  : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
+              }`}
+            >
+              {l.network}
+            </span>
             <span className="inline-flex items-center rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] font-bold text-violet-600 dark:text-violet-400">
               {l.gbAmount} GB
             </span>

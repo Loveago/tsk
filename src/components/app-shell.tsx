@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Database, Lock, LogOut, MessageCircle, Signal } from "lucide-react";
 import { useToast } from "@/components/toast";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/components/app-nav";
 import type { AuthUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SystemChatWidget } from "@/components/chat/system-chat-widget";
 
 /** Seconds elapsed since the last user interaction (mouse, key, scroll, touch). */
 function useIdleSeconds() {
@@ -58,16 +59,23 @@ function IdleIndicator({ idle }: { idle: number }) {
   );
 }
 
-/** Scrolling announcement strip — mobile only, as per the reference design. */
+/** Global announcement banner — slides in from the right, fades into the left and repeats */
 function AnnouncementBar({ text }: { text: string }) {
   return (
     <div
-      className="overflow-hidden bg-gradient-to-r from-blue-700 via-blue-600 to-blue-700 lg:hidden"
-      aria-hidden
+      className="relative z-30 overflow-hidden bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-700 py-2 border-b border-blue-400/20 shadow-sm"
+      role="region"
+      aria-label="Platform Announcement"
     >
-      <div className="animate-marquee flex w-max whitespace-nowrap py-1.5 text-[11px] font-bold tracking-wide text-white">
-        <span className="pr-10">{text}</span>
-        <span className="pr-10">{text}</span>
+      <div className="relative flex w-full overflow-hidden">
+        <div className="animate-banner-slide py-0.5 text-xs sm:text-sm font-bold tracking-wide text-white drop-shadow-sm">
+          <span className="inline-flex items-center gap-2 px-6">
+            <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wider font-extrabold text-amber-300">
+              Notice
+            </span>
+            <span>{text}</span>
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -117,6 +125,7 @@ export function AppShell({
   supportTelegram,
   supportEmail,
   footerText,
+  allowedNavHrefs,
 }: {
   user: AuthUser;
   children: React.ReactNode;
@@ -130,6 +139,7 @@ export function AppShell({
   supportTelegram?: string;
   supportEmail?: string;
   footerText?: string;
+  allowedNavHrefs?: string[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -139,7 +149,51 @@ export function AppShell({
     ...item,
     icon: resolveNavIcon(item.icon),
   }));
-  const items: NavItem[] = admin ? adminNav : [...userNav, ...resolvedExtras];
+  let userItems: NavItem[] = [];
+  if (!admin) {
+    const sendOrder = userNav.find((i) => i.href === "/dashboard/send");
+    const sentOrders = userNav.find((i) => i.href === "/dashboard/orders");
+    const notReceived = userNav.find((i) => i.href === "/dashboard/not-received");
+    const billing = userNav.find((i) => i.href === "/dashboard/billing");
+    const mtn = userNav.find((i) => i.href === "/dashboard/mtn-verification");
+    const api = userNav.find((i) => i.href === "/dashboard/api");
+    const others = userNav.filter(
+      (i) =>
+        ![
+          "/dashboard/send",
+          "/dashboard/orders",
+          "/dashboard/not-received",
+          "/dashboard/billing",
+          "/dashboard/mtn-verification",
+          "/dashboard/api",
+        ].includes(i.href)
+    );
+
+    userItems = [
+      sendOrder,
+      sentOrders,
+      notReceived,
+      billing,
+      ...resolvedExtras,
+      mtn,
+      api,
+      ...others,
+    ].filter(Boolean) as NavItem[];
+  }
+  const pathname = usePathname();
+  let adminItems = adminNav;
+  if (admin && user.role === "SECRETARY" && allowedNavHrefs && allowedNavHrefs.length > 0) {
+    adminItems = adminNav.filter((i) => allowedNavHrefs.includes(i.href) || i.href === "/admin");
+  }
+  const isSecretaryRestricted = Boolean(
+    admin &&
+      user.role === "SECRETARY" &&
+      allowedNavHrefs &&
+      allowedNavHrefs.length > 0 &&
+      pathname !== "/admin" &&
+      !allowedNavHrefs.some((h) => pathname === h || pathname.startsWith(`${h}/`))
+  );
+  const items: NavItem[] = admin ? adminItems : userItems;
   const desktopItems = items.filter((i) => !i.mobileOnly);
 
   const onLogout = async () => {
@@ -148,6 +202,8 @@ export function AppShell({
     router.push("/login");
     router.refresh();
   };
+
+  const isStaffRole = user.role === "ADMIN" || user.role === "MANAGER" || user.role === "SECRETARY";
 
   return (
     <div className="app-bg flex min-h-screen flex-col">
@@ -177,7 +233,7 @@ export function AppShell({
             </button>
           </div>
 
-          {(user.role === "ADMIN" || user.role === "MANAGER") && (
+          {isStaffRole && (
             <Link
               href={admin ? "/dashboard/send" : "/admin"}
               className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-brand-500/25 bg-brand-500/10 px-2 text-[11px] font-bold text-brand-600 transition hover:bg-brand-500/20 sm:px-2.5 dark:border-brand-400/30 dark:bg-brand-500/15 dark:text-brand-300 dark:hover:bg-brand-500/25"
@@ -226,7 +282,7 @@ export function AppShell({
             <RoleBadge role={user.role} className="mr-1.5" />
           </Link>
 
-          {(user.role === "ADMIN" || user.role === "MANAGER") && (
+          {isStaffRole && (
             <Link
               href={admin ? "/dashboard/send" : "/admin"}
               title={admin ? "Switch to User Dashboard" : "Switch to Admin Panel"}
@@ -253,7 +309,25 @@ export function AppShell({
         />
       </div>
 
-      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 pb-20 sm:px-6 sm:py-6 sm:pb-24">{children}</main>
+      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 pb-20 sm:px-6 sm:py-6 sm:pb-24">
+        {isSecretaryRestricted ? (
+          <div className="mx-auto my-16 max-w-md rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center dark:border-amber-500/20 dark:bg-amber-500/10">
+            <Lock className="mx-auto h-10 w-10 text-amber-600 dark:text-amber-400" />
+            <h2 className="mt-3 text-base font-bold text-amber-900 dark:text-amber-200">Page Access Restricted</h2>
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              Your account does not have access permissions for this section. Please contact the system administrator if you need access.
+            </p>
+            <Link
+              href="/admin"
+              className="mt-5 inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow transition hover:bg-brand-700"
+            >
+              Return to Admin Overview
+            </Link>
+          </div>
+        ) : (
+          children
+        )}
+      </main>
 
       <footer className="mt-4 border-t border-slate-200/70 py-4 text-center text-xs text-slate-400 dark:border-white/5 space-y-2">
         <div>{footerText || "Clickyfied4u © 2026"}</div>
@@ -263,18 +337,7 @@ export function AppShell({
           {supportEmail && <span>Email: {supportEmail}</span>}
         </div>
       </footer>
-
-      {/* Floating support chat — bottom right */}
-      <a
-        href={`https://wa.me/${(supportWhatsapp || "233000000000").replace(/[^0-9]/g, "")}`}
-        target="_blank"
-        rel="noreferrer"
-        aria-label="Chat with support on WhatsApp"
-        className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-lg shadow-blue-600/30 transition-transform hover:scale-105"
-      >
-        <MessageCircle className="h-5 w-5" />
-        <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-[#060b16]" />
-      </a>
+      <SystemChatWidget user={user} />
     </div>
   );
 }

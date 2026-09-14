@@ -204,7 +204,7 @@ export default async function StorefrontOverviewPage() {
               <tbody>
                 {recentOrders.map((o) => (
                   <tr key={o.id} className="border-t border-slate-100 dark:border-slate-800">
-                    <td className="px-4 py-2 font-mono text-xs">{storefrontOrderCode(o.seq)}</td>
+                    <td className="px-4 py-2 font-mono text-xs">{storefrontOrderCode(o.seq, o.paymentReference)}</td>
                     <td className="px-4 py-2">
                       {o.product.dataPackage.network} {o.product.dataPackage.gbAmount}GB
                     </td>

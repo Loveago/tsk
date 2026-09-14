@@ -41,6 +41,7 @@ export default function BillingPage() {
   const [data, setData] = React.useState<Tx[]>([]);
   const [balance, setBalance] = React.useState(0);
   const [summary, setSummary] = React.useState({ topups: 0, spend: 0 });
+  const [sendClaimEnabled, setSendClaimEnabled] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
 
   const load = React.useCallback(async () => {
@@ -49,8 +50,14 @@ export default function BillingPage() {
     setData(json.data ?? []);
     setBalance(json.balance ?? 0);
     setSummary(json.summary ?? { topups: 0, spend: 0 });
+    if (json.sendClaimEnabled !== undefined) {
+      setSendClaimEnabled(json.sendClaimEnabled);
+      if (!json.sendClaimEnabled && (tab === "send-claim" || tab === "claim-history")) {
+        setTab("overview");
+      }
+    }
     setLoading(false);
-  }, []);
+  }, [tab]);
 
   React.useEffect(() => {
     load();
@@ -60,9 +67,9 @@ export default function BillingPage() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam === "send-claim") setTab("send-claim");
-    else if (tabParam === "history" || tabParam === "claims") setTab("claim-history");
-  }, []);
+    if (tabParam === "send-claim" && sendClaimEnabled) setTab("send-claim");
+    else if ((tabParam === "history" || tabParam === "claims") && sendClaimEnabled) setTab("claim-history");
+  }, [sendClaimEnabled]);
 
   // Paystack redirect-back result
   React.useEffect(() => {
@@ -79,7 +86,14 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Billing" description="Your wallet balance, Send & Claim, and transactions" />
+      <PageHeader
+        title="Billing"
+        description={
+          sendClaimEnabled
+            ? "Your wallet balance, Send & Claim, and transactions"
+            : "Your wallet balance and transaction history"
+        }
+      />
 
       {/* Balance Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -101,28 +115,32 @@ export default function BillingPage() {
         >
           <Wallet className="h-4 w-4" /> Wallet &amp; Top-up
         </button>
-        <button
-          type="button"
-          onClick={() => setTab("send-claim")}
-          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
-            tab === "send-claim"
-              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
-              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          <Smartphone className="h-4 w-4" /> Send &amp; Claim
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("claim-history")}
-          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
-            tab === "claim-history"
-              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
-              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          <History className="h-4 w-4" /> Claim History
-        </button>
+        {sendClaimEnabled && (
+          <>
+            <button
+              type="button"
+              onClick={() => setTab("send-claim")}
+              className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
+                tab === "send-claim"
+                  ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                  : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              <Smartphone className="h-4 w-4" /> Send &amp; Claim
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("claim-history")}
+              className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
+                tab === "claim-history"
+                  ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                  : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              <History className="h-4 w-4" /> Claim History
+            </button>
+          </>
+        )}
       </div>
 
       {/* Tab 1: Overview & Instant Top-up */}

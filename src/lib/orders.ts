@@ -196,6 +196,7 @@ export async function recomputeBatchStatus(
     counts[row.status] = row._count._all;
     total += row._count._all;
   }
+  const pending = counts["PENDING"] ?? 0;
   const completed = counts["SUCCESS"] ?? 0;
   const failed = counts["FAILED"] ?? 0;
   const cancelled = counts["CANCELLED"] ?? 0;
@@ -211,12 +212,11 @@ export async function recomputeBatchStatus(
     next = "CANCELLED";
   } else if (failed + refunded === total) {
     next = "FAILED";
-  } else if (processing > 0) {
-    // In-flight work always wins (§24): any PROCESSING → batch PROCESSING
+  } else if (processing > 0 || (pending > 0 && completed + failed + refunded + cancelled > 0)) {
+    // In-flight work or mixed in-progress work: PROCESSING
     next = "PROCESSING";
-  } else if (completed + failed + refunded + cancelled > 0) {
-    // Mixed terminal state with no in-flight orders (e.g. some SUCCESS + some PENDING)
-    next = "PARTIALLY_COMPLETED";
+  } else if (completed > 0) {
+    next = "COMPLETED";
   } else {
     next = "PENDING";
   }
@@ -251,7 +251,8 @@ export function computeExportStatusFromCounts(
   if (cancelled === total) return "CANCELLED";
   if (failed + refunded === total) return "FAILED";
   if (inFlight > 0) return "PROCESSING";
-  return "PARTIALLY_COMPLETED";
+  if (completed > 0) return "COMPLETED";
+  return "FAILED";
 }
 
 /**
@@ -306,7 +307,7 @@ export async function changeOrderStatus(
   if (order.status === target) return { changed: false };
 
   const { allowed, override } = canTransition(order.status, target);
-  if (!allowed) {
+  if (!allowed && !opts.force) {
     throw new Error(
       `Illegal status transition ${order.status} → ${target}. Use the override option to force it.`
     );
@@ -347,6 +348,30 @@ export async function changeOrderStatus(
   // Storefront commission lifecycle (§25/§38): release on SUCCESS, reverse on
   // refund/failure. No-op for ordinary orders.
   await syncCommissionForOrder(orderId, target);
+
+  // If order is REFUNDED:
+  // Ordinary orders (WEB / API): refund to user's wallet balance.
+  // Storefront orders: DO NOT credit the agent's wallet — customer is refunded via Paystack.
+  if (target === "REFUNDED") {
+    if (order.source !== "STOREFRONT" && order.userId) {
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: order.userId },
+          data: { balance: { increment: order.amount } },
+        }),
+        prisma.walletTransaction.create({
+          data: {
+            userId: order.userId,
+            type: "REFUND",
+            amount: order.amount,
+            status: "APPROVED",
+            reference: `REF-ORDER-${order.id}`,
+            note: `Refund for Order #${order.id} (${order.phoneNumber})`,
+          },
+        }),
+      ]);
+    }
+  }
 
   // Webhook notification for API and order status updates
   const eventMap: Record<string, "order.created" | "order.processing" | "order.completed" | "order.failed" | "order.cancelled"> = {
@@ -392,13 +417,17 @@ export async function bulkChangeOrderStatus(
   let skipped = 0;
   let overrideRequired = false;
   for (const id of orderIds) {
-    const result = await changeOrderStatus(id, next, reason, actor, {
-      ...opts,
-      skipBatchRecompute: true,
-    });
-    if (result.changed) applied += 1;
-    else skipped += 1;
-    if (result.override) overrideRequired = true;
+    try {
+      const result = await changeOrderStatus(id, next, reason, actor, {
+        ...opts,
+        skipBatchRecompute: true,
+      });
+      if (result.changed) applied += 1;
+      else skipped += 1;
+      if (result.override) overrideRequired = true;
+    } catch {
+      skipped += 1;
+    }
   }
   const batchRows = await prisma.order.findMany({
     where: { id: { in: orderIds }, batchId: { not: null } },

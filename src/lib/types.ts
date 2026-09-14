@@ -6,7 +6,8 @@ export type NavigationTab =
   | "billing"
   | "api_docs";
 
-export type UserRole = "ADMIN" | "MANAGER" | "RESELLER" | "USER";
+export type UserRole = "ADMIN" | "MANAGER" | "SECRETARY" | "RESELLER" | "USER";
+export type UserStatus = "ACTIVE" | "DISABLED" | "FROZEN";
 
 export type NetworkProvider = "MTN" | "TELECEL" | "AIRTELTIGO";
 
@@ -32,12 +33,11 @@ export const ORDER_STATUSES: OrderStatus[] = [
 
 export const NETWORKS: NetworkProvider[] = ["MTN", "TELECEL", "AIRTELTIGO"];
 
-export const ROLES: UserRole[] = ["ADMIN", "MANAGER", "RESELLER", "USER"];
+export const ROLES: UserRole[] = ["ADMIN", "MANAGER", "SECRETARY", "RESELLER", "USER"];
 
 export type BatchStatus =
   | "PENDING"
   | "PROCESSING"
-  | "PARTIALLY_COMPLETED"
   | "COMPLETED"
   | "FAILED"
   | "CANCELLED";
@@ -45,7 +45,6 @@ export type BatchStatus =
 export const BATCH_STATUSES: BatchStatus[] = [
   "PENDING",
   "PROCESSING",
-  "PARTIALLY_COMPLETED",
   "COMPLETED",
   "FAILED",
   "CANCELLED",
@@ -56,7 +55,6 @@ export type ExportBatchStatus = Exclude<BatchStatus, "PENDING">;
 
 export const EXPORT_BATCH_STATUSES: ExportBatchStatus[] = [
   "PROCESSING",
-  "PARTIALLY_COMPLETED",
   "COMPLETED",
   "FAILED",
   "CANCELLED",
@@ -78,15 +76,19 @@ export const ACTIVE_DELIVERY_REPORT_STATUSES: DeliveryReportStatus[] = ["OPEN", 
 /** The 24-hour "Not Received" reporting window (§3). */
 export const REPORT_WINDOW_HOURS = 24;
 
-export function reportWindowEnd(completedAt: Date | string): Date {
+export function reportWindowEnd(completedAt: Date | string, windowHours: number = REPORT_WINDOW_HOURS): Date {
   const completed = typeof completedAt === "string" ? new Date(completedAt) : completedAt;
-  return new Date(completed.getTime() + REPORT_WINDOW_HOURS * 60 * 60 * 1000);
+  return new Date(completed.getTime() + windowHours * 60 * 60 * 1000);
 }
 
-export function isWithinReportWindow(completedAt: Date | string | null | undefined, now: Date = new Date()): boolean {
+export function isWithinReportWindow(
+  completedAt: Date | string | null | undefined,
+  now: Date = new Date(),
+  windowHours: number = REPORT_WINDOW_HOURS
+): boolean {
   if (!completedAt) return false;
   const completed = typeof completedAt === "string" ? new Date(completedAt) : completedAt;
-  return now.getTime() >= completed.getTime() && now.getTime() <= reportWindowEnd(completed).getTime();
+  return now.getTime() >= completed.getTime() && now.getTime() <= reportWindowEnd(completed, windowHours).getTime();
 }
 
 /** Human readable remaining window, e.g. "23h 41m" (§6). */
@@ -107,11 +109,11 @@ export function deliveryReportCode(seq: number | null | undefined): string {
 
 /** Allowed order status transitions (§16). `true` = allowed without override, "OVERRIDE" = admin override required. */
 export const ALLOWED_ORDER_TRANSITIONS: Record<OrderStatus, Partial<Record<OrderStatus, true | "OVERRIDE">>> = {
-  PENDING: { PROCESSING: true, FAILED: true, CANCELLED: true },
-  PROCESSING: { SUCCESS: true, FAILED: true, CANCELLED: true },
+  PENDING: { PROCESSING: true, SUCCESS: "OVERRIDE", FAILED: true, CANCELLED: true },
+  PROCESSING: { SUCCESS: true, PENDING: "OVERRIDE", FAILED: true, CANCELLED: true },
   SUCCESS: { REFUNDED: "OVERRIDE" },
-  FAILED: { PROCESSING: true, PENDING: true, REFUNDED: "OVERRIDE" },
-  CANCELLED: { REFUNDED: "OVERRIDE" },
+  FAILED: { PROCESSING: true, PENDING: true, SUCCESS: "OVERRIDE", REFUNDED: "OVERRIDE" },
+  CANCELLED: { REFUNDED: "OVERRIDE", SUCCESS: "OVERRIDE" },
   REFUNDED: {},
 };
 
@@ -265,11 +267,6 @@ export const BATCH_STATUS_META: Record<BatchStatus, { label: string; className: 
     label: "PROCESSING",
     className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
     dot: "bg-blue-500",
-  },
-  PARTIALLY_COMPLETED: {
-    label: "PARTIALLY COMPLETED",
-    className: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20",
-    dot: "bg-cyan-500",
   },
   COMPLETED: {
     label: "COMPLETED",

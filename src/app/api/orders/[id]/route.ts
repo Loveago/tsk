@@ -50,9 +50,11 @@ export async function GET(
       (ACTIVE_DELIVERY_REPORT_STATUSES as string[]).includes(r.status)
     ) ?? deliveryReports[0] ?? null;
 
-    // 24-hour "Not Received" reporting window (§3/§6)
+    // Configurable "Not Received" reporting window (§3/§6)
+    const { getSetting } = await import("@/lib/orders");
+    const windowHours = parseInt(await getSetting("report_not_received_window_hours", "24"), 10);
     const completedAt = deriveCompletedAt(order);
-    const deadline = completedAt ? reportWindowEnd(completedAt) : null;
+    const deadline = completedAt ? reportWindowEnd(completedAt, windowHours) : null;
 
     return NextResponse.json({
       order: {
@@ -61,8 +63,9 @@ export async function GET(
         reportWindow: {
           completedAt,
           deadline,
-          open: isWithinReportWindow(completedAt),
+          open: isWithinReportWindow(completedAt, new Date(), windowHours),
           hasReport: !!activeReport,
+          windowHours,
         },
       },
     });

@@ -17,6 +17,7 @@ export type ApiErrorCode =
   | "ORDER_NOT_FOUND"
   | "RATE_LIMIT_EXCEEDED"
   | "MTN_NUMBER_NOT_VERIFIED"
+  | "ORDER_IN_PROGRESS"
   | "SERVER_ERROR";
 
 export class ApiError extends Error {

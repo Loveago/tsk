@@ -107,7 +107,7 @@ export async function requireAdmin(): Promise<AuthUser> {
 }
 
 export async function requireStaff(): Promise<AuthUser> {
-  return requireRole(["ADMIN", "MANAGER"]);
+  return requireRole(["ADMIN", "MANAGER", "SECRETARY"]);
 }
 
 export class AuthError extends Error {

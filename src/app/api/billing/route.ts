@@ -33,6 +33,11 @@ export async function GET(request: NextRequest) {
       if (s.type === "DEBIT") spend += s._sum.amount ?? 0;
     }
 
+    const sendClaimSetting = await prisma.systemSetting.findUnique({
+      where: { key: "send_claim_enabled" },
+    });
+    const sendClaimEnabled = sendClaimSetting?.value !== "false";
+
     return NextResponse.json({
       data,
       total,
@@ -41,6 +46,7 @@ export async function GET(request: NextRequest) {
       pages: Math.ceil(total / pageSize),
       balance: user.balance,
       summary: { topups, spend },
+      sendClaimEnabled,
     });
   } catch (err) {
     return handleRouteError(err);

@@ -33,7 +33,10 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { user: { select: { name: true, email: true } } },
+        include: {
+          user: { select: { name: true, email: true } },
+          batch: { select: { batchCode: true } },
+        },
       }),
       prisma.order.count({ where }),
     ]);

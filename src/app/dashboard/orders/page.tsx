@@ -13,7 +13,7 @@ import { orderCode } from "@/lib/utils";
 import { ChevronRight, FileWarning, Layers, Search } from "lucide-react";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
-const BATCH_STATUSES = ["PENDING", "PROCESSING", "PARTIALLY_COMPLETED", "COMPLETED", "FAILED", "CANCELLED"];
+const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
 const REPORT_REASONS = ["Data not received", "Partial data received", "Wrong number sent", "Other"];
 
 interface BatchRow {

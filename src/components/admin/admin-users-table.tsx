@@ -4,7 +4,7 @@ import * as React from "react";
 import { EmptyState, Spinner } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { formatGHS, formatDateTime } from "@/lib/types";
-import { Users, Pencil, PlusCircle, Ticket } from "lucide-react";
+import { Users, Pencil, PlusCircle, Ticket, Snowflake, ShieldAlert } from "lucide-react";
 
 export interface UserRow {
   id: string;
@@ -27,11 +27,13 @@ export function AdminUsersTable({
   loading,
   onEdit,
   onManualCredit,
+  onToggleFreeze,
 }: {
   data: UserRow[];
   loading: boolean;
   onEdit: (u: UserRow) => void;
   onManualCredit?: (u: UserRow) => void;
+  onToggleFreeze?: (u: UserRow) => void;
 }) {
   if (loading) {
     return (
@@ -70,12 +72,15 @@ export function AdminUsersTable({
                   <td className="px-4 py-3 text-xs font-semibold">{u.role}</td>
                   <td className="px-4 py-3">
                     <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         u.status === "ACTIVE"
                           ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                          : u.status === "FROZEN"
+                          ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/20"
                           : "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400"
                       }`}
                     >
+                      {u.status === "FROZEN" && <Snowflake className="h-3 w-3 animate-pulse" />}
                       {u.status}
                     </span>
                   </td>
@@ -95,6 +100,22 @@ export function AdminUsersTable({
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1.5">
+                      {onToggleFreeze && u.role !== "ADMIN" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onToggleFreeze(u)}
+                          className={`h-7 text-xs ${
+                            u.status === "FROZEN"
+                              ? "text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10"
+                              : "text-cyan-600 border-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-500/10"
+                          }`}
+                          title={u.status === "FROZEN" ? "Unfreeze user account" : "Freeze user account"}
+                        >
+                          <Snowflake className="h-3 w-3" />
+                          {u.status === "FROZEN" ? "Unfreeze" : "Freeze"}
+                        </Button>
+                      )}
                       {onManualCredit && (
                         <Button
                           size="sm"

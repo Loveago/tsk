@@ -48,7 +48,7 @@ export default async function DashboardLayout({
     : storefront &&
       (storefront.status === "ENABLED" || storefront.status === "SUSPENDED")
     ? [{ href: "/dashboard/storefront", label: "My Storefront", icon: "store" as const }]
-    : [{ href: "/dashboard/storefront/apply", label: "Open a Store", icon: "store" as const }];
+    : [{ href: "/dashboard/storefront/apply", label: "Open Storefront", icon: "store" as const }];
 
   let announcement = halted
     ? "WE ARE CURRENTLY UNAVAILABLE — ORDER PROCESSING IS PAUSED. PLEASE CHECK BACK SOON."

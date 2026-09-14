@@ -172,7 +172,7 @@ export const updateUserSchema = z.object({
   name: z.string().min(2).max(80),
   email: z.string().email(),
   role: z.enum(ROLES as [string, ...string[]]),
-  status: z.enum(["ACTIVE", "DISABLED"]),
+  status: z.enum(["ACTIVE", "DISABLED", "FROZEN"]),
   balance: z.coerce.number().min(0),
   pricingProfileId: z.string().optional().or(z.literal("")),
   password: z.string().min(8).optional().or(z.literal("")),
@@ -204,7 +204,7 @@ export const pricingProfileSchema = z.object({
 });
 
 export const packageSchema = z.object({
-  network: z.enum(NETWORKS as [string, ...string[]]),
+  network: z.string().min(2).max(40).transform((s) => s.trim().toUpperCase()),
   name: z.string().min(2).max(80),
   gbAmount: z.coerce.number().positive(),
   description: z.string().max(300).optional().or(z.literal("")),
@@ -296,6 +296,15 @@ export const settingsSchema = z.object({
   reports_enabled: z.enum(["true", "false"]).optional(),
   reports_max_date_range_days: z.string().max(10).optional(),
   report_auto_close_days: z.string().max(10).optional(),
+  report_not_received_window_hours: z.string().max(10).optional(),
+
+  // Secretary Role & Page Permissions
+  secretary_login_without_otp: z.enum(["true", "false"]).optional(),
+  secretary_allowed_pages: z.string().max(2000).optional(),
+
+  // Global Announcement & Dynamic Categories
+  announcement_templates: z.string().max(10000).optional(),
+  custom_package_categories: z.string().max(5000).optional(),
 });
 
 export const pricingProfileUpdateSchema = pricingProfileSchema;

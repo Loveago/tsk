@@ -427,6 +427,22 @@ export async function POST(request: NextRequest) {
       throw new ApiError("INVALID_PACKAGE", "No price configured for this package", 400);
     }
 
+    // Check if recipient number already has an active order (PENDING or PROCESSING)
+    const existingActiveOrder = await prisma.order.findFirst({
+      where: {
+        phoneNumber: recipient,
+        status: { in: ["PENDING", "PROCESSING"] },
+      },
+      select: { id: true, status: true },
+    });
+    if (existingActiveOrder) {
+      throw new ApiError(
+        "ORDER_IN_PROGRESS",
+        `Cannot place order for ${recipient}: this number currently has an active order in ${existingActiveOrder.status.toLowerCase()} status.`,
+        400
+      );
+    }
+
     // Central MTN Number Verification Check (§16, §17)
     const mtnCheck = await validateMtnOrderRecipient(
       recipient,

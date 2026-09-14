@@ -45,7 +45,7 @@ export async function POST(
 
     return NextResponse.json({
       orders: orders.map((o) => ({
-        code: storefrontOrderCode(o.seq),
+        code: o.paymentReference || storefrontOrderCode(o.seq, o.paymentReference),
         reference: o.paymentReference,
         network: o.product.dataPackage.network,
         size: `${o.product.dataPackage.gbAmount}GB`,

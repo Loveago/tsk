@@ -21,6 +21,7 @@ export interface ReportWindowInfo {
   deadline: string | null;
   open: boolean;
   hasReport: boolean;
+  windowHours?: number | null;
 }
 
 /** Report deadline banner inside the order details window (§6). */
@@ -35,6 +36,8 @@ export function ReportWindowBanner({ reportWindow }: { reportWindow: ReportWindo
   }, [reportWindow?.open, reportWindow?.deadline]);
 
   if (!reportWindow || !reportWindow.completedAt || !reportWindow.deadline) return null;
+
+  const hours = reportWindow.windowHours ?? REPORT_WINDOW_HOURS;
 
   if (reportWindow.open) {
     const ms = new Date(reportWindow.deadline).getTime() - Date.now();
@@ -51,7 +54,7 @@ export function ReportWindowBanner({ reportWindow }: { reportWindow: ReportWindo
             : ` · ${h > 0 ? `${h}h ${m}m` : `${m}m`} remaining`}
         </p>
         <p className="mt-0.5 text-amber-600/80 dark:text-amber-400/80">
-          Reports can be submitted until {formatDateTime(reportWindow.deadline)} ({REPORT_WINDOW_HOURS}h window)
+          Reports can be submitted until {formatDateTime(reportWindow.deadline)} ({hours}h window)
         </p>
       </div>
     );
@@ -61,7 +64,7 @@ export function ReportWindowBanner({ reportWindow }: { reportWindow: ReportWindo
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs dark:border-white/10 dark:bg-white/[0.04]">
       <p className="font-semibold text-slate-600 dark:text-slate-300">Reporting period expired</p>
       <p className="mt-0.5 text-slate-500 dark:text-slate-400">
-        The {REPORT_WINDOW_HOURS}-hour reporting period for this order has ended.
+        The {hours}-hour reporting period for this order has ended.
         {reportWindow.hasReport ? " Your submitted report remains available below." : ""}
       </p>
     </div>

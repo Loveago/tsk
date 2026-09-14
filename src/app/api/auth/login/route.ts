@@ -82,14 +82,19 @@ export async function POST(request: NextRequest) {
     const valid = await bcrypt.compare(input.password, user.passwordHash);
     if (!valid) return apiError(401, "Invalid email or password");
 
+    if (user.status === "FROZEN") {
+      return apiError(403, "Your account is frozen. Please contact administrator.");
+    }
     if (user.status !== "ACTIVE") {
       return apiError(403, "This account has been disabled. Contact support.");
     }
 
     const loginOtpEnabled = (await getSetting("login_otp_enabled", "false")) === "true";
+    const secretaryNoOtp = (await getSetting("secretary_login_without_otp", "false")) === "true";
     const isAdmin = user.role === "ADMIN";
+    const isSecretaryExempt = user.role === "SECRETARY" && secretaryNoOtp;
 
-    if (loginOtpEnabled && !isAdmin) {
+    if (loginOtpEnabled && !isAdmin && !isSecretaryExempt) {
       const { code, ticket } = await generateLoginOtp(user.id, user.email);
       const emailRes = await sendLoginOtpEmail(user.email, user.name || "User", code, 10);
       if (!emailRes.success) {
