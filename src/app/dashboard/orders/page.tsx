@@ -40,6 +40,8 @@ interface DetailOrder {
   exportCount: number;
   lastExportedAt: string | null;
   createdAt: string;
+  deliveryReports?: { id: string; status: string }[];
+  _hasReportedLocally?: boolean;
 }
 
 interface BatchDetail {
@@ -119,6 +121,17 @@ export default function OrdersPage() {
         return;
       }
       toast("Report filed — our team will investigate", "success");
+      
+      // Update local state to immediately disable the button
+      if (detail) {
+        setDetail({
+          ...detail,
+          orders: detail.orders.map((o) =>
+            o.id === reportOrder.id ? { ...o, _hasReportedLocally: true } : o
+          ),
+        });
+      }
+
       setReportOrder(null);
       setMessage("");
     } finally {
@@ -339,11 +352,20 @@ export default function OrdersPage() {
                         <div className="flex justify-end gap-1.5">
                           {/* Cancel order feature removed per user request */}
                           {/* Report only shows on completed orders (SUCCESS or COMPLETED) */}
-                          {(o.status === "SUCCESS" || o.status === "COMPLETED") && (
-                            <Button size="sm" variant="ghost" className="text-amber-600 dark:text-amber-400" onClick={() => setReportOrder(o)}>
-                              <FileWarning className="h-3.5 w-3.5" /> Report
-                            </Button>
-                          )}
+                          {(o.status === "SUCCESS" || o.status === "COMPLETED") && (() => {
+                            const hasReported = o._hasReportedLocally || (o.deliveryReports && o.deliveryReports.length > 0);
+                            return (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className={`text-amber-600 dark:text-amber-400 ${hasReported ? "opacity-50 cursor-not-allowed" : ""}`}
+                                onClick={() => { if (!hasReported) setReportOrder(o); }}
+                                disabled={hasReported}
+                              >
+                                <FileWarning className="h-3.5 w-3.5" /> {hasReported ? "Reported" : "Report"}
+                              </Button>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
