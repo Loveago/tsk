@@ -1,0 +1,249 @@
+================================================================================
+           COMPLETE COPY-AND-PASTE VPS DEPLOYMENT GUIDE (TSK05.NET)
+================================================================================
+OS: Ubuntu 22.04 / 24.04 LTS or Debian 12
+Domain: tsk05.net (and www.tsk05.net)
+Stack: Node.js 22 LTS, PM2, PostgreSQL (Local), Nginx Reverse Proxy, Certbot SSL
+================================================================================
+
+--------------------------------------------------------------------------------
+STEP 1: CONNECT TO YOUR VPS & UPDATE PACKAGES
+--------------------------------------------------------------------------------
+# SSH into your VPS (replace your_vps_ip with your actual VPS IP address)
+ssh root@your_vps_ip
+
+# Update all system packages and install essential utilities
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y curl git ufw build-essential libpq-dev nginx certbot python3-certbot-nginx
+
+# Configure UFW Firewall (allows SSH, HTTP, HTTPS)
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'
+sudo ufw --force enable
+sudo ufw status
+
+
+--------------------------------------------------------------------------------
+STEP 2: INSTALL NODE.JS 22 LTS & PM2
+--------------------------------------------------------------------------------
+# Install Node.js 22 LTS via NodeSource
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Verify Node.js and npm versions
+node -v
+npm -v
+
+# Install PM2 globally
+sudo npm install -g pm2
+
+# Configure PM2 to automatically restart on VPS boot
+sudo pm2 startup systemd -u root --hp /root
+
+
+--------------------------------------------------------------------------------
+STEP 3: INSTALL & CONFIGURE POSTGRESQL ON VPS
+--------------------------------------------------------------------------------
+# Install PostgreSQL and contrib tools
+sudo apt install -y postgresql postgresql-contrib
+
+# Start and enable PostgreSQL service
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# Create a secure database user and the tskconnect database
+# Replace 'YourSecurePassword123!' with a strong password!
+sudo -u postgres psql << 'EOF'
+CREATE USER tsk_user WITH PASSWORD 'YourSecurePassword123!';
+CREATE DATABASE tskconnect_db OWNER tsk_user;
+GRANT ALL PRIVILEGES ON DATABASE tskconnect_db TO tsk_user;
+ALTER USER tsk_user CREATEDB;
+\q
+EOF
+
+# Grant schema privileges (PostgreSQL 15+)
+sudo -u postgres psql -d tskconnect_db -c "GRANT ALL ON SCHEMA public TO tsk_user;"
+
+# Test connecting to the local database
+PGPASSWORD='YourSecurePassword123!' psql -U tsk_user -d tskconnect_db -h 127.0.0.1 -c "\conninfo"
+
+
+--------------------------------------------------------------------------------
+STEP 4: CLONE REPOSITORY & SETUP DIRECTORY
+--------------------------------------------------------------------------------
+# Create web directory and navigate to it
+sudo mkdir -p /var/www
+cd /var/www
+
+# Clone your repository from GitHub
+# (Use HTTPS or set up your VPS SSH key with GitHub)
+git clone https://github.com/Loveago/tsk.git tskconnect
+cd /var/www/tskconnect
+
+# Install dependencies
+npm install
+
+
+--------------------------------------------------------------------------------
+STEP 5: CONFIGURE ENVIRONMENT VARIABLES (.env)
+--------------------------------------------------------------------------------
+# Create your production .env file
+# Tip: Generate a random AUTH_SECRET with: openssl rand -base64 32
+
+cat << 'EOF' > /var/www/tskconnect/.env
+DATABASE_URL="postgresql://tsk_user:YourSecurePassword123!@localhost:5432/tskconnect_db?schema=public"
+AUTH_SECRET="CHANGE_THIS_TO_A_VERY_LONG_RANDOM_SECRET_KEY_123456"
+
+# Ghana Paystack Secret Key (Optional / When ready)
+PAYSTACK_SECRET_KEY=""
+
+# Initial Admin Credentials (used during seed)
+ADMIN_EMAIL="admin@tsk05.net"
+ADMIN_PASSWORD="AdminPassword123!"
+ADMIN_NAME="Super Admin"
+
+# Node Environment
+NODE_ENV="production"
+PORT=3000
+EOF
+
+# Secure file permissions so only root/app can read secrets
+chmod 600 /var/www/tskconnect/.env
+
+
+--------------------------------------------------------------------------------
+STEP 6: RUN DATABASE MIGRATIONS & BUILD THE APP
+--------------------------------------------------------------------------------
+cd /var/www/tskconnect
+
+# Generate Prisma Client
+npx prisma generate
+
+# Push database schema to PostgreSQL
+npm run db:push
+
+# (Optional) Seed initial admin user and default system settings
+npm run db:seed
+
+# Build Next.js application for production
+npm run build
+
+
+--------------------------------------------------------------------------------
+STEP 7: CONFIGURE PM2 ECOSYSTEM & START SERVICE
+--------------------------------------------------------------------------------
+# Create PM2 ecosystem file
+cat << 'EOF' > /var/www/tskconnect/ecosystem.config.js
+module.exports = {
+  apps: [
+    {
+      name: "tskconnect",
+      cwd: "/var/www/tskconnect",
+      script: "node_modules/next/dist/bin/next",
+      args: "start -p 3000",
+      instances: "max",
+      exec_mode: "cluster",
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "1G",
+      env: {
+        NODE_ENV: "production",
+        PORT: 3000
+      }
+    }
+  ]
+};
+EOF
+
+# Start application with PM2
+pm2 start /var/www/tskconnect/ecosystem.config.js
+
+# Save PM2 process list so it automatically restarts on system reboot
+pm2 save
+
+# Verify the app is running locally
+curl -I http://127.0.0.1:3000
+
+
+--------------------------------------------------------------------------------
+STEP 8: CONFIGURE NGINX REVERSE PROXY FOR TSK05.NET
+--------------------------------------------------------------------------------
+# Create Nginx site configuration
+cat << 'EOF' > /etc/nginx/sites-available/tsk05.net
+server {
+    listen 80;
+    listen [::]:80;
+    server_name tsk05.net www.tsk05.net;
+
+    # Allow large Excel batch file uploads & logo uploads
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        # WebSocket support
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 60s;
+    }
+
+    # Cache static assets (Next.js static files)
+    location /_next/static/ {
+        alias /var/www/tskconnect/.next/static/;
+        expires 365d;
+        access_log off;
+    }
+}
+EOF
+
+# Enable the site and remove default Nginx config
+sudo ln -sf /etc/nginx/sites-available/tsk05.net /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Test Nginx configuration syntax
+sudo nginx -t
+
+# Reload Nginx to apply changes
+sudo systemctl reload nginx
+
+
+--------------------------------------------------------------------------------
+STEP 9: OBTAIN FREE SSL CERTIFICATE (HTTPS)
+--------------------------------------------------------------------------------
+# Certbot will automatically issue and configure the SSL certificate for your domain
+sudo certbot --nginx -d tsk05.net -d www.tsk05.net --non-interactive --agree-tos -m admin@tsk05.net --redirect
+
+# Test automatic SSL certificate renewal
+sudo certbot renew --dry-run
+
+
+--------------------------------------------------------------------------------
+STEP 10: FUTURE UPDATES & DEPLOYMENT SCRIPT
+--------------------------------------------------------------------------------
+# When you push new code to GitHub, run this 1-liner to update your live site:
+
+cd /var/www/tskconnect && \
+git pull origin main && \
+npm install && \
+npx prisma generate && \
+npm run db:push && \
+npm run build && \
+pm2 restart tskconnect
+
+# Helpful monitoring commands:
+# Check app logs:       pm2 logs tskconnect
+# Check app status:     pm2 status
+# Restart app:          pm2 restart tskconnect
+# PostgreSQL console:   sudo -u postgres psql -d tskconnect_db
+# Backup database:      pg_dump -U tsk_user -h 127.0.0.1 tskconnect_db > ~/tsk_backup_$(date +%F).sql
+================================================================================
