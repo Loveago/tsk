@@ -55,7 +55,7 @@ function createRequest(
   if (body !== undefined) {
     init.body = typeof body === "string" ? body : JSON.stringify(body);
   }
-  return new NextRequest(new URL(url, "https://api.clickyfied.com"), init);
+  return new NextRequest(new URL(url, "https://api.tskconnect.com"), init);
 }
 
 async function parseResponse(res: Response) {
@@ -72,7 +72,7 @@ async function parseResponse(res: Response) {
 
 async function runApiTests() {
   console.log("\n==================================================");
-  console.log("CLICKYFIED DEVELOPER API PLATFORM E2E SUITE");
+  console.log("TSKCONNECT DEVELOPER API PLATFORM E2E SUITE");
   console.log("==================================================\n");
 
   // 1. Webhook Signatures & Retries

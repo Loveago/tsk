@@ -1,6 +1,6 @@
-# CLICKYFIED — ADVANCED ORDER BATCH & DELIVERY MANAGEMENT SYSTEM
+# TSKCONNECT — ADVANCED ORDER BATCH & DELIVERY MANAGEMENT SYSTEM
 
-> **IMPORTANT:** Extend the existing Clickyfied platform with a powerful Order Batch / Export Batch management system.
+> **IMPORTANT:** Extend the existing Tskconnect platform with a powerful Order Batch / Export Batch management system.
 >
 > The system must support MTN, Telecel and AirtelTigo independently.
 >
@@ -10,7 +10,7 @@
 
 # 1. CORE CONCEPT — ORDER BATCHES
 
-When a reseller submits multiple recipients at once, Clickyfied should create:
+When a reseller submits multiple recipients at once, Tskconnect should create:
 
 ```text
 ORDER BATCH
@@ -50,7 +50,7 @@ This allows:
 
 # 2. NETWORK SEPARATION
 
-Clickyfied supports:
+Tskconnect supports:
 
 ```text
 MTN

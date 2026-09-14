@@ -131,7 +131,7 @@ echo $response;`;
 
   const webhookVerifyNode = `import crypto from "crypto";
 
-function verifyClickyfiedWebhook(rawBody, signatureHeader, timestampHeader, secret) {
+function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secret) {
   const payloadToSign = \`\${timestampHeader}.\${rawBody}\`;
   const expectedSignature = crypto
     .createHmac("sha256", secret)
@@ -151,7 +151,7 @@ function verifyClickyfiedWebhook(rawBody, signatureHeader, timestampHeader, secr
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold tracking-tight">Clickyfied Developer API Reference</h2>
+            <h2 className="text-xl font-bold tracking-tight">Tskconnect Developer API Reference</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Complete reference for integrating automated mobile data fulfillment into your apps.
             </p>
@@ -352,7 +352,7 @@ function verifyClickyfiedWebhook(rawBody, signatureHeader, timestampHeader, secr
                 <td className="py-2.5 font-bold text-emerald-600">GET</td>
                 <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">/v1/orders/:id</td>
                 <td className="py-2.5 text-slate-500">orders:read</td>
-                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Get single order details by Clickyfied order ID</td>
+                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Get single order details by Tskconnect order ID</td>
               </tr>
               <tr>
                 <td className="py-2.5 font-bold text-emerald-600">GET</td>
@@ -412,9 +412,9 @@ function verifyClickyfiedWebhook(rawBody, signatureHeader, timestampHeader, secr
         <h3 className="text-base font-bold">Webhook Security & Signature Verification</h3>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Every webhook delivery includes an HMAC SHA-256 signature in the{" "}
-          <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">X-Clickyfied-Signature</code>{" "}
+          <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">X-Tskconnect-Signature</code>{" "}
           header and a timestamp in{" "}
-          <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">X-Clickyfied-Timestamp</code>.
+          <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">X-Tskconnect-Timestamp</code>.
           Compute the HMAC of <code className="font-mono text-xs">{`\${timestamp}.\${rawBody}`}</code> using your webhook secret to verify authenticity.
         </p>
 

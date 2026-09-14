@@ -18,12 +18,12 @@ async function main() {
     {
       network: "MTN",
       exportCode: "EX-0001",
-      exportedBy: "admin@clickyfied.com",
+      exportedBy: "admin@tskconnect.com",
       exportedAt: new Date(),
     }
   );
 
-  const tmp = path.join(os.tmpdir(), `clickyfied-export-test-${Date.now()}.xlsx`);
+  const tmp = path.join(os.tmpdir(), `tskconnect-export-test-${Date.now()}.xlsx`);
   fs.writeFileSync(tmp, buffer);
   console.log(`Export written: ${buffer.length} bytes -> ${tmp}`);
 

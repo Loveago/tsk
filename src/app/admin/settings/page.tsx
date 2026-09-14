@@ -1073,7 +1073,7 @@ export default function AdminSettingsPage() {
                 <Input
                   value={settings.site_name ?? ""}
                   onChange={(e) => setSettings((s) => ({ ...s, site_name: e.target.value }))}
-                  placeholder="Clickyfied"
+                  placeholder="Tskconnect"
                 />
               </div>
               <div className="space-y-1.5">
@@ -1112,7 +1112,7 @@ export default function AdminSettingsPage() {
                   type="email"
                   value={settings.contact_email ?? ""}
                   onChange={(e) => setSettings((s) => ({ ...s, contact_email: e.target.value }))}
-                  placeholder="support@topshanka.com"
+                  placeholder="support@tskconnect.com"
                 />
               </div>
             </div>
@@ -1258,7 +1258,7 @@ export default function AdminSettingsPage() {
                     <Input
                       value={settings.brevo_sender_name ?? ""}
                       onChange={(e) => setSettings((s) => ({ ...s, brevo_sender_name: e.target.value }))}
-                      placeholder="Clickyfied"
+                      placeholder="Tskconnect"
                     />
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Friendly display name shown on outgoing emails.
@@ -1689,7 +1689,7 @@ export default function AdminSettingsPage() {
                 <Input
                   value={settings.support_telegram ?? ""}
                   onChange={(e) => setSettings((s) => ({ ...s, support_telegram: e.target.value }))}
-                  placeholder="@clickyfied"
+                  placeholder="@tskconnect"
                 />
               </div>
               <div className="space-y-1.5">
@@ -1705,7 +1705,7 @@ export default function AdminSettingsPage() {
                 <Input
                   value={settings.footer_text ?? ""}
                   onChange={(e) => setSettings((s) => ({ ...s, footer_text: e.target.value }))}
-                  placeholder="Powered by Clickyfied"
+                  placeholder="Powered by Tskconnect"
                 />
               </div>
             </div>

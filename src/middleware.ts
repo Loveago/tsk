@@ -2,8 +2,9 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
-const SESSION_COOKIE = "clickyfied_session";
-const secretString = process.env.AUTH_SECRET || "dev-insecure-secret-change-me";
+const SESSION_COOKIE = "tskconnect_session";
+const secretString = process.env.AUTH_SECRET || (process.env.NODE_ENV !== "production" ? "dev-insecure-secret-change-me" : "");
+if (!secretString) throw new Error("AUTH_SECRET must be set in production");
 const secret = new TextEncoder().encode(secretString);
 
 const ADMIN_ONLY_PREFIXES = [
@@ -23,7 +24,7 @@ export async function middleware(request: NextRequest) {
   if (token) {
     try {
       const { payload: verified } = await jwtVerify(token, secret, {
-        issuer: "clickyfied",
+        issuer: "tskconnect",
       });
       payload = verified as { role?: unknown; tv?: unknown };
     } catch {

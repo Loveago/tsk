@@ -16,7 +16,7 @@ export function AuthShell({
         <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">
           <Database className="h-5 w-5" />
         </span>
-        <span className="text-xl font-bold tracking-tight">Clickyfied</span>
+        <span className="text-xl font-bold tracking-tight">Tskconnect</span>
       </div>
       <div className="w-full max-w-md rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
         <h1 className="text-xl font-bold tracking-tight">{title}</h1>
@@ -25,7 +25,7 @@ export function AuthShell({
         )}
         <div className="mt-6">{children}</div>
       </div>
-      <p className="mt-6 text-xs text-slate-400">Clickyfied4u © 2026</p>
+      <p className="mt-6 text-xs text-slate-400">Tskconnect © 2026</p>
     </div>
   );
 }

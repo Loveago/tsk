@@ -334,6 +334,7 @@ model WalletTransaction {
 
   @@index([userId])
   @@index([status])
+  @@index([reference])
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +393,7 @@ model StorefrontProduct {
   @@index([storefrontId, isActive])
 }
 
-/// Public storefront sale, linked to the underlying Clickyfied Order (§35-§37).
+/// Public storefront sale, linked to the underlying Tskconnect Order (§35-§37).
 model StorefrontOrder {
   id                String   @id @default(cuid())
   seq               Int      @unique // CF-ST-00001 (§35)
@@ -642,7 +643,7 @@ model SendClaimSettings {
   enabled          Boolean  @default(true)
   network          String   @default("MTN") // MTN | TELECEL | AIRTELTIGO
   momoNumber       String   @default("0240000000")
-  accountName      String   @default("Clickyfied")
+  accountName      String   @default("Tskconnect")
   instructions     String?
   minimumAmount    Float    @default(1)
   maximumAmount    Float    @default(5000)

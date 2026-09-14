@@ -38,7 +38,7 @@ loadEnvFile(".env.local");
 const prisma = new PrismaClient();
 
 async function main() {
-  const adminEmail = (process.env.ADMIN_EMAIL || "admin@clickyfied.com").trim();
+  const adminEmail = (process.env.ADMIN_EMAIL || "admin@tskconnect.com").trim();
   const adminPassword = (process.env.ADMIN_PASSWORD || "admin123").trim();
   const adminName = (process.env.ADMIN_NAME || "Admin").trim();
   const passwordHash = await bcrypt.hash(adminPassword, 10);
@@ -49,9 +49,9 @@ async function main() {
   });
 
   // If not found and a previous default admin exists, update that account to the new email
-  if (!existingAdmin && adminEmail !== "admin@clickyfied.com") {
+  if (!existingAdmin && adminEmail !== "admin@tskconnect.com") {
     const defaultAdmin = await prisma.user.findUnique({
-      where: { email: "admin@clickyfied.com" },
+      where: { email: "admin@tskconnect.com" },
     });
     if (defaultAdmin) {
       existingAdmin = defaultAdmin;
@@ -157,7 +157,7 @@ async function main() {
   await prisma.systemSetting.upsert({
     where: { key: "site_name" },
     update: {},
-    create: { key: "site_name", value: "Clickyfied" },
+    create: { key: "site_name", value: "Tskconnect" },
   });
   await prisma.systemSetting.upsert({
     where: { key: "support_whatsapp" },

@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       {
         to: recipient,
         toName: admin.name || "Admin",
-        subject: "Clickyfied Email Integration Test",
+        subject: "Tskconnect Email Integration Test",
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
             <h2 style="color: #0284c7; margin-top: 0;">Brevo Email Integration Test</h2>
@@ -44,11 +44,11 @@ export async function POST(request: NextRequest) {
               <p style="margin: 0; font-size: 13px; color: #64748b;">Dispatched at: <strong style="color: #1e293b;">${new Date().toISOString()}</strong></p>
             </div>
             <p style="color: #94a3b8; font-size: 12px; margin-bottom: 0;">
-              Sent by Clickyfied Admin Settings Test Tool
+              Sent by Tskconnect Admin Settings Test Tool
             </p>
           </div>
         `,
-        text: `Clickyfied Email Integration Test\n\nCongratulations! Your Brevo transactional email configuration is working properly.\n\nRecipient: ${recipient}\nDispatched at: ${new Date().toISOString()}`,
+        text: `Tskconnect Email Integration Test\n\nCongratulations! Your Brevo transactional email configuration is working properly.\n\nRecipient: ${recipient}\nDispatched at: ${new Date().toISOString()}`,
       },
       {
         apiKey: effectiveApiKey,

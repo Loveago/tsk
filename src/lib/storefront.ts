@@ -273,7 +273,7 @@ export async function syncCommissionForOrder(
   const storeOrder = await prisma.storefrontOrder.findUnique({
     where: { underlyingOrderId: orderId },
   });
-  if (!storeOrder) return; // ordinary Clickyfied order — nothing to do
+  if (!storeOrder) return; // ordinary Tskconnect order — nothing to do
 
   const releasing = status === "SUCCESS";
   const reversing = ["FAILED", "REFUNDED", "CANCELLED"].includes(status);
@@ -386,7 +386,7 @@ export async function settleStorefrontPayment(
   }
 
   await prisma.$transaction(async (tx) => {
-    // 1. Underlying Clickyfied order so the order lifecycle stays uniform.
+    // 1. Underlying Tskconnect order so the order lifecycle stays uniform.
     const order = await tx.order.create({
       data: {
         userId: storefront.userId, // fulfilled via the store owner's account
@@ -493,7 +493,7 @@ export async function verifyAndSettleStorefrontOrder(reference: string): Promise
 
 /**
  * Reconciles any unsettled storefront orders from the last `hoursBack` hours.
- * For each order without an underlying Clickyfied order, it queries Paystack.
+ * For each order without an underlying Tskconnect order, it queries Paystack.
  * If the user paid, it settles the order and dispatches it for processing!
  */
 export async function reconcileUnsettledStorefrontOrders(hoursBack = 48): Promise<{

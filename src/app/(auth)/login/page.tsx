@@ -120,7 +120,7 @@ export default function LoginPage() {
       subtitle={
         step === "otp"
           ? `Enter the 6-digit code sent to ${otpEmail}`
-          : "Sign in to your Clickyfied account"
+          : "Sign in to your Tskconnect account"
       }
     >
       {serverError && (

@@ -85,7 +85,7 @@ async function runTests() {
 
   // 2. SMS WEBHOOK AUTHENTICATION
   console.log("\n--- 2. SMS Webhook Authentication ---");
-  const validSecret = process.env.SMS_FORWARDER_SECRET || "clickyfied_forwarder_secret_2026";
+  const validSecret = process.env.SMS_FORWARDER_SECRET || "tskconnect_forwarder_secret_2026";
   assert(
     verifyForwarderSecret(`Bearer ${validSecret}`),
     "Valid Bearer token is accepted"
@@ -359,7 +359,7 @@ async function runTests() {
   console.log("\n--- 8. Admin Manual Wallet Credit ---");
   const manualCreditResult = await adminManualCreditWallet({
     adminId: "admin_test_id",
-    adminEmail: "admin@clickyfied.com",
+    adminEmail: "admin@tskconnect.com",
     userId: testUser.id,
     amount: 25,
     reason: "Administrative gesture / reconciliation",

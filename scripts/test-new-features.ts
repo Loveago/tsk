@@ -73,7 +73,7 @@ console.log("3. Testing Storefront validation schemas:");
 
 // Storefront Application requires storeName, contactNumber, whatsappGroupLink
 const validApply = storefrontApplySchema.safeParse({
-  storeName: "Topshanka Data",
+  storeName: "Tskconnect Data",
   contactNumber: "0241234567",
   whatsappGroupLink: "https://chat.whatsapp.com/ABC123XYZ",
 });
@@ -81,21 +81,21 @@ assert.strictEqual(validApply.success, true);
 
 // Missing contact number
 const missingContact = storefrontApplySchema.safeParse({
-  storeName: "Topshanka Data",
+  storeName: "Tskconnect Data",
   whatsappGroupLink: "https://chat.whatsapp.com/ABC123XYZ",
 });
 assert.strictEqual(missingContact.success, false, "contactNumber must be mandatory");
 
 // Missing WhatsApp group link
 const missingWhatsapp = storefrontApplySchema.safeParse({
-  storeName: "Topshanka Data",
+  storeName: "Tskconnect Data",
   contactNumber: "0241234567",
 });
 assert.strictEqual(missingWhatsapp.success, false, "whatsappGroupLink must be mandatory");
 
 // Storefront settings allows updating phone and whatsappGroupLink
 const validSettings = storefrontSettingsSchema.safeParse({
-  storeName: "Topshanka Data Updated",
+  storeName: "Tskconnect Data Updated",
   phone: "0249998888",
   whatsappGroupLink: "https://chat.whatsapp.com/NEWLINK",
   description: "Best bundle reseller",
@@ -115,11 +115,11 @@ const testSettings = {
   allow_user_registration: "true",
   storefront_feature_enabled: "true",
   order_processing_halted: "false",
-  site_name: "Clickyfied",
+  site_name: "Tskconnect",
   site_announcement: "Special weekend promo live now!",
   support_whatsapp: "233535308873",
   default_momo_number: "0241234567",
-  contact_email: "support@topshanka.com",
+  contact_email: "support@tskconnect.com",
   storefront_min_markup: "1.00",
   storefront_max_markup: "10.00",
   storefront_min_withdrawal: "50.00",

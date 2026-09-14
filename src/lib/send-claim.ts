@@ -51,7 +51,7 @@ export async function getSendClaimSettings() {
         enabled: true,
         network: "MTN",
         momoNumber: "0240000000",
-        accountName: "Clickyfied",
+        accountName: "Tskconnect",
         instructions: "Send money to the Mobile Money number below, then enter your transaction details to claim the funds.",
         minimumAmount: DEFAULT_MIN_AMOUNT,
         maximumAmount: DEFAULT_MAX_AMOUNT,
@@ -93,7 +93,7 @@ export async function updateSendClaimSettings(data: {
       enabled: data.enabled ?? true,
       network: data.network ?? "MTN",
       momoNumber: data.momoNumber ?? "0240000000",
-      accountName: data.accountName ?? "Clickyfied",
+      accountName: data.accountName ?? "Tskconnect",
       instructions: data.instructions ?? "Send money to the Mobile Money number below, then enter your transaction details to claim the funds.",
       minimumAmount: data.minimumAmount ?? DEFAULT_MIN_AMOUNT,
       maximumAmount: data.maximumAmount ?? DEFAULT_MAX_AMOUNT,
@@ -106,8 +106,8 @@ export async function updateSendClaimSettings(data: {
  * Timing-safe secret verification for SMS forwarder webhook
  */
 export function verifyForwarderSecret(providedToken?: string | null): boolean {
-  const configuredSecret = process.env.SMS_FORWARDER_SECRET || "clickyfied_forwarder_secret_2026";
-  if (!providedToken) return false;
+  const configuredSecret = process.env.SMS_FORWARDER_SECRET;
+  if (!configuredSecret || !providedToken) return false;
 
   const cleanProvided = providedToken.replace(/^Bearer\s+/i, "").trim();
   const bufA = Buffer.from(cleanProvided);

@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ToastProvider } from "@/components/toast";
 
 export const metadata: Metadata = {
-  title: "Clickyfied — Data Bundle Distribution",
+  title: "Tskconnect — Data Bundle Distribution",
   description:
     "Reseller and API management platform for MTN, Telecel and AirtelTigo data bundles.",
 };

@@ -10,7 +10,7 @@ import * as path from "path";
 // --- mirror of template route logic ---
 async function buildTemplate(): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Clickyfied";
+  wb.creator = "Tskconnect";
   const ws = wb.addWorksheet("Orders");
   ws.columns = [{ width: 18 }, { width: 14 }];
   const header = ws.addRow(["Phone Number", "Volume (GB)"]);
@@ -68,7 +68,7 @@ async function parseWorkbook(bytes: Uint8Array): Promise<string[][]> {
   return rows;
 }
 
-const tmp = path.join(os.tmpdir(), `clickyfied-template-test-${Date.now()}.xlsx`);
+const tmp = path.join(os.tmpdir(), `tskconnect-template-test-${Date.now()}.xlsx`);
 
 async function main() {
   const template = await buildTemplate();

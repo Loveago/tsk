@@ -1,5 +1,5 @@
 ================================================================================
-           CLICKYFIED / TOPSHANKA — COMPLETE VERCEL DEPLOYMENT GUIDE
+           TSKCONNECT / TSKCONNECT — COMPLETE VERCEL DEPLOYMENT GUIDE
 ================================================================================
 Repository: https://github.com/Loveago/tsk.git
 Framework:  Next.js 15 (App Router) + Prisma + Tailwind CSS
@@ -48,7 +48,7 @@ Recommended Free Serverless Postgres Providers:
 ================================================================================
 1. Go to https://neon.tech and sign up / log in with GitHub.
 2. Click "Create Project".
-   - Name: clickyfied-db
+   - Name: tskconnect-db
    - Region: Choose the closest region (e.g., Frankfurt / Ireland for EMEA/Ghana).
 3. Once created, copy the "Connection string".
    Select "Prisma" or "Connection Pooling".
@@ -96,7 +96,7 @@ Run the following commands in your terminal:
    (If it does not appear, click "Adjust GitHub App Permissions" and grant access).
 4. Click "Import".
 5. In the "Configure Project" screen:
-   - Project Name: clickyfied (or tsk)
+   - Project Name: tskconnect (or tsk)
    - Framework Preset: Next.js (automatically detected)
    - Root Directory: ./ (default)
    - Build Command: leave default (Next.js handles `prisma generate` via postinstall)
@@ -130,7 +130,7 @@ add the following keys:
    Value: https://your-project-name.vercel.app
    (You can update this after Vercel assigns your project domain).
 
-5) ADMIN_EMAIL (Optional, defaults to admin@clickyfied.com)
+5) ADMIN_EMAIL (Optional, defaults to admin@tskconnect.com)
    Value: your-preferred-admin-email@domain.com
 
 6) ADMIN_PASSWORD (Optional, defaults to admin123)
@@ -148,7 +148,7 @@ You can run this locally targeting the cloud database:
 
 1. In your local `.env` file, set:
    DATABASE_URL="postgresql://username:password@your-host/neondb?sslmode=require"
-   ADMIN_EMAIL="admin@clickyfied.com"
+   ADMIN_EMAIL="admin@tskconnect.com"
    ADMIN_PASSWORD="YourSecureAdminPassword123!"
 
 2. Generate client & push tables to the cloud database:

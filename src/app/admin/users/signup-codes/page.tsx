@@ -340,7 +340,7 @@ export default function AdminSignupCodesPage() {
               Signup Code Requirement
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Controls whether new users need a code to register on Clickyfied. Changes apply immediately.
+              Controls whether new users need a code to register on Tskconnect. Changes apply immediately.
             </p>
           </div>
 

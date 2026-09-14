@@ -216,7 +216,7 @@ export function AppShell({
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-md shadow-blue-600/30">
               <Database className="h-4.5 w-4.5" />
             </span>
-            <span className="text-base font-bold tracking-tight">Clickyfied</span>
+            <span className="text-base font-bold tracking-tight">Tskconnect</span>
           </Link>
 
           <IdleIndicator idle={idle} />
@@ -330,7 +330,7 @@ export function AppShell({
       </main>
 
       <footer className="mt-4 border-t border-slate-200/70 py-4 text-center text-xs text-slate-400 dark:border-white/5 space-y-2">
-        <div>{footerText || "Clickyfied4u © 2026"}</div>
+        <div>{footerText || "Tskconnect © 2026"}</div>
         <div className="flex justify-center gap-4 text-[11px]">
           {supportPhone && <span>Support: {supportPhone}</span>}
           {supportTelegram && <span>Telegram: {supportTelegram}</span>}

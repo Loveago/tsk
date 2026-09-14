@@ -80,7 +80,7 @@ export default function RegisterPage() {
       setServerError(json.error ?? "Registration failed");
       return;
     }
-    toast("Account created. Welcome to Clickyfied!", "success");
+    toast("Account created. Welcome to Tskconnect!", "success");
     router.push("/dashboard");
     router.refresh();
   };

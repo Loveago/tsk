@@ -6,7 +6,7 @@ import { reconcileUnsettledStorefrontOrders } from "@/lib/storefront";
  * Finds any storefront order from the last 48 hours that hasn't been settled
  * (e.g. buyer closed their browser before redirect, webhook delivery failed, or network dropped).
  * Automatically queries Paystack to verify if the payment was actually completed.
- * If verified, it settles the order, creates the Clickyfied admin order with status PENDING,
+ * If verified, it settles the order, creates the Tskconnect admin order with status PENDING,
  * releases/tracks commissions, and dispatches it into the fulfillment queue.
  */
 export async function GET(request: NextRequest) {

@@ -218,7 +218,7 @@ export function DeveloperApplicationCard({
             <p className="mt-1 text-xs text-red-700 dark:text-red-300">
               {application?.adminNotes
                 ? `Reason: ${application.adminNotes}`
-                : "Your API access has been temporarily suspended. Please contact Clickyfied support for reinstatement."}
+                : "Your API access has been temporarily suspended. Please contact Tskconnect support for reinstatement."}
             </p>
           </div>
         </div>
@@ -235,7 +235,7 @@ export function DeveloperApplicationCard({
             Developer Program
           </span>
           <h2 className="mt-3 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            Connect your website or application to Clickyfied and automate data orders.
+            Connect your website or application to Tskconnect and automate data orders.
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
             Get direct API access to dispatch MTN, Telecel, and AirtelTigo data bundles programmatically from your e-commerce storefront, mobile app, or reseller portal.
@@ -299,7 +299,7 @@ export function DeveloperApplicationCard({
                 <textarea
                   required
                   rows={3}
-                  placeholder="Describe your platform and how you will use the Clickyfied API..."
+                  placeholder="Describe your platform and how you will use the Tskconnect API..."
                   value={usageDescription}
                   onChange={(e) => setUsageDescription(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs dark:border-slate-700 dark:bg-slate-800"
@@ -377,7 +377,7 @@ export function DeveloperApplicationCard({
                 </label>
                 <input
                   type="url"
-                  placeholder="https://yourwebsite.com/api/webhooks/clickyfied"
+                  placeholder="https://yourwebsite.com/api/webhooks/tskconnect"
                   value={webhookUrl}
                   onChange={(e) => setWebhookUrl(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800"
@@ -393,7 +393,7 @@ export function DeveloperApplicationCard({
                   className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="terms" className="text-xs text-slate-600 dark:text-slate-400">
-                  I agree to the Clickyfied Developer API Terms of Service and understand that automated order fulfillment will debit from my account balance.
+                  I agree to the Tskconnect Developer API Terms of Service and understand that automated order fulfillment will debit from my account balance.
                 </label>
               </div>
 

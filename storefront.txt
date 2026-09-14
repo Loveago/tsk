@@ -1,4 +1,4 @@
-Yes. This is a good next layer for Clickyfied. I’d structure it as a **controlled reseller storefront system**: the admin decides who is allowed to open a storefront, while the user controls their storefront, retail pricing, products, branding, and commission wallet.
+Yes. This is a good next layer for Tskconnect. I’d structure it as a **controlled reseller storefront system**: the admin decides who is allowed to open a storefront, while the user controls their storefront, retail pricing, products, branding, and commission wallet.
 
 I’d also add a few safeguards you didn’t mention, especially around **pricing limits, wallet transactions, refunds, order tracking, withdrawals, and admin approval**.
 
@@ -6,9 +6,9 @@ Here’s a Cursor-ready master prompt for the feature:
 
 ---
 
-# CLICKYFIED — USER STOREFRONT & RESELLER MARKETPLACE SYSTEM
+# TSKCONNECT — USER STOREFRONT & RESELLER MARKETPLACE SYSTEM
 
-> **IMPORTANT:** Add a complete storefront/reseller marketplace system to the existing Clickyfied application.
+> **IMPORTANT:** Add a complete storefront/reseller marketplace system to the existing Tskconnect application.
 >
 > This is an extension to the existing system. **Do not rebuild the existing user dashboard, wallet, products, orders, networks or authentication system from scratch.**
 >
@@ -159,13 +159,13 @@ Every enabled storefront should have a unique public URL.
 For example:
 
 ```text
-clickyfied.com/store/top-skanka
+tskconnect.com/store/top-skanka
 ```
 
 or preferably:
 
 ```text
-clickyfied.com/@topskanka
+tskconnect.com/@topskanka
 ```
 
 The username/slug must be unique.
@@ -177,7 +177,7 @@ Example:
 ```text
 Store URL
 
-clickyfied.com/@topskanka
+tskconnect.com/@topskanka
 
 [Copy Link]
 [Open Store]
@@ -215,7 +215,7 @@ Do not delete the storefront.
 
 # 7. PRODUCT MANAGEMENT
 
-The storefront should use the **existing Clickyfied products/packages**.
+The storefront should use the **existing Tskconnect products/packages**.
 
 Do not create completely separate duplicate products.
 
@@ -470,7 +470,7 @@ This is better than forcing users to remove/re-add products.
 
 # 14. OUT-OF-STOCK / UNAVAILABLE PRODUCTS
 
-If Clickyfied/admin disables a product or the underlying network package becomes unavailable:
+If Tskconnect/admin disables a product or the underlying network package becomes unavailable:
 
 The user's storefront should automatically reflect:
 
@@ -478,7 +478,7 @@ The user's storefront should automatically reflect:
 Currently Unavailable
 ```
 
-The user should not be able to sell something that Clickyfied cannot fulfil.
+The user should not be able to sell something that Tskconnect cannot fulfil.
 
 This must be controlled by the master product availability.
 
@@ -1163,7 +1163,7 @@ Each storefront order should have:
 
 ```text
 Storefront Order ID
-Underlying Clickyfied Order ID
+Underlying Tskconnect Order ID
 Customer/recipient
 Network
 Package
@@ -1184,7 +1184,7 @@ Payment
         ↓
 Storefront Order
         ↓
-Existing Clickyfied Order
+Existing Tskconnect Order
         ↓
 Network Fulfilment
 ```
@@ -1311,7 +1311,7 @@ Public storefront:
 
 **modern / commercial / conversion-focused**
 
-Still maintain Clickyfied's overall visual identity.
+Still maintain Tskconnect's overall visual identity.
 
 Use:
 
@@ -1380,7 +1380,7 @@ Store Orders
    ↓
 Individual Order
    ↓
-Underlying Clickyfied Order
+Underlying Tskconnect Order
 ```
 
 ---
@@ -1621,7 +1621,7 @@ PUBLIC STOREFRONT
   ↓
 STOREFRONT ORDER
   │
-  ├── Existing Clickyfied order created
+  ├── Existing Tskconnect order created
   │
   ↓
 FULFILMENT
@@ -1675,7 +1675,7 @@ Do not add unnecessary complexity just for the sake of adding features.
 
 ## FINAL INSTRUCTION TO CURSOR
 
-> **Before writing code, inspect the existing Clickyfied codebase and understand how users, authentication, products/packages, networks, wallets, payments, orders, order batches and the existing Not Received system currently work.**
+> **Before writing code, inspect the existing Tskconnect codebase and understand how users, authentication, products/packages, networks, wallets, payments, orders, order batches and the existing Not Received system currently work.**
 >
 > **Integrate the storefront system into the existing architecture rather than creating parallel versions of existing functionality.**
 >

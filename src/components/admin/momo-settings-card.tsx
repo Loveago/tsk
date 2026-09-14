@@ -165,7 +165,7 @@ export function MomoSettingsCard() {
               id="accountName"
               value={settings.accountName}
               onChange={(e) => setSettings({ ...settings, accountName: e.target.value })}
-              placeholder="Clickyfied"
+              placeholder="Tskconnect"
               required
             />
           </div>

@@ -1,12 +1,12 @@
 export const openApiSpec = {
   openapi: "3.1.0",
   info: {
-    title: "Clickyfied Developer API Platform",
+    title: "Tskconnect Developer API Platform",
     version: "1.0.0",
     description:
-      "Production-ready developer API for Clickyfied. Automate Ghanaian mobile data bundles (MTN, Telecel, AirtelTigo) directly from your applications, reseller stores, websites, and platforms.",
+      "Production-ready developer API for Tskconnect. Automate Ghanaian mobile data bundles (MTN, Telecel, AirtelTigo) directly from your applications, reseller stores, websites, and platforms.",
     contact: {
-      name: "Clickyfied Developer Support",
+      name: "Tskconnect Developer Support",
       url: "/",
     },
   },
@@ -123,7 +123,7 @@ export const openApiSpec = {
         type: "object",
         required: ["url"],
         properties: {
-          url: { type: "string", example: "https://your-domain.com/webhooks/clickyfied" },
+          url: { type: "string", example: "https://your-domain.com/webhooks/tskconnect" },
           events: {
             type: "array",
             items: { type: "string" },
@@ -244,7 +244,7 @@ export const openApiSpec = {
             in: "path",
             required: true,
             schema: { type: "string" },
-            description: "The Clickyfied order ID, e.g. CLK-839201 or 839201",
+            description: "The Tskconnect order ID, e.g. CLK-839201 or 839201",
           },
         ],
         responses: {
@@ -297,7 +297,7 @@ export const openApiSpec = {
     "/balance": {
       get: {
         summary: "Check Account Wallet Balance",
-        description: "Returns your current Clickyfied wallet balance in GHS.",
+        description: "Returns your current Tskconnect wallet balance in GHS.",
         responses: {
           "200": {
             description: "Wallet balance amount",

@@ -170,7 +170,7 @@ export function DeveloperWebhooksPanel() {
                 New Webhook Secret Generated
               </p>
               <p className="mt-1 text-xs text-slate-700 dark:text-slate-300">
-                Use this secret to verify <code className="font-mono">X-Clickyfied-Signature</code> headers on incoming webhooks:
+                Use this secret to verify <code className="font-mono">X-Tskconnect-Signature</code> headers on incoming webhooks:
               </p>
               <code className="mt-2 block rounded-xl bg-slate-950 p-3 font-mono text-xs font-bold text-emerald-400 select-all">
                 {newSecretAlert}
@@ -235,7 +235,7 @@ export function DeveloperWebhooksPanel() {
             </div>
             <input
               type="url"
-              placeholder="https://yourwebsite.com/api/webhooks/clickyfied"
+              placeholder="https://yourwebsite.com/api/webhooks/tskconnect"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono dark:border-slate-700 dark:bg-slate-800"

@@ -27,13 +27,13 @@ async function runTests() {
   const validSettings = settingsSchema.parse({
     brevo_api_key: "xkeysib-test-key-12345",
     brevo_sender_email: "support@example.com",
-    brevo_sender_name: "Clickyfied Support",
+    brevo_sender_name: "Tskconnect Support",
     login_otp_enabled: "true",
     paystack_secret_key: "sk_test_1234567890",
   });
   assert.strictEqual(validSettings.brevo_api_key, "xkeysib-test-key-12345");
   assert.strictEqual(validSettings.brevo_sender_email, "support@example.com");
-  assert.strictEqual(validSettings.brevo_sender_name, "Clickyfied Support");
+  assert.strictEqual(validSettings.brevo_sender_name, "Tskconnect Support");
   assert.strictEqual(validSettings.login_otp_enabled, "true");
   assert.strictEqual(validSettings.paystack_secret_key, "sk_test_1234567890");
 
@@ -132,7 +132,7 @@ async function runTests() {
   const resetRes = await sendPasswordResetEmail(
     "resetuser@example.com",
     "John Doe",
-    "https://clickyfied.com/reset-password?token=abcdef123456",
+    "https://tskconnect.com/reset-password?token=abcdef123456",
     60
   );
   assert.strictEqual(resetRes.success, true);

@@ -25,12 +25,12 @@ export async function getBrevoConfig(): Promise<BrevoConfig> {
   const dbSenderEmail = (await getSetting("brevo_sender_email")).trim();
   const envSenderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
   const supportEmail = (await getSetting("support_email")).trim();
-  const senderEmail = dbSenderEmail || envSenderEmail || supportEmail || "support@clickyfied.com";
+  const senderEmail = dbSenderEmail || envSenderEmail || supportEmail || "support@tskconnect.com";
 
   const dbSenderName = (await getSetting("brevo_sender_name")).trim();
   const envSenderName = process.env.BREVO_SENDER_NAME?.trim();
   const siteName = (await getSetting("site_name")).trim();
-  const senderName = dbSenderName || envSenderName || siteName || "Clickyfied";
+  const senderName = dbSenderName || envSenderName || siteName || "Tskconnect";
 
   return { apiKey, senderEmail, senderName };
 }
@@ -126,7 +126,7 @@ export async function sendPasswordResetEmail(
   resetUrl: string,
   expiryMinutes = 60
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const brandName = (await getSetting("site_name", "Clickyfied")).trim() || "Clickyfied";
+  const brandName = (await getSetting("site_name", "Tskconnect")).trim() || "Tskconnect";
   const subject = `Reset your ${brandName} password`;
 
   const html = `
@@ -211,7 +211,7 @@ export async function sendLoginOtpEmail(
   otpCode: string,
   expiryMinutes = 10
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const brandName = (await getSetting("site_name", "Clickyfied")).trim() || "Clickyfied";
+  const brandName = (await getSetting("site_name", "Tskconnect")).trim() || "Tskconnect";
   const subject = `${otpCode} is your ${brandName} verification code`;
   const formattedOtp = otpCode.split("").join(" ");
 
@@ -257,7 +257,7 @@ export async function sendLoginOtpEmail(
                   Security Note:
                 </p>
                 <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
-                  Never share this code with anyone. Clickyfied staff will never ask for your verification code. If you did not attempt to sign in, please change your password immediately.
+                  Never share this code with anyone. Tskconnect staff will never ask for your verification code. If you did not attempt to sign in, please change your password immediately.
                 </p>
               </div>
             </td>
@@ -292,53 +292,53 @@ export async function sendApiApprovalEmail(userEmail: string, userName: string, 
   const appUrl = (
     process.env.APP_URL ||
     process.env.NEXTAUTH_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://clickyfied.com")
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://tskconnect.com")
   ).replace(/\/$/, "");
 
   await sendEmail({
     to: userEmail,
-    subject: "Your Clickyfied API Access Has Been Approved!",
-    text: `Hello ${userName},\n\nCongratulations! Your developer API access application for "${businessName}" has been approved by the Clickyfied admin team.\n\nYou can now log in to your developer dashboard, generate production API credentials (ck_live_...), configure your webhooks, and start submitting live automated data orders.\n\nDashboard: ${appUrl}/dashboard/api?tab=credentials\nDocs: ${appUrl}/dashboard/api?tab=docs\n\nBest regards,\nThe Clickyfied Team`,
+    subject: "Your Tskconnect API Access Has Been Approved!",
+    text: `Hello ${userName},\n\nCongratulations! Your developer API access application for "${businessName}" has been approved by the Tskconnect admin team.\n\nYou can now log in to your developer dashboard, generate production API credentials (ck_live_...), configure your webhooks, and start submitting live automated data orders.\n\nDashboard: ${appUrl}/dashboard/api?tab=credentials\nDocs: ${appUrl}/dashboard/api?tab=docs\n\nBest regards,\nThe Tskconnect Team`,
   });
 }
 
 export async function sendApiRejectionEmail(userEmail: string, userName: string, businessName: string, reason?: string): Promise<void> {
   await sendEmail({
     to: userEmail,
-    subject: "Clickyfied API Application Update",
-    text: `Hello ${userName},\n\nThank you for your interest in the Clickyfied Developer API. After reviewing your application for "${businessName}", we are unable to approve production access at this time.\n\n${reason ? `Reason: ${reason}\n\n` : ""}You may update your business details and re-apply from your dashboard.\n\nBest regards,\nThe Clickyfied Team`,
+    subject: "Tskconnect API Application Update",
+    text: `Hello ${userName},\n\nThank you for your interest in the Tskconnect Developer API. After reviewing your application for "${businessName}", we are unable to approve production access at this time.\n\n${reason ? `Reason: ${reason}\n\n` : ""}You may update your business details and re-apply from your dashboard.\n\nBest regards,\nThe Tskconnect Team`,
   });
 }
 
 export async function sendApiSuspensionEmail(userEmail: string, userName: string, businessName: string, reason?: string): Promise<void> {
   await sendEmail({
     to: userEmail,
-    subject: "Notice: Clickyfied API Access Suspended",
-    text: `Hello ${userName},\n\nPlease be advised that API access for "${businessName}" has been temporarily suspended.\n\n${reason ? `Details: ${reason}\n\n` : ""}If you believe this was in error, please reach out to our support team.\n\nBest regards,\nThe Clickyfied Team`,
+    subject: "Notice: Tskconnect API Access Suspended",
+    text: `Hello ${userName},\n\nPlease be advised that API access for "${businessName}" has been temporarily suspended.\n\n${reason ? `Details: ${reason}\n\n` : ""}If you believe this was in error, please reach out to our support team.\n\nBest regards,\nThe Tskconnect Team`,
   });
 }
 
 export async function sendCredentialCreatedEmail(userEmail: string, userName: string, credentialName: string, keyPrefix: string, env: string): Promise<void> {
   await sendEmail({
     to: userEmail,
-    subject: `New Clickyfied API Key Generated: ${credentialName}`,
-    text: `Hello ${userName},\n\nA new ${env} API credential "${credentialName}" (${keyPrefix}...) was generated on your account.\n\nIf you did not perform this action, please revoke the key immediately from your Developer Dashboard.\n\nBest regards,\nThe Clickyfied Team`,
+    subject: `New Tskconnect API Key Generated: ${credentialName}`,
+    text: `Hello ${userName},\n\nA new ${env} API credential "${credentialName}" (${keyPrefix}...) was generated on your account.\n\nIf you did not perform this action, please revoke the key immediately from your Developer Dashboard.\n\nBest regards,\nThe Tskconnect Team`,
   });
 }
 
 export async function sendCredentialRevokedEmail(userEmail: string, userName: string, credentialName: string, keyPrefix: string): Promise<void> {
   await sendEmail({
     to: userEmail,
-    subject: `Clickyfied API Key Revoked: ${credentialName}`,
-    text: `Hello ${userName},\n\nThe API key "${credentialName}" (${keyPrefix}...) on your account has been revoked and can no longer make API requests.\n\nBest regards,\nThe Clickyfied Team`,
+    subject: `Tskconnect API Key Revoked: ${credentialName}`,
+    text: `Hello ${userName},\n\nThe API key "${credentialName}" (${keyPrefix}...) on your account has been revoked and can no longer make API requests.\n\nBest regards,\nThe Tskconnect Team`,
   });
 }
 
 export async function sendWebhookFailureEmail(userEmail: string, webhookUrl: string, errorDetail: string): Promise<void> {
   await sendEmail({
     to: userEmail,
-    subject: "Alert: Clickyfied Webhook Delivery Failures",
-    text: `Hello,\n\nWe detected multiple consecutive delivery failures when dispatching order status webhooks to your endpoint:\n\n${webhookUrl}\n\nLast error: ${errorDetail}\n\nPlease check that your server is online, reachable, and responds with an HTTP 2xx status within 10 seconds.\n\nBest regards,\nThe Clickyfied Team`,
+    subject: "Alert: Tskconnect Webhook Delivery Failures",
+    text: `Hello,\n\nWe detected multiple consecutive delivery failures when dispatching order status webhooks to your endpoint:\n\n${webhookUrl}\n\nLast error: ${errorDetail}\n\nPlease check that your server is online, reachable, and responds with an HTTP 2xx status within 10 seconds.\n\nBest regards,\nThe Tskconnect Team`,
   });
 }
 
@@ -351,8 +351,8 @@ export async function sendClaimSuccessEmail(
 ): Promise<void> {
   await sendEmail({
     to: userEmail,
-    subject: "Your Clickyfied Wallet Top-Up Was Successful",
-    text: `Hello ${userName},\n\nYour GHS ${amount.toFixed(2)} Mobile Money payment has been successfully added to your Clickyfied wallet.\n\nTransaction Reference: ${reference}\nNetwork: ${network}\n\nBest regards,\nThe Clickyfied Team`,
+    subject: "Your Tskconnect Wallet Top-Up Was Successful",
+    text: `Hello ${userName},\n\nYour GHS ${amount.toFixed(2)} Mobile Money payment has been successfully added to your Tskconnect wallet.\n\nTransaction Reference: ${reference}\nNetwork: ${network}\n\nBest regards,\nThe Tskconnect Team`,
   });
 }
 
@@ -364,7 +364,7 @@ export async function sendClaimRejectedEmail(
 ): Promise<void> {
   await sendEmail({
     to: userEmail,
-    subject: "Clickyfied Mobile Money Claim Update",
-    text: `Hello ${userName},\n\nYour claim for Mobile Money transaction ${reference} could not be processed.\n\nReason: ${reason}\n\nIf you need assistance, please verify your transaction details or contact Clickyfied support.\n\nBest regards,\nThe Clickyfied Team`,
+    subject: "Tskconnect Mobile Money Claim Update",
+    text: `Hello ${userName},\n\nYour claim for Mobile Money transaction ${reference} could not be processed.\n\nReason: ${reason}\n\nIf you need assistance, please verify your transaction details or contact Tskconnect support.\n\nBest regards,\nThe Tskconnect Team`,
   });
 }

@@ -32,7 +32,7 @@ export async function buildOrdersWorkbook(
   meta: ExportWorkbookMeta
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Clickyfied";
+  wb.creator = "Tskconnect";
   wb.created = meta.exportedAt;
 
   // One sheet per network, named after the network

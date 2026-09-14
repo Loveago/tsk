@@ -169,7 +169,7 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
               Account Name
             </span>
             <p className="mt-0.5 text-sm font-bold text-slate-800 dark:text-slate-100">
-              {settings?.accountName ?? "Clickyfied"}
+              {settings?.accountName ?? "Tskconnect"}
             </p>
           </div>
 
@@ -214,7 +214,7 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
                 ✓ Payment Verified
               </h4>
               <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                {formatGHS(claimResult.amount)} has been added to your Clickyfied wallet.
+                {formatGHS(claimResult.amount)} has been added to your Tskconnect wallet.
               </p>
             </div>
           </div>

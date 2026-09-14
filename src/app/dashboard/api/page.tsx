@@ -104,7 +104,7 @@ export default function DeveloperDashboardPage() {
     <div className="space-y-6">
       <PageHeader
         title="Developer API Platform"
-        description="Integrate Clickyfied mobile data fulfillment into your websites and applications."
+        description="Integrate Tskconnect mobile data fulfillment into your websites and applications."
       />
 
       {/* Navigation Sub-Tabs with Smooth Chevrons & Mobile Quick Select */}

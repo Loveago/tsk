@@ -42,6 +42,12 @@ export async function POST(request: NextRequest) {
     const recipientPhone = (body.recipient as string) || (body.to as string) || null;
     const networkHint = (body.network as string) || null;
 
+    // Prevent SMS spoofing/injection from regular phone numbers.
+    // Official MoMo messages come from alphanumeric sender IDs (e.g., MobileMoney, TelecelCash).
+    if (senderPhone && /^\+?\d{9,}$/.test(senderPhone.replace(/\s+/g, ""))) {
+      return apiError(403, "Rejected: SMS appears to be from a standard phone number rather than an official MoMo shortcode.");
+    }
+
     const result = await processIncomingForwardedSms({
       rawSms: rawSms.trim(),
       senderPhone: senderPhone ? String(senderPhone) : null,

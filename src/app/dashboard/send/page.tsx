@@ -445,7 +445,7 @@ export default function SendOrderPage() {
               </div>
               <a
                 href="/api/orders/template"
-                download="clickyfied-order-template.xlsx"
+                download="tskconnect-order-template.xlsx"
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
               >
                 <Download className="h-3.5 w-3.5" /> Download Excel template

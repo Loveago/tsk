@@ -64,7 +64,7 @@ async function runTests() {
       status: "ACTIVE",
       maxUses: 2,
       notes: "Test code for suite",
-      createdBy: "admin@clickyfied.com",
+      createdBy: "admin@tskconnect.com",
     },
   });
 

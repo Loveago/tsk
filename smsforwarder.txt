@@ -1,10 +1,10 @@
 ================================================================================
-CLICKYFIED — SMS FORWARDER SETUP GUIDE (ANDROID PHONE)
+TSKCONNECT — SMS FORWARDER SETUP GUIDE (ANDROID PHONE)
 ================================================================================
 
 This guide explains how to set up an Android phone with your Mobile Money SIM card 
 so that whenever a MoMo payment SMS arrives, it is automatically forwarded in 
-real-time to your Clickyfied server.
+real-time to your Tskconnect server.
 
 --------------------------------------------------------------------------------
 TABLE OF CONTENTS
@@ -24,19 +24,19 @@ TABLE OF CONTENTS
 
 1. A dedicated Android smartphone with your MoMo merchant or recipient SIM inserted.
 2. Constant internet access (WiFi or active Mobile Data) on the phone.
-3. Your Clickyfied production domain (e.g., https://your-domain.com or https://clickyfied.com).
+3. Your Tskconnect production domain (e.g., https://your-domain.com or https://tskconnect.com).
 4. The secret key set in your server's `.env` file:
 
    SMS_FORWARDER_SECRET="your_secure_secret_token_here"
 
    *Note: If you haven't set SMS_FORWARDER_SECRET in .env, the system default is:
-   clickyfied_forwarder_secret_2026
+   tskconnect_forwarder_secret_2026
 
 ================================================================================
 2. WEBHOOK SPECIFICATION
 ================================================================================
 
-Your Clickyfied server listens for incoming SMS at:
+Your Tskconnect server listens for incoming SMS at:
 
 - URL:     https://<YOUR-DOMAIN>/api/webhooks/momo/sms
 - Method:  POST
@@ -91,7 +91,7 @@ Step 2: Grant all requested permissions:
 Step 3: Open the app and go to "Send Channel" or "Webhook":
         - Click the "+" button to add a new Channel.
         - Channel Type: Choose "Webhook" or "Custom Webhook".
-        - Name: Clickyfied Server
+        - Name: Tskconnect Server
         - Web Server URL:
           https://your-domain.com/api/webhooks/momo/sms
         - Request Method: POST
@@ -112,7 +112,7 @@ Step 4: Go to "Forwarding Rules":
         - Sender match (Optional):
           Leave empty to forward all SMS, or add sender keywords:
           *MobileMoney*, *MTN*, *Telecel*, *AirtelTigo*
-        - Target Channel: Select "Clickyfied Server" (created in Step 3).
+        - Target Channel: Select "Tskconnect Server" (created in Step 3).
         - Enable the rule and click "Save".
 
 ================================================================================
@@ -184,11 +184,11 @@ miss an SMS:
 
 1. Send a small test MoMo transaction (e.g., GHS 1.00) to the phone's SIM card.
 2. Watch the phone receive the telecom SMS notification.
-3. Open your Clickyfied Admin Dashboard:
+3. Open your Tskconnect Admin Dashboard:
    - Navigate to: ADMIN -> BILLING (or WALLET) -> INCOMING MOMO
    - Check if the transaction appears in the list with status "AVAILABLE".
    - View the details to see the extracted Transaction ID, Amount, and Sender.
-4. Log into a regular user account on Clickyfied:
+4. Log into a regular user account on Tskconnect:
    - Go to Dashboard -> Billing -> Send & Claim.
    - Enter the Transaction ID, Amount, and Network.
    - Click "Claim Money".

@@ -1,5 +1,5 @@
 /**
- * Comprehensive automated tests for Clickyfied MTN Number Verification System.
+ * Comprehensive automated tests for Tskconnect MTN Number Verification System.
  * Run with: npx tsx scripts/test-mtn-verification.ts
  */
 
@@ -110,7 +110,7 @@ async function runTests() {
   });
 
   // Manual add
-  const added = await addAcceptedMtnNumber(testNumberA, "MANUAL", "test_admin@topshanka.com");
+  const added = await addAcceptedMtnNumber(testNumberA, "MANUAL", "test_admin@tskconnect.com");
   assert(added.normalizedNumber === testNumberA, "addAcceptedMtnNumber correctly normalizes & inserts");
   assert(await isMtnNumberAccepted(testNumberA), "isMtnNumberAccepted returns true for whitelisted number");
   assert(!(await isMtnNumberAccepted("0240000000")), "isMtnNumberAccepted returns false for non-whitelisted number");
@@ -120,7 +120,7 @@ async function runTests() {
   assert(dupAdd.id === added.id, "Adding duplicate accepted number returns existing record without throwing");
 
   // Remove accepted number
-  await removeAcceptedMtnNumber(added.id, "test_admin@topshanka.com");
+  await removeAcceptedMtnNumber(added.id, "test_admin@tskconnect.com");
   assert(!(await isMtnNumberAccepted(testNumberA)), "removeAcceptedMtnNumber removes number from whitelist");
 
   // Import TXT parsing
@@ -189,7 +189,7 @@ Ama,0539990005`;
   const importRes = await bulkImportAcceptedMtnNumbers({
     numbers: [testNumberA, testNumberB, testNumberC],
     source: "IMPORT_TXT",
-    actorLabel: "test_admin@topshanka.com",
+    actorLabel: "test_admin@tskconnect.com",
   });
   assert(importRes.imported === 3, "bulkImportAcceptedMtnNumbers imports all 3 records");
   assert(Boolean(importRes.batchId), "bulkImportAcceptedMtnNumbers automatically created import batch record");
@@ -204,7 +204,7 @@ Ama,0539990005`;
   const dupImportRes = await bulkImportAcceptedMtnNumbers({
     numbers: [testNumberA, testNumberB],
     source: "IMPORT_TXT",
-    actorLabel: "test_admin@topshanka.com",
+    actorLabel: "test_admin@tskconnect.com",
   });
   assert(dupImportRes.imported === 0, "Duplicate import safely skipped existing accepted numbers");
 

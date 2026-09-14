@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     if (type === "users") {
       columns = userColumns;
-      title = "Clickyfied — Users";
+      title = "Tskconnect — Users";
       const users = await prisma.user.findMany({
         orderBy: { createdAt: "desc" },
         include: { _count: { select: { orders: true } } },
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       }));
     } else if (type === "transactions") {
       columns = txColumns;
-      title = "Clickyfied — Wallet Transactions";
+      title = "Tskconnect — Wallet Transactions";
       const where: Record<string, unknown> = {};
       if (status) where.status = status;
       if (from || to) {
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
       }));
     } else {
       columns = orderColumns;
-      title = "Clickyfied — Orders";
+      title = "Tskconnect — Orders";
       const where: Record<string, unknown> = {};
       if (status) where.status = status;
       if (from || to) {
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
 
     if (rows.length > 5000) rows = rows.slice(0, 5000);
     const stamp = new Date().toISOString().slice(0, 10);
-    const filename = `clickyfied-${type}-${stamp}`;
+    const filename = `tskconnect-${type}-${stamp}`;
 
     if (format === "csv") return exportResponse(toCsv(rows, columns), "csv", filename);
     if (format === "pdf") return exportResponse(await toPdf(title, rows, columns), "pdf", filename);

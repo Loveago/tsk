@@ -27,7 +27,7 @@ export async function toXlsx(
   sheetName: string
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Clickyfied";
+  wb.creator = "Tskconnect";
   const ws = wb.addWorksheet(sheetName.slice(0, 30));
   ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: c.width ?? 18 }));
   ws.getRow(1).font = { bold: true };
