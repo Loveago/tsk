@@ -87,6 +87,7 @@ export interface CreateOrderInput {
   status?: OrderStatus;
   historyNote?: string;
   historyBy?: string;
+  skipMtnValidation?: boolean;
 }
 
 /**
@@ -139,9 +140,11 @@ export async function createOrder(input: CreateOrderInput) {
   }
 
   // Central MTN Number Verification Check (§16, §17)
-  await validateMtnOrderRecipient(input.phoneNumber, input.network, input.userId, {
-    throwOnFailure: true,
-  });
+  if (!input.skipMtnValidation) {
+    await validateMtnOrderRecipient(input.phoneNumber, input.network, input.userId, {
+      throwOnFailure: true,
+    });
+  }
 
   const status = input.status ?? "PENDING";
   const createdAt = input.createdAt ?? new Date();

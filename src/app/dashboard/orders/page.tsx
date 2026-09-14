@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { ChevronRight, FileWarning, Layers, Search } from "lucide-react";
+import { ChevronRight, FileWarning, Layers, Search, Clock, Eye } from "lucide-react";
+import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
@@ -40,7 +41,7 @@ interface DetailOrder {
   exportCount: number;
   lastExportedAt: string | null;
   createdAt: string;
-  deliveryReports?: { id: string; status: string }[];
+  deliveryReports?: { id: string; seq?: number; status: string; proofImageMime?: string | null }[];
   _hasReportedLocally?: boolean;
 }
 
@@ -66,10 +67,8 @@ export default function OrdersPage() {
   const [loading, setLoading] = React.useState(true);
   const [detail, setDetail] = React.useState<BatchDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
-  const [reportOrder, setReportOrder] = React.useState<DetailOrder | null>(null);
-  const [reason, setReason] = React.useState(REPORT_REASONS[0]);
-  const [message, setMessage] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
+  const [submittingReportId, setSubmittingReportId] = React.useState<number | null>(null);
+  const [viewReportId, setViewReportId] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -106,36 +105,40 @@ export default function OrdersPage() {
     }
   };
 
-  const fileReport = async () => {
-    if (!reportOrder) return;
-    setBusy(true);
+  const directReportOrder = async (order: DetailOrder) => {
+    setSubmittingReportId(order.id);
     try {
       const res = await fetch("/api/reports/not-received", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: reportOrder.id, reason, message: message || undefined }),
+        body: JSON.stringify({ orderId: order.id, reason: "Data not received" }),
       });
       const json = await res.json();
       if (!res.ok) {
         toast(json.error ?? "Failed to file report", "error");
         return;
       }
-      toast("Report filed — our team will investigate", "success");
-      
-      // Update local state to immediately disable the button
+      toast("Report submitted — our team will investigate", "success");
+
+      // Update local state to immediately show "Under Review"
       if (detail) {
         setDetail({
           ...detail,
           orders: detail.orders.map((o) =>
-            o.id === reportOrder.id ? { ...o, _hasReportedLocally: true } : o
+            o.id === order.id
+              ? {
+                  ...o,
+                  _hasReportedLocally: true,
+                  deliveryReports: [{ id: json.report?.id ?? json.id ?? "", status: "OPEN" }],
+                }
+              : o
           ),
         });
       }
-
-      setReportOrder(null);
-      setMessage("");
+    } catch {
+      toast("Error submitting report", "error");
     } finally {
-      setBusy(false);
+      setSubmittingReportId(null);
     }
   };
 
@@ -353,16 +356,58 @@ export default function OrdersPage() {
                           {/* Cancel order feature removed per user request */}
                           {/* Report only shows on completed orders (SUCCESS or COMPLETED) */}
                           {(o.status === "SUCCESS" || o.status === "COMPLETED") && (() => {
-                            const hasReported = o._hasReportedLocally || (o.deliveryReports && o.deliveryReports.length > 0);
+                            const rep = (o.deliveryReports && o.deliveryReports[0]) || (o._hasReportedLocally ? { id: "", status: "OPEN" } : null);
+                            const isSubmitting = submittingReportId === o.id;
+
+                            if (rep) {
+                              const isDelivered = rep.status === "DELIVERED";
+                              const isResolved = rep.status === "RESOLVED";
+                              const hasProof = Boolean(rep.proofImageMime);
+
+                              let badgeText = "Under Review";
+                              let badgeCls = "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20";
+                              if (isDelivered) {
+                                badgeText = hasProof ? "Delivered (View Proof)" : "Delivered";
+                                badgeCls = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20";
+                              } else if (isResolved) {
+                                badgeText = "Resolved";
+                                badgeCls = "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20";
+                              } else if (rep.status === "REJECTED") {
+                                badgeText = "Rejected";
+                                badgeCls = "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20";
+                              }
+
+                              return (
+                                <button
+                                  type="button"
+                                  disabled={!rep.id}
+                                  onClick={() => { if (rep.id) setViewReportId(rep.id); }}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${badgeCls} ${
+                                    rep.id ? "cursor-pointer hover:opacity-80" : "cursor-default opacity-80"
+                                  }`}
+                                  title={rep.id ? "Click to view review status and delivery proof" : "Under Review"}
+                                >
+                                  <Clock className="h-3 w-3" />
+                                  <span>{badgeText}</span>
+                                  {hasProof && <Eye className="h-3 w-3 ml-0.5" />}
+                                </button>
+                              );
+                            }
+
                             return (
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className={`text-amber-600 dark:text-amber-400 ${hasReported ? "opacity-50 cursor-not-allowed" : ""}`}
-                                onClick={() => { if (!hasReported) setReportOrder(o); }}
-                                disabled={hasReported}
+                                className="text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"
+                                onClick={() => directReportOrder(o)}
+                                disabled={isSubmitting}
                               >
-                                <FileWarning className="h-3.5 w-3.5" /> {hasReported ? "Reported" : "Report"}
+                                {isSubmitting ? (
+                                  <Spinner className="h-3.5 w-3.5 mr-1" />
+                                ) : (
+                                  <FileWarning className="h-3.5 w-3.5 mr-1" />
+                                )}
+                                {isSubmitting ? "Submitting…" : "Report"}
                               </Button>
                             );
                           })()}
@@ -383,36 +428,11 @@ export default function OrdersPage() {
         )}
       </Dialog>
 
-      <Dialog open={!!reportOrder} onClose={() => setReportOrder(null)} title="Report not received">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            Reporting <strong className="font-mono">{reportOrder ? orderCode(reportOrder.id) : ""}</strong> to{" "}
-            {reportOrder?.phoneNumber} ({reportOrder?.gbAmount} GB {reportOrder?.network}).
-          </p>
-          <select className={selectCls + " w-full"} value={reason} onChange={(e) => setReason(e.target.value)}>
-            {REPORT_REASONS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          <textarea
-            className="h-20 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100"
-            placeholder="Describe the issue (optional)"
-            value={message}
-            maxLength={600}
-            onChange={(e) => setMessage(e.target.value)}
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setReportOrder(null)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={fileReport} disabled={busy}>
-              {busy ? <Spinner className="h-3.5 w-3.5" /> : "Submit report"}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
+      <NotReceivedReportDetailDialog
+        reportId={viewReportId}
+        open={!!viewReportId}
+        onClose={() => setViewReportId(null)}
+      />
     </div>
   );
 }

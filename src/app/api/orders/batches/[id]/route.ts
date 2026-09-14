@@ -37,7 +37,7 @@ export async function GET(
           createdAt: true,
           deliveryReports: {
             orderBy: { createdAt: "desc" },
-            select: { id: true, seq: true, status: true, createdAt: true },
+            select: { id: true, seq: true, status: true, proofImageMime: true, createdAt: true },
           },
         },
       }),

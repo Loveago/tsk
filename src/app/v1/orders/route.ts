@@ -428,17 +428,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if recipient number already has an active order (PENDING or PROCESSING)
-    const existingActiveOrder = await prisma.order.findFirst({
+    const latestOrder = await prisma.order.findFirst({
       where: {
         phoneNumber: recipient,
-        status: { in: ["PENDING", "PROCESSING"] },
       },
+      orderBy: { createdAt: "desc" },
       select: { id: true, status: true },
     });
-    if (existingActiveOrder) {
+    if (latestOrder && (latestOrder.status === "PENDING" || latestOrder.status === "PROCESSING")) {
       throw new ApiError(
         "ORDER_IN_PROGRESS",
-        `Cannot place order for ${recipient}: this number currently has an active order in ${existingActiveOrder.status.toLowerCase()} status.`,
+        `Cannot place order for ${recipient}: this number currently has an active order in ${latestOrder.status.toLowerCase()} status.`,
         400
       );
     }

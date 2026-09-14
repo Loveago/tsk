@@ -85,20 +85,20 @@ export async function POST(request: NextRequest) {
     if (amount <= 0) return fail(request, keyId, endpoint, 400, "No price configured for this package");
 
     // Check if recipient number already has an active order
-    const existingActiveOrder = await prisma.order.findFirst({
+    const latestOrder = await prisma.order.findFirst({
       where: {
         phoneNumber: input.phoneNumber,
-        status: { in: ["PENDING", "PROCESSING"] },
       },
+      orderBy: { createdAt: "desc" },
       select: { id: true, status: true },
     });
-    if (existingActiveOrder) {
+    if (latestOrder && (latestOrder.status === "PENDING" || latestOrder.status === "PROCESSING")) {
       return fail(
         request,
         keyId,
         endpoint,
         400,
-        `Cannot place order for ${input.phoneNumber}: this number currently has an active order in ${existingActiveOrder.status.toLowerCase()} status.`
+        `Cannot place order for ${input.phoneNumber}: this number currently has an active order in ${latestOrder.status.toLowerCase()} status.`
       );
     }
 

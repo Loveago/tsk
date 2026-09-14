@@ -40,7 +40,8 @@ export function getRequestOrigin(
     : process.env.NODE_ENV === "production"
     ? "https"
     : "http";
-  if (host) {
+  const isLocalhost = host?.startsWith("localhost") || host?.startsWith("127.0.0.1");
+  if (host && !isLocalhost) {
     return `${proto}://${host}`;
   }
   if (process.env.APP_URL) {
@@ -51,6 +52,9 @@ export function getRequestOrigin(
   }
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`;
+  }
+  if (host) {
+    return `${proto}://${host}`;
   }
   if ("nextUrl" in request && request.nextUrl?.origin) {
     return request.nextUrl.origin;

@@ -10,6 +10,9 @@ const updateSettingsSchema = z.object({
   orderProcessingHalted: z.boolean().optional(),
   defaultRateLimitPerMin: z.coerce.number().int().min(5).max(1000).optional(),
   defaultDailyLimit: z.coerce.number().int().min(100).max(100000).optional(),
+  maxBatchVolume: z.coerce.number().int().min(1).max(5000).optional(),
+  webhookTimeoutMs: z.coerce.number().int().min(1000).max(60000).optional(),
+  webhookMaxRetries: z.coerce.number().int().min(1).max(10).optional(),
   networkMtnEnabled: z.boolean().optional(),
   networkTelecelEnabled: z.boolean().optional(),
   networkAirteltigoEnabled: z.boolean().optional(),
@@ -21,6 +24,9 @@ export async function GET() {
     const halted = await isOrderProcessingHalted();
     const defaultRateLimit = await getSetting("api_default_rate_limit", "60");
     const defaultDaily = await getSetting("api_default_daily_limit", "5000");
+    const maxBatchVolume = await getSetting("api_max_batch_volume", "1000");
+    const webhookTimeout = await getSetting("api_webhook_timeout_ms", "10000");
+    const webhookRetries = await getSetting("api_webhook_max_retries", "5");
     const mtnEnabled = (await getSetting("network_mtn_enabled", "true")) !== "false";
     const telecelEnabled = (await getSetting("network_telecel_enabled", "true")) !== "false";
     const atEnabled = (await getSetting("network_airteltigo_enabled", "true")) !== "false";
@@ -29,6 +35,9 @@ export async function GET() {
       orderProcessingHalted: halted,
       defaultRateLimitPerMin: parseInt(defaultRateLimit, 10) || 60,
       defaultDailyLimit: parseInt(defaultDaily, 10) || 5000,
+      maxBatchVolume: parseInt(maxBatchVolume, 10) || 1000,
+      webhookTimeoutMs: parseInt(webhookTimeout, 10) || 10000,
+      webhookMaxRetries: parseInt(webhookRetries, 10) || 5,
       networkMtnEnabled: mtnEnabled,
       networkTelecelEnabled: telecelEnabled,
       networkAirteltigoEnabled: atEnabled,
@@ -53,6 +62,15 @@ export async function POST(request: NextRequest) {
     if (input.defaultDailyLimit !== undefined) {
       await setSetting("api_default_daily_limit", String(input.defaultDailyLimit));
     }
+    if (input.maxBatchVolume !== undefined) {
+      await setSetting("api_max_batch_volume", String(input.maxBatchVolume));
+    }
+    if (input.webhookTimeoutMs !== undefined) {
+      await setSetting("api_webhook_timeout_ms", String(input.webhookTimeoutMs));
+    }
+    if (input.webhookMaxRetries !== undefined) {
+      await setSetting("api_webhook_max_retries", String(input.webhookMaxRetries));
+    }
     if (input.networkMtnEnabled !== undefined) {
       await setSetting("network_mtn_enabled", String(input.networkMtnEnabled));
     }
@@ -72,6 +90,11 @@ export async function POST(request: NextRequest) {
     });
 
     const halted = await isOrderProcessingHalted();
+    const defaultRateLimit = await getSetting("api_default_rate_limit", "60");
+    const defaultDaily = await getSetting("api_default_daily_limit", "5000");
+    const maxBatch = await getSetting("api_max_batch_volume", "1000");
+    const webhookTimeout = await getSetting("api_webhook_timeout_ms", "10000");
+    const webhookRetries = await getSetting("api_webhook_max_retries", "5");
     const mtnEnabled = (await getSetting("network_mtn_enabled", "true")) !== "false";
     const telecelEnabled = (await getSetting("network_telecel_enabled", "true")) !== "false";
     const atEnabled = (await getSetting("network_airteltigo_enabled", "true")) !== "false";
@@ -79,8 +102,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       orderProcessingHalted: halted,
-      defaultRateLimitPerMin: input.defaultRateLimitPerMin ?? 60,
-      defaultDailyLimit: input.defaultDailyLimit ?? 5000,
+      defaultRateLimitPerMin: parseInt(defaultRateLimit, 10) || 60,
+      defaultDailyLimit: parseInt(defaultDaily, 10) || 5000,
+      maxBatchVolume: parseInt(maxBatch, 10) || 1000,
+      webhookTimeoutMs: parseInt(webhookTimeout, 10) || 10000,
+      webhookMaxRetries: parseInt(webhookRetries, 10) || 5,
       networkMtnEnabled: mtnEnabled,
       networkTelecelEnabled: telecelEnabled,
       networkAirteltigoEnabled: atEnabled,

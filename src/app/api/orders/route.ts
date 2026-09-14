@@ -3,7 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { sendOrdersSchema } from "@/lib/validation";
 import { createOrder, isOrderProcessingHalted } from "@/lib/orders";
-import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
+import {
+  validateMtnOrderRecipient,
+  isMtnVerificationEnabled,
+  normalizeGhanaPhoneNumber,
+  recordUnverifiedMtnNumbersBatch,
+} from "@/lib/mtn-verification";
 import { nextBatchCode } from "@/lib/batches";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
@@ -73,19 +78,21 @@ export async function POST(request: NextRequest) {
       return apiError(403, "Your account is frozen. You cannot place orders. Please contact support.");
     }
 
-    // Check if any number already has an active order (PENDING or PROCESSING)
-    const activeOrder = await prisma.order.findFirst({
-      where: {
-        phoneNumber: { in: deduplicatedOrders.map((o) => o.phoneNumber) },
-        status: { in: ["PENDING", "PROCESSING"] },
-      },
-      select: { phoneNumber: true, status: true },
-    });
-    if (activeOrder) {
-      return apiError(
-        400,
-        `Cannot place order for ${activeOrder.phoneNumber}: this number currently has an active order in ${activeOrder.status.toLowerCase()} status.`
-      );
+    // Check if any recipient number currently has an active in-flight order (§15).
+    // If a number was part of a batch and was completed (SUCCESS), failed, or cancelled,
+    // it should not be blocked regardless of other pending recipients in the batch.
+    for (const o of deduplicatedOrders) {
+      const latestOrder = await prisma.order.findFirst({
+        where: { phoneNumber: o.phoneNumber },
+        orderBy: { createdAt: "desc" },
+        select: { phoneNumber: true, status: true },
+      });
+      if (latestOrder && (latestOrder.status === "PENDING" || latestOrder.status === "PROCESSING")) {
+        return apiError(
+          400,
+          `Cannot place order for ${latestOrder.phoneNumber}: this number currently has an active order in ${latestOrder.status.toLowerCase()} status.`
+        );
+      }
     }
 
     // MTN single order per number a day toggle check
@@ -171,13 +178,39 @@ export async function POST(request: NextRequest) {
       return { ...o, price, packageId: pkg?.id ?? null };
     });
 
-    // Validate MTN numbers before balance deduction (§2, §16)
-    for (const o of deduplicatedOrders) {
-      const check = await validateMtnOrderRecipient(o.phoneNumber, o.network, user.id, {
-        recordUnverified: false,
+    // Validate MTN numbers before balance deduction in batch (§2, §16)
+    const mtnOrders = deduplicatedOrders.filter((o) => o.network.toUpperCase() === "MTN");
+    if (mtnOrders.length > 0) {
+      const verificationEnabled = await isMtnVerificationEnabled();
+      const mtnCanonicalList = Array.from(
+        new Set(mtnOrders.map((o) => normalizeGhanaPhoneNumber(o.phoneNumber)))
+      );
+      const acceptedRows = await prisma.acceptedMtnNumber.findMany({
+        where: { normalizedNumber: { in: mtnCanonicalList } },
+        select: { normalizedNumber: true },
       });
-      if (!check.allowed) {
-        return apiError(400, check.reason ?? "MTN number verification failed.");
+      const acceptedSet = new Set(acceptedRows.map((r) => r.normalizedNumber));
+
+      if (verificationEnabled) {
+        const unverified = mtnOrders.filter(
+          (o) => !acceptedSet.has(normalizeGhanaPhoneNumber(o.phoneNumber))
+        );
+        if (unverified.length > 0) {
+          const sample = unverified.slice(0, 5).map((o) => o.phoneNumber).join(", ");
+          const more = unverified.length > 5 ? ` and ${unverified.length - 5} more` : "";
+          return apiError(
+            400,
+            `Cannot place order: ${unverified.length} MTN number(s) have not been verified yet (${sample}${more}). Please submit for verification or remove them.`
+          );
+        }
+      } else {
+        // Verification toggle is OFF: allow orders, but log unverified numbers in bulk
+        const unverifiedItems = mtnOrders
+          .filter((o) => !acceptedSet.has(normalizeGhanaPhoneNumber(o.phoneNumber)))
+          .map((o) => ({ number: o.phoneNumber, userId: user.id }));
+        if (unverifiedItems.length > 0) {
+          await recordUnverifiedMtnNumbersBatch(unverifiedItems);
+        }
       }
     }
 
@@ -217,18 +250,27 @@ export async function POST(request: NextRequest) {
           },
         });
         createdBatches.push(batch);
-        for (const o of lines) {
-          const order = await createOrder({
-            userId: user.id,
-            phoneNumber: o.phoneNumber,
-            network: o.network,
-            gbAmount: o.gbAmount,
-            packageId: o.packageId ?? null,
-            amount: o.price,
-            source: "WEB",
-            batchId: batch.id,
-          });
-          created.push(order);
+
+        // Process chunked creations to avoid timeouts while preserving order persistence
+        const CHUNK_SIZE = 10;
+        for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
+          const chunk = lines.slice(i, i + CHUNK_SIZE);
+          const chunkOrders = await Promise.all(
+            chunk.map((o) =>
+              createOrder({
+                userId: user.id,
+                phoneNumber: o.phoneNumber,
+                network: o.network,
+                gbAmount: o.gbAmount,
+                packageId: o.packageId ?? null,
+                amount: o.price,
+                source: "WEB",
+                batchId: batch.id,
+                skipMtnValidation: true,
+              })
+            )
+          );
+          created.push(...chunkOrders);
         }
       }
     } catch (err) {

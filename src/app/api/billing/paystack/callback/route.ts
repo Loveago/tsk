@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError, getRequestOrigin } from "@/lib/api-helpers";
 import {
   verifyTransaction,
   settlePaystackTopup,
@@ -18,11 +18,12 @@ export async function GET(request: NextRequest) {
   let outcome: "success" | "failed" = "failed";
   let reference = "";
 
+  const origin = getRequestOrigin(request);
+
   try {
     const user = await requireUser();
     reference = request.nextUrl.searchParams.get("reference") ?? request.nextUrl.searchParams.get("trxref") ?? "";
 
-    const origin = request.nextUrl.origin;
     const redirect = (status: "success" | "failed") =>
       NextResponse.redirect(
         new URL(`/dashboard/billing?paystack=${status}&reference=${encodeURIComponent(reference)}`, origin)
@@ -52,7 +53,6 @@ export async function GET(request: NextRequest) {
     outcome = "failed";
   }
 
-  const origin = request.nextUrl.origin;
   return NextResponse.redirect(
     new URL(`/dashboard/billing?paystack=${outcome}&reference=${encodeURIComponent(reference)}`, origin)
   );

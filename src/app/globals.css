@@ -54,6 +54,10 @@
   animation-play-state: paused;
 }
 
+html.dark, .dark {
+  color-scheme: dark;
+}
+
 @layer base {
   * {
     @apply border-slate-200 dark:border-white/10;
@@ -61,6 +65,9 @@
   body {
     @apply bg-[#eef4fb] text-slate-900 antialiased dark:bg-[#060b16] dark:text-slate-100;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  input, textarea, select {
+    color: inherit;
   }
   ::selection {
     @apply bg-brand-200 text-brand-900;

@@ -18,6 +18,7 @@ import {
   XCircle,
   MessageSquarePlus,
   RefreshCw,
+  Clipboard,
 } from "lucide-react";
 
 const MAX_PROOF_BYTES = 4 * 1024 * 1024; // 4 MB — mirrors the proof API limit
@@ -151,6 +152,39 @@ export function DeliveryReportManageDialog({
       setUploading(false);
     }
   };
+
+  // Clipboard paste support for proof image
+  React.useEffect(() => {
+    if (!open || !reportId) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      // Don't intercept paste if user is typing into an input or textarea
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
+        const textData = e.clipboardData?.getData("text/plain");
+        if (textData) return;
+      }
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            toast("Pasting proof image from clipboard…", "info");
+            uploadProof(file);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [open, reportId, uploadProof, toast]);
 
   const isClosed = report ? report.status === "RESOLVED" || report.status === "REJECTED" : false;
 
@@ -333,6 +367,32 @@ function EvidenceSection({
   onUpload: (file: File) => Promise<void>;
 }) {
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = React.useState(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      onUpload(file);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          onUpload(file);
+          break;
+        }
+      }
+    }
+  };
+
   return (
     <section>
       <p className="mb-2 text-xs font-semibold text-slate-500">DELIVERY EVIDENCE</p>
@@ -365,11 +425,29 @@ function EvidenceSection({
           />
         </div>
       </div>
-      {!hasProof && (
+
+      {/* Interactive Clipboard Paste & Drop Box */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={handleDrop}
+        onPaste={handlePaste}
+        tabIndex={0}
+        className={`relative mt-2 flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-3.5 text-center transition cursor-pointer outline-none focus:border-brand-500 ${
+          dragActive
+            ? "border-brand-500 bg-brand-50/50 dark:bg-brand-500/10"
+            : "border-slate-200 bg-slate-50/60 hover:border-slate-300 dark:border-white/10 dark:bg-white/[0.02] dark:hover:border-white/20"
+        }`}
+        onClick={() => fileRef.current?.click()}
+      >
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+          <Clipboard className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+          <span>Copy & Paste image from clipboard (Ctrl+V / ⌘+V)</span>
+        </div>
         <p className="mt-1 text-[11px] text-slate-400">
-          JPG, PNG or WEBP up to 4 MB — becomes visible to the customer on their report.
+          or drag & drop here, or click to choose file (JPG, PNG, WEBP up to 4 MB)
         </p>
-      )}
+      </div>
       {proofUrl && (
         <div className="mt-2 space-y-1.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}

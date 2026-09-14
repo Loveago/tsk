@@ -97,7 +97,7 @@ export function StorefrontSettingsForm({ initial }: { initial: Initial }) {
           onChange={set("description")}
           placeholder="Short description shown on your public store"
           rows={3}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-transparent"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
         />
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

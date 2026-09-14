@@ -29,6 +29,7 @@ import {
 import { PageHeader, StatCard, Spinner, EmptyState } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS } from "@/lib/types";
@@ -89,6 +90,11 @@ export default function AdminApiManagementPage() {
   // Settings
   const [settings, setSettings] = React.useState<any>(null);
   const [savingSettings, setSavingSettings] = React.useState(false);
+  const [rateLimitInput, setRateLimitInput] = React.useState(60);
+  const [dailyLimitInput, setDailyLimitInput] = React.useState(5000);
+  const [maxBatchInput, setMaxBatchInput] = React.useState(1000);
+  const [webhookTimeoutInput, setWebhookTimeoutInput] = React.useState(10000);
+  const [webhookRetriesInput, setWebhookRetriesInput] = React.useState(5);
 
   const loadTab = React.useCallback(async (tab: AdminTab) => {
     setLoading(true);
@@ -130,6 +136,11 @@ export default function AdminApiManagementPage() {
         const res = await fetch("/api/admin/api/settings");
         const json = await res.json();
         setSettings(json);
+        setRateLimitInput(json.defaultRateLimitPerMin ?? 60);
+        setDailyLimitInput(json.defaultDailyLimit ?? 5000);
+        setMaxBatchInput(json.maxBatchVolume ?? 1000);
+        setWebhookTimeoutInput(json.webhookTimeoutMs ?? 10000);
+        setWebhookRetriesInput(json.webhookMaxRetries ?? 5);
       }
     } catch {
       toast("Failed to load admin data", "error");
@@ -286,6 +297,40 @@ export default function AdminApiManagementPage() {
       }
     } catch {
       toast("Failed to update setting", "error");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSaveApiSettings = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await fetch("/api/admin/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          defaultRateLimitPerMin: Number(rateLimitInput),
+          defaultDailyLimit: Number(dailyLimitInput),
+          maxBatchVolume: Number(maxBatchInput),
+          webhookTimeoutMs: Number(webhookTimeoutInput),
+          webhookMaxRetries: Number(webhookRetriesInput),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to save API settings", "error");
+        return;
+      }
+      setSettings(json);
+      setRateLimitInput(json.defaultRateLimitPerMin ?? 60);
+      setDailyLimitInput(json.defaultDailyLimit ?? 5000);
+      setMaxBatchInput(json.maxBatchVolume ?? 1000);
+      setWebhookTimeoutInput(json.webhookTimeoutMs ?? 10000);
+      setWebhookRetriesInput(json.webhookMaxRetries ?? 5);
+      toast("API configurations saved successfully", "success");
+    } catch {
+      toast("Failed to save API configurations", "error");
     } finally {
       setSavingSettings(false);
     }
@@ -1092,16 +1137,106 @@ export default function AdminApiManagementPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/60 space-y-3 text-xs">
+                  {/* Editable Rate Limits & Daily Quotas */}
+                  <form onSubmit={handleSaveApiSettings} className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-800/40 space-y-4">
                     <div>
-                      <p className="font-semibold text-slate-700 dark:text-slate-300">Default Rate Limit</p>
-                      <p className="font-mono text-slate-500">{settings?.defaultRateLimitPerMin || 60} requests / minute</p>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        Default Rate Limits & Volume Controls
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Configure baseline quotas applied to API clients unless custom limits are approved.
+                      </p>
                     </div>
-                    <div>
-                      <p className="font-semibold text-slate-700 dark:text-slate-300">Default Daily Request Limit</p>
-                      <p className="font-mono text-slate-500">{(settings?.defaultDailyLimit || 5000).toLocaleString()} requests / day</p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="defaultRateLimit" className="text-xs">Default Rate Limit (req/min)</Label>
+                        <Input
+                          id="defaultRateLimit"
+                          type="number"
+                          min={5}
+                          max={1000}
+                          value={rateLimitInput}
+                          onChange={(e) => setRateLimitInput(Number(e.target.value))}
+                          required
+                          className="text-xs"
+                        />
+                        <p className="text-[10px] text-slate-400">Allowed range: 5 – 1,000</p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="defaultDailyLimit" className="text-xs">Default Daily Request Limit</Label>
+                        <Input
+                          id="defaultDailyLimit"
+                          type="number"
+                          min={100}
+                          max={100000}
+                          value={dailyLimitInput}
+                          onChange={(e) => setDailyLimitInput(Number(e.target.value))}
+                          required
+                          className="text-xs"
+                        />
+                        <p className="text-[10px] text-slate-400">Allowed range: 100 – 100,000</p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="maxBatchVolume" className="text-xs">Max Bulk Order Volume</Label>
+                        <Input
+                          id="maxBatchVolume"
+                          type="number"
+                          min={1}
+                          max={5000}
+                          value={maxBatchInput}
+                          onChange={(e) => setMaxBatchInput(Number(e.target.value))}
+                          required
+                          className="text-xs"
+                        />
+                        <p className="text-[10px] text-slate-400">Max orders per API batch: 1 – 5,000</p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="webhookTimeout" className="text-xs">Webhook Timeout (ms)</Label>
+                        <Input
+                          id="webhookTimeout"
+                          type="number"
+                          min={1000}
+                          max={60000}
+                          step={500}
+                          value={webhookTimeoutInput}
+                          onChange={(e) => setWebhookTimeoutInput(Number(e.target.value))}
+                          required
+                          className="text-xs"
+                        />
+                        <p className="text-[10px] text-slate-400">HTTP timeout: 1,000 – 60,000 ms</p>
+                      </div>
+
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label htmlFor="webhookRetries" className="text-xs">Webhook Max Retries</Label>
+                        <Input
+                          id="webhookRetries"
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={webhookRetriesInput}
+                          onChange={(e) => setWebhookRetriesInput(Number(e.target.value))}
+                          required
+                          className="text-xs max-w-xs"
+                        />
+                        <p className="text-[10px] text-slate-400">Exponential backoff retry attempts: 1 – 10</p>
+                      </div>
                     </div>
-                  </div>
+
+                    <div className="pt-2 flex justify-end">
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={savingSettings}
+                        className="bg-brand-600 hover:bg-brand-700 text-white"
+                      >
+                        {savingSettings ? "Saving Configurations…" : "Save API Configurations"}
+                      </Button>
+                    </div>
+                  </form>
                 </div>
               </div>
             </div>

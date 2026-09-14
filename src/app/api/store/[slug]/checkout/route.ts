@@ -43,18 +43,21 @@ export async function POST(
       return apiError(503, "Online payment is not available right now.");
     }
 
-    // Check if recipient number already has a pending or processing order (§15)
-    const existingActiveOrder = await prisma.order.findFirst({
+    // Check if recipient number currently has an active in-flight order (§15).
+    // In a batch or multi-order scenario, as long as the latest order for this
+    // number was completed (SUCCESS), failed, or cancelled, do not block the purchase,
+    // regardless of other pending recipients in the batch.
+    const latestOrder = await prisma.order.findFirst({
       where: {
         phoneNumber: input.customerPhone,
-        status: { in: ["PENDING", "PROCESSING"] },
       },
+      orderBy: { createdAt: "desc" },
       select: { id: true, status: true },
     });
-    if (existingActiveOrder) {
+    if (latestOrder && (latestOrder.status === "PENDING" || latestOrder.status === "PROCESSING")) {
       return apiError(
         400,
-        `Cannot place order for ${input.customerPhone}: this number currently has an active order in ${existingActiveOrder.status.toLowerCase()} status.`
+        `Cannot place order for ${input.customerPhone}: this number currently has an active order in ${latestOrder.status.toLowerCase()} status.`
       );
     }
 

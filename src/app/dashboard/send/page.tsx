@@ -50,6 +50,16 @@ export default function SendOrderPage() {
   const [result, setResult] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
+  // State for confirming unverified MTN numbers
+  const [pendingUnverified, setPendingUnverified] = React.useState<{
+    toAdd: Line[];
+    unverifiedNumbers: string[];
+    verifiedItems: Line[];
+    verificationEnabled: boolean;
+    rawText: string | null;
+    mode: "add" | "submit";
+  } | null>(null);
+
   // State for confirming ported numbers
   const [pendingPorted, setPendingPorted] = React.useState<{
     toAdd: Line[];
@@ -80,7 +90,39 @@ export default function SendOrderPage() {
     if (first) setNetwork(first);
   }, [packages, loading, network]);
 
-  const addParsed = (parsed: Line[], skipped: number, source: string, rawText?: string) => {
+  const checkPortedAndAdd = (items: Line[], skipped = 0) => {
+    // Check for non-standard MTN prefixes (potentially ported numbers)
+    const portedItems: PortedNumberItem[] = [];
+    for (const item of items) {
+      if (item.network === "MTN" && !isMtnPrefix(item.phoneNumber)) {
+        portedItems.push({
+          phoneNumber: item.phoneNumber,
+          detectedNetwork: detectNetworkNameByPrefix(item.phoneNumber),
+          gbAmount: item.gbAmount,
+        });
+      }
+    }
+
+    if (portedItems.length > 0) {
+      setPendingPorted({
+        toAdd: items,
+        portedItems,
+        nonPortedItems: items.filter(
+          (item) => !(item.network === "MTN" && !isMtnPrefix(item.phoneNumber))
+        ),
+        rawText: null,
+      });
+      return;
+    }
+
+    setLines((l) => [...l, ...items]);
+    toast(
+      `${items.length} order(s) added${skipped > 0 ? ` — ${skipped} invalid line(s) skipped` : ""}`,
+      "success"
+    );
+  };
+
+  const addParsed = async (parsed: Line[], skipped: number, source: string, rawText?: string) => {
     if (!parsed.length) {
       toast(
         skipped > 0
@@ -131,36 +173,71 @@ export default function SendOrderPage() {
       return;
     }
 
-    // 3. Check for non-standard MTN prefixes (potentially ported numbers)
-    const portedItems: PortedNumberItem[] = [];
-    for (const item of toAdd) {
-      if (item.network === "MTN" && !isMtnPrefix(item.phoneNumber)) {
-        portedItems.push({
-          phoneNumber: item.phoneNumber,
-          detectedNetwork: detectNetworkNameByPrefix(item.phoneNumber),
-          gbAmount: item.gbAmount,
+    // 3. Check for unverified MTN numbers
+    const mtnItems = toAdd.filter((item) => item.network === "MTN");
+    if (mtnItems.length > 0) {
+      try {
+        const checkRes = await fetch("/api/mtn-verification/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phoneNumbers: mtnItems.map((item) => item.phoneNumber) }),
         });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
+          if (unverifiedList.length > 0) {
+            const unverifiedSet = new Set(unverifiedList);
+            setPendingUnverified({
+              toAdd,
+              unverifiedNumbers: unverifiedList,
+              verifiedItems: toAdd.filter((item) => !unverifiedSet.has(item.phoneNumber)),
+              verificationEnabled: checkData.verificationEnabled ?? true,
+              rawText: source === "pasted text" ? (rawText ?? null) : null,
+              mode: "add",
+            });
+            return;
+          }
+        }
+      } catch {
+        // continue
       }
     }
 
-    if (portedItems.length > 0) {
-      // Prompt user to verify and confirm ported numbers
-      setPendingPorted({
-        toAdd,
-        portedItems,
-        nonPortedItems: toAdd.filter(
-          (item) => !(item.network === "MTN" && !isMtnPrefix(item.phoneNumber))
-        ),
-        rawText: source === "pasted text" ? (rawText ?? null) : null,
-      });
-      return;
-    }
+    checkPortedAndAdd(toAdd, skipped);
+  };
 
-    setLines((l) => [...l, ...toAdd]);
-    toast(
-      `${toAdd.length} order(s) added${skipped > 0 ? ` — ${skipped} invalid line(s) skipped` : ""}`,
-      "success"
-    );
+  const confirmUnverifiedAddition = (includeUnverified: boolean) => {
+    if (!pendingUnverified) return;
+    const mode = pendingUnverified.mode;
+    const items = includeUnverified ? pendingUnverified.toAdd : pendingUnverified.verifiedItems;
+    const unverifiedCount = pendingUnverified.unverifiedNumbers.length;
+    setPendingUnverified(null);
+
+    if (mode === "submit") {
+      if (items.length > 0) {
+        setLines(items);
+        void executeOrderSubmission(items);
+      } else {
+        toast("No orders to send — unverified number(s) were removed", "info");
+      }
+    } else {
+      if (items.length > 0) {
+        if (!includeUnverified && unverifiedCount > 0) {
+          toast(`${unverifiedCount} unverified number(s) removed`, "info");
+        }
+        checkPortedAndAdd(items, 0);
+      } else {
+        toast("No orders added — unverified number(s) were excluded", "info");
+      }
+    }
+  };
+
+  const cancelUnverifiedAddition = () => {
+    if (pendingUnverified?.rawText) {
+      setBulkText(pendingUnverified.rawText);
+      toast("Order addition cancelled — input restored for review", "info");
+    }
+    setPendingUnverified(null);
   };
 
   const confirmPortedAddition = (includePorted: boolean) => {
@@ -248,8 +325,8 @@ export default function SendOrderPage() {
 
   const total = lines.reduce((s, l) => s + (l.price ?? 0), 0);
 
-  const submit = async () => {
-    if (!lines.length) {
+  const executeOrderSubmission = async (ordersToSend: Line[]) => {
+    if (!ordersToSend.length) {
       toast("Add at least one order", "error");
       return;
     }
@@ -260,7 +337,7 @@ export default function SendOrderPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orders: lines.map(({ phoneNumber, network: n, gbAmount: gb }) => ({
+          orders: ordersToSend.map(({ phoneNumber, network: n, gbAmount: gb }) => ({
             phoneNumber,
             network: n,
             gbAmount: gb,
@@ -279,6 +356,45 @@ export default function SendOrderPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const submit = async () => {
+    if (!lines.length) {
+      toast("Add at least one order", "error");
+      return;
+    }
+
+    // Pre-submission check for any unverified MTN numbers
+    const mtnLines = lines.filter((l) => l.network === "MTN");
+    if (mtnLines.length > 0) {
+      try {
+        const checkRes = await fetch("/api/mtn-verification/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phoneNumbers: mtnLines.map((l) => l.phoneNumber) }),
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
+          if (unverifiedList.length > 0) {
+            const unverifiedSet = new Set(unverifiedList);
+            setPendingUnverified({
+              toAdd: lines,
+              unverifiedNumbers: unverifiedList,
+              verifiedItems: lines.filter((l) => !unverifiedSet.has(l.phoneNumber)),
+              verificationEnabled: checkData.verificationEnabled ?? true,
+              rawText: null,
+              mode: "submit",
+            });
+            return;
+          }
+        }
+      } catch {
+        // continue
+      }
+    }
+
+    await executeOrderSubmission(lines);
   };
 
   return (
@@ -608,6 +724,87 @@ export default function SendOrderPage() {
             >
               Proceed with All ({pendingPorted?.toAdd.length ?? 0})
             </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Confirmation modal for Unverified numbers */}
+      <Dialog
+        open={!!pendingUnverified}
+        onClose={() => setPendingUnverified(null)}
+        title="Unverified MTN Number(s) Detected"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div className="text-xs space-y-1">
+              <p className="font-semibold">
+                {pendingUnverified?.unverifiedNumbers.length} MTN number(s) have not been verified yet.
+              </p>
+              <p>
+                {pendingUnverified?.verificationEnabled
+                  ? "MTN Number Verification is currently enforced on the platform. Orders for unverified numbers cannot be placed."
+                  : "These numbers are not on the verified MTN list. You can remove them or proceed anyway (they will be logged for review)."}
+              </p>
+            </div>
+          </div>
+
+          <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Unverified Number(s) ({pendingUnverified?.unverifiedNumbers.length}):
+            </p>
+            <ul className="space-y-1.5 text-xs font-mono">
+              {pendingUnverified?.unverifiedNumbers.map((num) => {
+                const line = pendingUnverified.toAdd.find((l) => l.phoneNumber === num);
+                return (
+                  <li
+                    key={num}
+                    className="flex items-center justify-between rounded-lg bg-white px-3 py-1.5 shadow-sm dark:bg-[#111c30]"
+                  >
+                    <span className="font-bold text-slate-800 dark:text-slate-100">{num}</span>
+                    <span className="rounded-md bg-amber-100 px-2 py-0.5 font-sans text-[11px] font-semibold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                      Unverified {line ? `(${line.gbAmount} GB)` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            You can remove these unverified numbers and proceed with the remaining verified orders.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={cancelUnverifiedAddition}
+            >
+              Cancel / Edit
+            </Button>
+            {pendingUnverified && pendingUnverified.verifiedItems.length > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => confirmUnverifiedAddition(false)}
+                className="bg-brand-600 hover:bg-brand-700 text-white"
+              >
+                Remove Unverified &amp; Proceed ({pendingUnverified.verifiedItems.length})
+              </Button>
+            )}
+            {pendingUnverified && !pendingUnverified.verificationEnabled && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => confirmUnverifiedAddition(true)}
+                className="border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-600/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
+              >
+                Proceed with All ({pendingUnverified.toAdd.length})
+              </Button>
+            )}
           </div>
         </div>
       </Dialog>

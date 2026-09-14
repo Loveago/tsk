@@ -9,7 +9,6 @@ import { orderCode } from "@/lib/utils";
 import { FileWarning } from "lucide-react";
 import {
   ReportWindowBanner,
-  NotReceivedReportFormDialog,
   type ReportWindowInfo,
 } from "@/components/orders/not-received-form";
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
@@ -55,20 +54,48 @@ export function OrderDetailDialog({
   onClose: () => void;
   onOrderChanged?: () => void;
 }) {
-  const [formOpen, setFormOpen] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
   const [viewReportId, setViewReportId] = React.useState<string | null>(null);
+  const [localReport, setLocalReport] = React.useState<LightReport | null>(null);
 
   // Reset nested dialogs whenever a different order is opened
   React.useEffect(() => {
-    setFormOpen(false);
     setViewReportId(null);
+    setLocalReport(null);
   }, [order?.id, open]);
 
-  const report = order?.deliveryReport ?? null;
+  const report = localReport ?? order?.deliveryReport ?? null;
   const canReport =
     order?.status === "SUCCESS" &&
     !!order?.reportWindow?.open &&
     !report;
+
+  const handleDirectReport = async () => {
+    if (!order) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/reports/not-received", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, reason: "Data not received" }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error ?? "Failed to file report");
+        return;
+      }
+      setLocalReport({
+        id: json.report?.id ?? json.id ?? "",
+        seq: json.report?.seq ?? 0,
+        status: "OPEN",
+      });
+      onOrderChanged?.();
+    } catch {
+      alert("Error filing report");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <>
@@ -102,13 +129,25 @@ export function OrderDetailDialog({
             {(canReport || report) && (
               <div className="flex flex-wrap justify-end gap-2">
                 {canReport && (
-                  <Button size="sm" variant="outline" className="text-amber-600 dark:text-amber-400" onClick={() => setFormOpen(true)}>
-                    <FileWarning className="h-3.5 w-3.5" /> Not Received
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-amber-600 dark:text-amber-400"
+                    disabled={submitting}
+                    onClick={handleDirectReport}
+                  >
+                    <FileWarning className="h-3.5 w-3.5" />
+                    {submitting ? "Sending Report…" : "Report Not Received"}
                   </Button>
                 )}
                 {report && (
-                  <Button size="sm" variant="outline" onClick={() => setViewReportId(report.id)}>
-                    View Report {report.code ? `(${report.code})` : ""}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-amber-300 text-amber-700 dark:border-amber-500/30 dark:text-amber-400"
+                    onClick={() => setViewReportId(report.id)}
+                  >
+                    Under Review · View Report {report.code ? `(${report.code})` : ""}
                   </Button>
                 )}
               </div>
@@ -134,14 +173,6 @@ export function OrderDetailDialog({
         )}
       </Dialog>
 
-      {order && (
-        <NotReceivedReportFormDialog
-          order={{ id: order.id, phoneNumber: order.phoneNumber, gbAmount: order.gbAmount, network: order.network }}
-          open={formOpen}
-          onClose={() => setFormOpen(false)}
-          onSubmitted={() => onOrderChanged?.()}
-        />
-      )}
       <NotReceivedReportDetailDialog
         reportId={viewReportId}
         open={!!viewReportId}

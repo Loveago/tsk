@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyWebhookSignature } from "@/lib/paystack";
 import { verifyAndSettleStorefrontOrder } from "@/lib/storefront";
+import { getRequestOrigin } from "@/lib/api-helpers";
 
 /**
  * Public landing page after the Paystack hosted checkout for storefront
@@ -9,7 +10,7 @@ import { verifyAndSettleStorefrontOrder } from "@/lib/storefront";
  * settles the storefront order immediately — idempotent and self-healing.
  */
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  const origin = getRequestOrigin(request);
   let slug = "";
   let outcome: "success" | "failed" = "failed";
   let reference = "";

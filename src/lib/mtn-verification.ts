@@ -157,6 +157,90 @@ export async function recordUnverifiedMtnNumber({
 }
 
 /**
+ * Bulk upserts multiple numbers into BlockedMtnNumber list in batch,
+ * avoiding connection pool exhaustion and slow sequential per-row roundtrips.
+ */
+export async function recordUnverifiedMtnNumbersBatch(
+  items: Array<{ number: string; userId?: string | null }>
+): Promise<void> {
+  if (!items.length) return;
+  const countMap = new Map<string, { number: string; userId?: string | null; count: number }>();
+  for (const item of items) {
+    const canonical = normalizeGhanaPhoneNumber(item.number);
+    const existing = countMap.get(canonical);
+    if (existing) {
+      existing.count += 1;
+      if (item.userId) existing.userId = item.userId;
+    } else {
+      countMap.set(canonical, { number: canonical, userId: item.userId, count: 1 });
+    }
+  }
+
+  const now = new Date();
+  const canonicalNumbers = Array.from(countMap.keys());
+  const existingRows = await prisma.blockedMtnNumber.findMany({
+    where: { normalizedNumber: { in: canonicalNumbers } },
+    select: { id: true, normalizedNumber: true, orderCount: true },
+  });
+  const existingSet = new Map(existingRows.map((r) => [r.normalizedNumber, r]));
+
+  const toCreate: Array<{
+    number: string;
+    normalizedNumber: string;
+    firstSeenAt: Date;
+    lastSeenAt: Date;
+    firstUserId: string | null;
+    lastUserId: string | null;
+    orderCount: number;
+    status: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }> = [];
+
+  const updatePromises: Promise<unknown>[] = [];
+
+  for (const [norm, data] of countMap) {
+    const existing = existingSet.get(norm);
+    if (existing) {
+      updatePromises.push(
+        prisma.blockedMtnNumber.update({
+          where: { normalizedNumber: norm },
+          data: {
+            lastSeenAt: now,
+            lastUserId: data.userId ?? undefined,
+            orderCount: { increment: data.count },
+          },
+        })
+      );
+    } else {
+      toCreate.push({
+        number: data.number,
+        normalizedNumber: norm,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        firstUserId: data.userId ?? null,
+        lastUserId: data.userId ?? null,
+        orderCount: data.count,
+        status: "UNVERIFIED",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  if (toCreate.length > 0) {
+    await prisma.blockedMtnNumber.createMany({
+      data: toCreate,
+      skipDuplicates: true,
+    });
+  }
+
+  if (updatePromises.length > 0) {
+    await Promise.all(updatePromises);
+  }
+}
+
+/**
  * Synchronizes pending requests and blocked entries when a number becomes accepted (§20).
  * Any corresponding verification request automatically becomes VERIFIED.
  * Any corresponding blocked entry becomes ACCEPTED.
