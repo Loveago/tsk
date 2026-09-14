@@ -21,8 +21,8 @@ const STATUS_CONFIG: Record<
     icon: Clock,
     iconCls: "text-amber-500",
     cardCls: "bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30",
-    label: "Payment Received",
-    message: "Your order has been received and is being queued for delivery.",
+    label: "Order Pending",
+    message: "Payment received. Your order has been received and is queued for fulfillment.",
   },
   PROCESSING: {
     icon: Clock,
@@ -38,6 +38,13 @@ const STATUS_CONFIG: Record<
     label: "Delivered!",
     message: "Your data bundle has been successfully delivered. Enjoy!",
   },
+  SUCCESS: {
+    icon: CheckCircle2,
+    iconCls: "text-emerald-500",
+    cardCls: "bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30",
+    label: "Delivered!",
+    message: "Your data bundle has been successfully delivered. Enjoy!",
+  },
   FAILED: {
     icon: XCircle,
     iconCls: "text-red-500",
@@ -45,6 +52,13 @@ const STATUS_CONFIG: Record<
     label: "Delivery Failed",
     message:
       "Unfortunately delivery did not complete. Please contact the store for assistance using your reference number.",
+  },
+  CANCELLED: {
+    icon: XCircle,
+    iconCls: "text-slate-500",
+    cardCls: "bg-slate-100 border-slate-200 dark:bg-white/5 dark:border-white/10",
+    label: "Order Cancelled",
+    message: "This order was cancelled. Please contact the store if you have questions.",
   },
   REFUNDED: {
     icon: AlertCircle,
@@ -77,13 +91,19 @@ export default async function StorefrontOrderPage({
     include: {
       storefront: { select: { slug: true, name: true, logoUrl: true } },
       product: { include: { dataPackage: true } },
+      underlyingOrder: { select: { status: true } },
     },
   });
 
   // Guard: must belong to this slug
   if (!order || order.storefront.slug !== slug) notFound();
 
-  const cfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.PROCESSING;
+  let effectiveStatus = order.status;
+  if (order.underlyingOrder) {
+    effectiveStatus = order.underlyingOrder.status === "SUCCESS" ? "COMPLETED" : order.underlyingOrder.status;
+  }
+
+  const cfg = STATUS_CONFIG[effectiveStatus] ?? STATUS_CONFIG.PENDING;
   const StatusIcon = cfg.icon;
   const network = order.product.dataPackage.network;
   const networkCls = NETWORK_COLOURS[network] ?? NETWORK_COLOURS.AIRTELTIGO;

@@ -276,9 +276,6 @@ export async function syncCommissionForOrder(
 
   const releasing = status === "SUCCESS";
   const reversing = ["FAILED", "REFUNDED", "CANCELLED"].includes(status);
-  if (!releasing && !reversing) return;
-  if (releasing && storeOrder.commissionState !== "PENDING") return;
-  if (reversing && storeOrder.commissionState === "REVERSED") return;
 
   // storefrontOrder.storefrontId -> storefront -> owner's wallet
   const storefront = await prisma.storefront.findUnique({
@@ -290,26 +287,37 @@ export async function syncCommissionForOrder(
 
   await prisma.$transaction(async (tx) => {
     if (releasing) {
-      await applyLedgerEntry(tx, walletRow.id, {
-        type: "COMMISSION_RELEASE",
-        amount: storeOrder.commission,
-        reference: storefrontOrderCode(storeOrder.seq),
-        description: `Order completed — commission released`,
-      });
+      if (storeOrder.commissionState === "PENDING") {
+        await applyLedgerEntry(tx, walletRow.id, {
+          type: "COMMISSION_RELEASE",
+          amount: storeOrder.commission,
+          reference: storefrontOrderCode(storeOrder.seq),
+          description: `Order completed — commission released`,
+        });
+      }
       await tx.storefrontOrder.update({
         where: { id: storeOrder.id },
         data: { commissionState: "AVAILABLE", status: "COMPLETED", completedAt: new Date() },
       });
-    } else {
-      await applyLedgerEntry(tx, walletRow.id, {
-        type: "COMMISSION_REVERSAL",
-        amount: storeOrder.commission,
-        reference: storefrontOrderCode(storeOrder.seq),
-        description: `Order ${status.toLowerCase()} — commission reversed`,
-      });
+    } else if (reversing) {
+      if (storeOrder.commissionState !== "REVERSED") {
+        await applyLedgerEntry(tx, walletRow.id, {
+          type: "COMMISSION_REVERSAL",
+          amount: storeOrder.commission,
+          reference: storefrontOrderCode(storeOrder.seq),
+          description: `Order ${status.toLowerCase()} — commission reversed`,
+        });
+      }
       await tx.storefrontOrder.update({
         where: { id: storeOrder.id },
         data: { commissionState: "REVERSED", status },
+      });
+    } else {
+      // Status is PENDING or PROCESSING
+      const nextStatus = status === "PROCESSING" ? "PROCESSING" : "PENDING";
+      await tx.storefrontOrder.update({
+        where: { id: storeOrder.id },
+        data: { status: nextStatus },
       });
     }
   });
@@ -393,7 +401,7 @@ export async function settleStorefrontPayment(
     await tx.storefrontOrder.update({
       where: { id: row.id },
       data: {
-        status: "PROCESSING",
+        status: "PENDING",
         underlyingOrderId: order.id,
         paidAt: input.paidAt ?? new Date(),
       },

@@ -40,19 +40,28 @@ export async function POST(
       where,
       orderBy: { createdAt: "desc" },
       take: 6,
-      include: { product: { include: { dataPackage: true } } },
+      include: {
+        product: { include: { dataPackage: true } },
+        underlyingOrder: { select: { status: true } },
+      },
     });
 
     return NextResponse.json({
-      orders: orders.map((o) => ({
-        code: o.paymentReference || storefrontOrderCode(o.seq, o.paymentReference),
-        reference: o.paymentReference,
-        network: o.product.dataPackage.network,
-        size: `${o.product.dataPackage.gbAmount}GB`,
-        amount: fromPesewas(o.sellingPrice),
-        status: o.status,
-        createdAt: o.createdAt.toISOString(),
-      })),
+      orders: orders.map((o) => {
+        let displayStatus = o.status;
+        if (o.underlyingOrder) {
+          displayStatus = o.underlyingOrder.status === "SUCCESS" ? "COMPLETED" : o.underlyingOrder.status;
+        }
+        return {
+          code: o.paymentReference || storefrontOrderCode(o.seq, o.paymentReference),
+          reference: o.paymentReference,
+          network: o.product.dataPackage.network,
+          size: `${o.product.dataPackage.gbAmount}GB`,
+          amount: fromPesewas(o.sellingPrice),
+          status: displayStatus,
+          createdAt: o.createdAt.toISOString(),
+        };
+      }),
     });
   } catch (err) {
     return handleRouteError(err);

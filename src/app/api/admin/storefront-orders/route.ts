@@ -38,29 +38,36 @@ export async function GET(request: NextRequest) {
         include: {
           storefront: { select: { name: true, slug: true } },
           product: { include: { dataPackage: { select: { network: true, gbAmount: true } } } },
+          underlyingOrder: { select: { status: true } },
         },
       }),
       prisma.storefrontOrder.count({ where }),
     ]);
 
     return NextResponse.json({
-      data: data.map((o) => ({
-        id: o.id,
-        seq: o.seq,
-        code: storefrontOrderCode(o.seq, o.paymentReference),
-        paymentReference: o.paymentReference,
-        storeName: o.storefront.name,
-        storeSlug: o.storefront.slug,
-        customerPhone: o.customerPhone,
-        network: o.product.dataPackage.network,
-        gbAmount: o.product.dataPackage.gbAmount,
-        sellingPrice: o.sellingPrice, // pesewas
-        status: o.status,
-        commissionState: o.commissionState,
-        underlyingOrderId: o.underlyingOrderId,
-        paidAt: o.paidAt?.toISOString() ?? null,
-        createdAt: o.createdAt.toISOString(),
-      })),
+      data: data.map((o) => {
+        let displayStatus = o.status;
+        if (o.underlyingOrder) {
+          displayStatus = o.underlyingOrder.status === "SUCCESS" ? "COMPLETED" : o.underlyingOrder.status;
+        }
+        return {
+          id: o.id,
+          seq: o.seq,
+          code: storefrontOrderCode(o.seq, o.paymentReference),
+          paymentReference: o.paymentReference,
+          storeName: o.storefront.name,
+          storeSlug: o.storefront.slug,
+          customerPhone: o.customerPhone,
+          network: o.product.dataPackage.network,
+          gbAmount: o.product.dataPackage.gbAmount,
+          sellingPrice: o.sellingPrice, // pesewas
+          status: displayStatus,
+          commissionState: o.commissionState,
+          underlyingOrderId: o.underlyingOrderId,
+          paidAt: o.paidAt?.toISOString() ?? null,
+          createdAt: o.createdAt.toISOString(),
+        };
+      }),
       total,
       page,
       pageSize,
