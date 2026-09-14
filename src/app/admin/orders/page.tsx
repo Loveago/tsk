@@ -15,7 +15,7 @@ import { Layers, Search, Store, RefreshCw } from "lucide-react";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
-const STOREFRONT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "REFUNDED"];
+const STOREFRONT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "AWAITING_PAYMENT", "FAILED", "REFUNDED"];
 const QUICK_RANGES = [
   { key: "today", label: "Today" },
   { key: "yesterday", label: "Yesterday" },

@@ -173,6 +173,11 @@ export const STATUS_META: Record<
   string,
   { label: string; className: string; dot: string }
 > = {
+  AWAITING_PAYMENT: {
+    label: "AWAITING PAYMENT",
+    className: "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700",
+    dot: "bg-slate-400",
+  },
   PENDING: {
     label: "PENDING",
     className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",

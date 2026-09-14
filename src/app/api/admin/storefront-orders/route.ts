@@ -25,7 +25,14 @@ export async function GET(request: NextRequest) {
     }
 
     const where: Record<string, unknown> = {};
-    if (status) where.status = status;
+    if (status === "AWAITING_PAYMENT") {
+      where.underlyingOrderId = null;
+    } else if (status === "PENDING") {
+      where.underlyingOrderId = { not: null };
+      where.status = "PENDING";
+    } else if (status) {
+      where.status = status;
+    }
     if (q) {
       where.OR = [
         { customerPhone: { contains: q } },
@@ -53,8 +60,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: data.map((o) => {
         let displayStatus = o.status;
+        const isPaid = Boolean(o.underlyingOrderId || o.paidAt);
         if (o.underlyingOrder) {
           displayStatus = o.underlyingOrder.status === "SUCCESS" ? "COMPLETED" : o.underlyingOrder.status;
+        } else if (!isPaid) {
+          displayStatus = "AWAITING_PAYMENT";
         }
         return {
           id: o.id,

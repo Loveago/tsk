@@ -127,34 +127,45 @@ export function StorefrontOrdersTable({
 
                   {/* Status */}
                   <td className="px-4 py-3">
-                    <StatusBadge status={o.status} />
+                    {o.status === "AWAITING_PAYMENT" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                        Awaiting Payment
+                      </span>
+                    ) : (
+                      <StatusBadge status={o.status} />
+                    )}
                   </td>
 
                   {/* Commission state */}
                   <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        o.commissionState === "AVAILABLE"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
-                          : o.commissionState === "WITHDRAWN"
-                          ? "bg-slate-200 text-slate-600 dark:bg-white/10 dark:text-slate-400"
-                          : o.commissionState === "REVERSED"
-                          ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
-                          : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
-                      }`}
-                    >
-                      {o.commissionState}
-                    </span>
+                    {o.underlyingOrderId ? (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          o.commissionState === "AVAILABLE"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                            : o.commissionState === "WITHDRAWN"
+                            ? "bg-slate-200 text-slate-600 dark:bg-white/10 dark:text-slate-400"
+                            : o.commissionState === "REVERSED"
+                            ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                        }`}
+                      >
+                        {o.commissionState}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 dark:text-slate-600 text-xs">—</span>
+                    )}
                   </td>
 
                   {/* Underlying order ID */}
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                  <td className="px-4 py-3 font-mono text-xs">
                     {o.underlyingOrderId ? (
-                      <span className="text-brand-600 dark:text-brand-400">
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                         #{o.underlyingOrderId}
                       </span>
                     ) : (
-                      <span className="text-slate-300 dark:text-slate-600">—</span>
+                      <span className="text-[11px] text-slate-400 italic">Unpaid</span>
                     )}
                   </td>
 

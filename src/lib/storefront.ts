@@ -356,8 +356,8 @@ export async function settleStorefrontPayment(
   if (!row) return { settled: false, reason: "unknown reference" };
   if (row.underlyingOrderId) return { settled: true }; // already settled — idempotent
 
-  if (input.paystackAmount !== row.sellingPrice) {
-    return { settled: false, reason: "amount mismatch" };
+  if (!input.paystackAmount || input.paystackAmount <= 0 || input.paystackAmount !== row.sellingPrice) {
+    return { settled: false, reason: "Invalid payment amount or amount mismatch" };
   }
 
   const storefront = await prisma.storefront.findUnique({
@@ -446,13 +446,19 @@ export async function verifyAndSettleStorefrontOrder(reference: string): Promise
       return { settled: true, alreadySettled: true, orderId: row.underlyingOrderId };
     }
 
-    // Verify transaction status with Paystack API
+    // Strict Paystack verification: status must be success, currency GHS, amount exact match
     const verification = await verifyTransaction(reference);
-    if (verification.status !== "success" || verification.currency !== PAYSTACK_CURRENCY) {
+    if (
+      verification.status !== "success" ||
+      verification.currency !== PAYSTACK_CURRENCY ||
+      !verification.amount ||
+      verification.amount <= 0 ||
+      verification.amount !== row.sellingPrice
+    ) {
       return {
         settled: false,
         alreadySettled: false,
-        reason: `Paystack status: ${verification.status}`,
+        reason: `Payment unverified or invalid amount (status: ${verification.status}, amount: ${verification.amount ?? 0}, expected: ${row.sellingPrice})`,
       };
     }
 
