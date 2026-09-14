@@ -7,6 +7,13 @@ export const metadata: Metadata = {
   title: "Tskconnect — Data Bundle Distribution",
   description:
     "Reseller and API management platform for MTN, Telecel and AirtelTigo data bundles.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({

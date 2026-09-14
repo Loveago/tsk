@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Database, Lock, LogOut, MessageCircle, Signal } from "lucide-react";
+import { Lock, LogOut, MessageCircle, Signal } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 import { useToast } from "@/components/toast";
 import {
   ThemeToggle,
@@ -212,12 +213,7 @@ export function AppShell({
       {/* Top header */}
       <header className="border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-white/5 dark:bg-[#0a1120]/95">
         <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center gap-2.5 px-4 sm:px-6">
-          <Link href={admin ? "/admin" : "/dashboard/send"} className="flex shrink-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-md shadow-blue-600/30">
-              <Database className="h-4.5 w-4.5" />
-            </span>
-            <span className="text-base font-bold tracking-tight">Tskconnect</span>
-          </Link>
+          <BrandLogo href={admin ? "/admin" : "/dashboard/send"} size="sm" />
 
           <IdleIndicator idle={idle} />
 

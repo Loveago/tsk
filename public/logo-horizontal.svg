@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 90" width="460" height="90" fill="none">
+  <defs>
+    <linearGradient id="hOrange" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7B00" />
+      <stop offset="60%" stop-color="#F25800" />
+      <stop offset="100%" stop-color="#DE4200" />
+    </linearGradient>
+    <linearGradient id="hBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B4977" />
+      <stop offset="100%" stop-color="#103155" />
+    </linearGradient>
+    <radialGradient id="hSphere" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FFA450" />
+      <stop offset="50%" stop-color="#FF6200" />
+      <stop offset="100%" stop-color="#BA3500" />
+    </radialGradient>
+  </defs>
+
+  <!-- Left Icon Mark -->
+  <g transform="translate(8, 6) scale(0.68)">
+    <circle cx="28" cy="78" r="7" fill="url(#hSphere)" />
+    <path d="M 18 60 A 26 26 0 0 1 58 28" fill="none" stroke="url(#hOrange)" stroke-width="9" stroke-linecap="round" />
+    <path d="M 4 44 A 46 46 0 0 1 76 4" fill="none" stroke="url(#hOrange)" stroke-width="11" stroke-linecap="round" />
+    <path d="M 16 80 C 40 48 90 35 150 35 L 145 20 L 190 40 L 152 70 L 150 52 C 100 52 58 64 32 90 Z" fill="url(#hOrange)" />
+  </g>
+
+  <!-- Brand Typography -->
+  <!-- 'tsk05' -->
+  <g transform="translate(135, 42)">
+    <text x="0" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="34" font-weight="900" letter-spacing="-0.5" fill="url(#hBlue)">
+      tsk<tspan fill="url(#hBlue)">0</tspan><tspan fill="url(#hOrange)">5</tspan>
+    </text>
+    <!-- Center dot for 0 -->
+    <circle cx="56" cy="-10" r="4" fill="url(#hSphere)" />
+
+    <!-- 'connect' -->
+    <text x="88" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="34" font-style="italic" font-weight="900" fill="url(#hOrange)">
+      connect
+    </text>
+
+    <!-- Tagline: 'bundle solutions' -->
+    <text x="2" y="22" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" letter-spacing="2.5" fill="url(#hBlue)" opacity="0.85">
+      BUNDLE SOLUTIONS
+    </text>
+  </g>
+</svg>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Database } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function AuthShell({
   title,
@@ -12,11 +12,8 @@ export function AuthShell({
 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
-      <div className="mb-6 flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">
-          <Database className="h-5 w-5" />
-        </span>
-        <span className="text-xl font-bold tracking-tight">Tskconnect</span>
+      <div className="mb-6">
+        <BrandLogo size="lg" />
       </div>
       <div className="w-full max-w-md rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
         <h1 className="text-xl font-bold tracking-tight">{title}</h1>

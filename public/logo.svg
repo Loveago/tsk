@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 520" width="600" height="520" fill="none">
+  <defs>
+    <linearGradient id="tskOrange" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7B00" />
+      <stop offset="60%" stop-color="#F25800" />
+      <stop offset="100%" stop-color="#DE4200" />
+    </linearGradient>
+    <linearGradient id="tskBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B4977" />
+      <stop offset="100%" stop-color="#103155" />
+    </linearGradient>
+    <radialGradient id="sphereGrad" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FFA450" />
+      <stop offset="50%" stop-color="#FF6200" />
+      <stop offset="100%" stop-color="#BA3500" />
+    </radialGradient>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.12" />
+    </filter>
+  </defs>
+
+  <g filter="url(#softGlow)">
+    <!-- Top WiFi Waves & Arrow -->
+    <g transform="translate(255, 38)">
+      <!-- WiFi Base Dot -->
+      <circle cx="42" cy="116" r="9" fill="url(#sphereGrad)" />
+      
+      <!-- WiFi Arc 1 (Inner) -->
+      <path d="M 28 92 A 38 38 0 0 1 86 48" 
+            fill="none" stroke="url(#tskOrange)" stroke-width="13" stroke-linecap="round" />
+      
+      <!-- WiFi Arc 2 (Outer) -->
+      <path d="M 8 72 A 68 68 0 0 1 114 8" 
+            fill="none" stroke="url(#tskOrange)" stroke-width="15" stroke-linecap="round" />
+      
+      <!-- Dynamic Arrow Sweeping Right -->
+      <path d="M 26 122 C 60 76 135 56 220 56 L 214 36 L 275 62 L 222 102 L 220 78 C 150 78 88 95 50 134 Z" 
+            fill="url(#tskOrange)" />
+    </g>
+
+    <!-- Main Lettermark: tsk05 -->
+    <!-- 'tsk' in deep blue -->
+    <!-- 't' -->
+    <path d="M 125 180 L 149 180 L 149 204 L 175 204 L 175 226 L 149 226 L 149 285 C 149 297 155 303 167 303 L 175 303 L 175 325 C 167 326 156 327 144 327 C 122 327 125 311 125 292 L 125 226 L 108 226 L 108 204 L 125 204 Z" fill="url(#tskBlue)" />
+
+    <!-- 's' -->
+    <path d="M 190 298 C 195 304 205 308 217 308 C 229 308 238 303 238 295 C 238 274 192 278 192 242 C 192 218 211 202 236 202 C 251 202 263 207 271 216 L 255 233 C 249 227 242 223 234 223 C 224 223 216 227 216 235 C 216 253 262 250 262 284 C 262 311 243 328 217 328 C 198 328 183 320 173 308 Z" fill="url(#tskBlue)" />
+
+    <!-- 'k' -->
+    <path d="M 284 176 L 308 176 L 308 250 L 338 204 L 368 204 L 327 262 L 372 325 L 342 325 L 308 275 L 308 325 L 284 325 Z" fill="url(#tskBlue)" />
+
+    <!-- '0' (Blue body with orange inner sphere) -->
+    <path d="M 378 258 C 378 223 397 202 428 202 C 459 202 478 223 478 258 L 478 270 C 478 305 459 328 428 328 C 397 328 378 305 378 270 Z M 404 270 C 404 289 413 306 428 306 C 443 306 452 289 452 270 L 452 260 C 452 241 443 224 428 224 C 413 224 404 241 404 260 Z" fill="url(#tskBlue)" />
+    <!-- Glowing orange sphere in center of 0 -->
+    <circle cx="428" cy="265" r="12" fill="url(#sphereGrad)" />
+
+    <!-- '5' (Orange) -->
+    <path d="M 498 204 L 546 204 L 546 224 L 518 224 L 515 250 C 521 246 529 244 538 244 C 556 244 570 257 570 279 C 570 306 552 328 527 328 C 508 328 495 318 488 307 L 506 291 C 511 298 518 305 527 305 C 538 305 546 295 546 280 C 546 267 538 259 527 259 C 518 259 511 264 506 270 L 492 263 Z" fill="url(#tskOrange)" />
+
+    <!-- 'connect' in bold stylized orange -->
+    <text x="300" y="405" text-anchor="middle"
+          font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
+          font-size="68" font-style="italic" font-weight="900" letter-spacing="1" fill="url(#tskOrange)">
+      connect
+    </text>
+
+    <!-- 'bundle solutions' in clean navy blue -->
+    <text x="300" y="470" text-anchor="middle"
+          font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
+          font-size="34" font-weight="700" letter-spacing="3.5" fill="url(#tskBlue)">
+      bundle solutions
+    </text>
+  </g>
+</svg>
