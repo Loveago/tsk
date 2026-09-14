@@ -3,6 +3,7 @@ import { AuthError } from "./auth";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { validateMtnOrderRecipient } from "./mtn-verification";
+import { verifyTransaction, PAYSTACK_CURRENCY } from "./paystack";
 
 // ---------------------------------------------------------------------------
 // Money — all storefront money is stored as integer pesewas (GHS x 100) so
@@ -368,17 +369,20 @@ export async function settleStorefrontPayment(
   const wallet = await ensureWallet(storefront.userId);
 
   // Central MTN Number Verification Check (§16, §17)
-  const mtnCheck = await validateMtnOrderRecipient(
-    row.customerPhone,
-    row.product.dataPackage.network,
-    storefront.userId,
-    { recordUnverified: false }
-  );
-  if (!mtnCheck.allowed) {
-    return {
-      settled: false,
-      reason: mtnCheck.reason ?? "MTN recipient phone number verification required",
-    };
+  // Check verification but never block a paid order from being created for admin fulfillment
+  let mtnNote: string | undefined;
+  try {
+    const mtnCheck = await validateMtnOrderRecipient(
+      row.customerPhone,
+      row.product.dataPackage.network,
+      storefront.userId,
+      { recordUnverified: true }
+    );
+    if (!mtnCheck.allowed) {
+      mtnNote = mtnCheck.reason ?? "MTN recipient phone number verification required";
+    }
+  } catch (err) {
+    console.warn("MTN check warning during storefront settlement:", err);
   }
 
   await prisma.$transaction(async (tx) => {
@@ -394,6 +398,7 @@ export async function settleStorefrontPayment(
         status: "PENDING",
         source: "STOREFRONT",
         externalReference: row.paymentReference,
+        failureReason: mtnNote ?? null,
       },
     });
 
@@ -417,6 +422,106 @@ export async function settleStorefrontPayment(
   });
 
   return { settled: true };
+}
+
+/**
+ * Verifies a storefront payment directly with Paystack and settles the order if successful.
+ * This is idempotent and self-healing: safe to call from webhooks, callbacks, order pages,
+ * tracking lookups, or cron jobs.
+ */
+export async function verifyAndSettleStorefrontOrder(reference: string): Promise<{
+  settled: boolean;
+  alreadySettled: boolean;
+  orderId?: number;
+  reason?: string;
+}> {
+  try {
+    const row = await prisma.storefrontOrder.findUnique({
+      where: { paymentReference: reference },
+    });
+    if (!row) {
+      return { settled: false, alreadySettled: false, reason: "Storefront order not found" };
+    }
+    if (row.underlyingOrderId) {
+      return { settled: true, alreadySettled: true, orderId: row.underlyingOrderId };
+    }
+
+    // Verify transaction status with Paystack API
+    const verification = await verifyTransaction(reference);
+    if (verification.status !== "success" || verification.currency !== PAYSTACK_CURRENCY) {
+      return {
+        settled: false,
+        alreadySettled: false,
+        reason: `Paystack status: ${verification.status}`,
+      };
+    }
+
+    const result = await settleStorefrontPayment({
+      reference,
+      paystackAmount: verification.amount,
+      paidAt: verification.paidAt ? new Date(verification.paidAt) : new Date(),
+    });
+
+    if (result.settled) {
+      const updated = await prisma.storefrontOrder.findUnique({
+        where: { id: row.id },
+        select: { underlyingOrderId: true },
+      });
+      return {
+        settled: true,
+        alreadySettled: false,
+        orderId: updated?.underlyingOrderId ?? undefined,
+      };
+    }
+
+    return { settled: false, alreadySettled: false, reason: result.reason };
+  } catch (err) {
+    console.error(`Error verifying/settling storefront order ${reference}:`, err);
+    return {
+      settled: false,
+      alreadySettled: false,
+      reason: err instanceof Error ? err.message : "Verification error",
+    };
+  }
+}
+
+/**
+ * Reconciles any unsettled storefront orders from the last `hoursBack` hours.
+ * For each order without an underlying Clickyfied order, it queries Paystack.
+ * If the user paid, it settles the order and dispatches it for processing!
+ */
+export async function reconcileUnsettledStorefrontOrders(hoursBack = 48): Promise<{
+  checked: number;
+  settledCount: number;
+  results: Array<{ reference: string; settled: boolean; reason?: string }>;
+}> {
+  const cutoff = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+  const unsettled = await prisma.storefrontOrder.findMany({
+    where: {
+      underlyingOrderId: null,
+      createdAt: { gte: cutoff },
+    },
+    select: { paymentReference: true },
+    take: 50,
+    orderBy: { createdAt: "desc" },
+  });
+
+  let settledCount = 0;
+  const results: Array<{ reference: string; settled: boolean; reason?: string }> = [];
+
+  for (const item of unsettled) {
+    const res = await verifyAndSettleStorefrontOrder(item.paymentReference);
+    if (res.settled && !res.alreadySettled) {
+      settledCount++;
+    }
+    results.push({
+      reference: item.paymentReference,
+      settled: res.settled,
+      reason: res.reason,
+    });
+  }
+
+  return { checked: unsettled.length, settledCount, results };
 }
 
 /**

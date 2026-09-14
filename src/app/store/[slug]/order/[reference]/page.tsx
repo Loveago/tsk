@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckCircle2, Clock, XCircle, AlertCircle, ArrowLeft, Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { fromPesewas } from "@/lib/storefront";
+import { fromPesewas, verifyAndSettleStorefrontOrder } from "@/lib/storefront";
 
 export const dynamic = "force-dynamic";
 
@@ -86,7 +86,7 @@ export default async function StorefrontOrderPage({
   const { slug, reference } = await params;
 
   // Fetch the storefront order by paymentReference, scoped to this slug
-  const order = await prisma.storefrontOrder.findUnique({
+  let order = await prisma.storefrontOrder.findUnique({
     where: { paymentReference: reference },
     include: {
       storefront: { select: { slug: true, name: true, logoUrl: true } },
@@ -97,6 +97,23 @@ export default async function StorefrontOrderPage({
 
   // Guard: must belong to this slug
   if (!order || order.storefront.slug !== slug) notFound();
+
+  // Self-healing fallback: If customer paid on Paystack but the callback or redirect failed,
+  // verify with Paystack right now and automatically settle the order!
+  if (!order.underlyingOrderId) {
+    const autoSettle = await verifyAndSettleStorefrontOrder(reference);
+    if (autoSettle.settled) {
+      const refreshed = await prisma.storefrontOrder.findUnique({
+        where: { id: order.id },
+        include: {
+          storefront: { select: { slug: true, name: true, logoUrl: true } },
+          product: { include: { dataPackage: true } },
+          underlyingOrder: { select: { status: true } },
+        },
+      });
+      if (refreshed) order = refreshed;
+    }
+  }
 
   let effectiveStatus = order.status;
   if (order.underlyingOrder) {

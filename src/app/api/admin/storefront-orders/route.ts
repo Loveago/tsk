@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
 import { handleRouteError } from "@/lib/api-helpers";
-import { storefrontOrderCode } from "@/lib/storefront";
+import { storefrontOrderCode, reconcileUnsettledStorefrontOrders } from "@/lib/storefront";
 
 /**
  * Admin: list StorefrontOrder rows (public storefront sales).
@@ -18,6 +18,11 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
     const status = searchParams.get("status");
     const q = searchParams.get("q"); // phone number or payment reference search
+    const shouldReconcile = searchParams.get("reconcile") === "true";
+
+    if (shouldReconcile) {
+      await reconcileUnsettledStorefrontOrders(24);
+    }
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
@@ -29,7 +34,7 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const [data, total] = await Promise.all([
+    const [data, total, unsettledCount] = await Promise.all([
       prisma.storefrontOrder.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -42,6 +47,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.storefrontOrder.count({ where }),
+      prisma.storefrontOrder.count({ where: { underlyingOrderId: null } }),
     ]);
 
     return NextResponse.json({
@@ -69,9 +75,26 @@ export async function GET(request: NextRequest) {
         };
       }),
       total,
+      unsettledCount,
       page,
       pageSize,
       pages: Math.ceil(total / pageSize),
+    });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
+
+/**
+ * Admin: trigger manual reconciliation of unsettled storefront orders against Paystack.
+ */
+export async function POST(request: NextRequest) {
+  try {
+    await requireStaff();
+    const result = await reconcileUnsettledStorefrontOrders(48);
+    return NextResponse.json({
+      success: true,
+      ...result,
     });
   } catch (err) {
     return handleRouteError(err);

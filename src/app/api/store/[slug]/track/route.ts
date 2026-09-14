@@ -3,7 +3,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 import { storefrontTrackSchema } from "@/lib/validation";
-import { getEnabledStorefrontBySlug, fromPesewas, storefrontOrderCode } from "@/lib/storefront";
+import {
+  getEnabledStorefrontBySlug,
+  fromPesewas,
+  storefrontOrderCode,
+  verifyAndSettleStorefrontOrder,
+} from "@/lib/storefront";
 
 /**
  * Public order tracking for the storefront (§37 buyer-facing view). A query
@@ -46,12 +51,23 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({
-      orders: orders.map((o) => {
+    // Self-healing: if any returned order is still unsettled, verify with Paystack
+    const formattedOrders = await Promise.all(
+      orders.map(async (o) => {
         let displayStatus = o.status;
-        if (o.underlyingOrder) {
-          displayStatus = o.underlyingOrder.status === "SUCCESS" ? "COMPLETED" : o.underlyingOrder.status;
+        let hasUnderlying = Boolean(o.underlyingOrder);
+
+        if (!hasUnderlying) {
+          const autoSettle = await verifyAndSettleStorefrontOrder(o.paymentReference);
+          if (autoSettle.settled) {
+            displayStatus = "PENDING";
+            hasUnderlying = true;
+          }
+        } else if (o.underlyingOrder) {
+          displayStatus =
+            o.underlyingOrder.status === "SUCCESS" ? "COMPLETED" : o.underlyingOrder.status;
         }
+
         return {
           code: o.paymentReference || storefrontOrderCode(o.seq, o.paymentReference),
           reference: o.paymentReference,
@@ -61,7 +77,11 @@ export async function POST(
           status: displayStatus,
           createdAt: o.createdAt.toISOString(),
         };
-      }),
+      })
+    );
+
+    return NextResponse.json({
+      orders: formattedOrders,
     });
   } catch (err) {
     return handleRouteError(err);

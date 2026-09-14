@@ -11,7 +11,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
-import { Layers, Search, Store } from "lucide-react";
+import { Layers, Search, Store, RefreshCw } from "lucide-react";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
@@ -41,6 +41,7 @@ export default function AdminOrdersPage() {
   const [quick, setQuick] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(true);
+  const [reconciling, setReconciling] = React.useState(false);
 
   // auto-switch to single view when a phone number is typed in
   React.useEffect(() => {
@@ -193,6 +194,31 @@ export default function AdminOrdersPage() {
     }
   };
 
+  // ── storefront reconciliation action ─────────────────────────
+  const handleReconcileStorefront = async () => {
+    setReconciling(true);
+    try {
+      const res = await fetch("/api/admin/storefront-orders", {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to sync with Paystack", "error");
+        return;
+      }
+      if (json.settledCount > 0) {
+        toast(`Recovered & sent ${json.settledCount} paid storefront order(s) for processing!`, "success");
+      } else {
+        toast("Checked Paystack: all orders are up to date.", "info");
+      }
+      load();
+    } catch {
+      toast("Error checking Paystack orders", "error");
+    } finally {
+      setReconciling(false);
+    }
+  };
+
   // ── derived ───────────────────────────────────────────────────
   const pageTitle =
     viewMode === "storefront"
@@ -322,6 +348,20 @@ export default function AdminOrdersPage() {
               setPage(1);
             }}
           />
+
+          {/* Sync Paystack button for storefront */}
+          {viewMode === "storefront" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReconcileStorefront}
+              disabled={reconciling}
+              className="flex items-center gap-1.5 border-violet-200 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${reconciling ? "animate-spin" : ""}`} />
+              {reconciling ? "Checking Paystack…" : "Sync Paystack"}
+            </Button>
+          )}
         </div>
       </div>
 
