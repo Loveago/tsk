@@ -7,12 +7,8 @@ import {
   Send,
   Headphones,
   Sparkles,
-  CheckCheck,
-  ChevronDown,
-  User,
-  ShieldAlert,
-  Clock,
-  ExternalLink,
+  Search,
+  Trash2,
 } from "lucide-react";
 import type { AuthUser } from "@/lib/types";
 
@@ -54,6 +50,12 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
   // Admin staff view state
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [confirmDeleteMsgId, setConfirmDeleteMsgId] = React.useState<string | null>(null);
+  const [deletingMsgId, setDeletingMsgId] = React.useState<string | null>(null);
+  const [confirmDeleteThread, setConfirmDeleteThread] = React.useState(false);
+  const [confirmDeleteUserId, setConfirmDeleteUserId] = React.useState<string | null>(null);
+  const [deletingThread, setDeletingThread] = React.useState(false);
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -75,9 +77,10 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
     }
   }, []);
 
-  const loadAdminConversations = React.useCallback(async () => {
+  const loadAdminConversations = React.useCallback(async (search?: string) => {
     try {
-      const res = await fetch("/api/admin/chat");
+      const url = search ? `/api/admin/chat?search=${encodeURIComponent(search)}` : "/api/admin/chat";
+      const res = await fetch(url);
       if (!res.ok) return;
       const json = await res.json();
       const convs: Conversation[] = json.conversations ?? [];
@@ -101,17 +104,29 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
     }
   }, []);
 
+  const filteredConversations = React.useMemo(() => {
+    if (!searchQuery.trim()) return conversations;
+    const q = searchQuery.toLowerCase().trim();
+    return conversations.filter(
+      (c) =>
+        c.userName.toLowerCase().includes(q) ||
+        c.userEmail.toLowerCase().includes(q)
+    );
+  }, [conversations, searchQuery]);
+
   React.useEffect(() => {
     if (isStaff) {
-      loadAdminConversations();
-      const interval = setInterval(loadAdminConversations, 12000);
+      loadAdminConversations(searchQuery.trim() || undefined);
+      const interval = setInterval(() => {
+        loadAdminConversations(searchQuery.trim() || undefined);
+      }, 12000);
       return () => clearInterval(interval);
     } else {
       loadUserMessages();
       const interval = setInterval(loadUserMessages, 10000);
       return () => clearInterval(interval);
     }
-  }, [isStaff, loadAdminConversations, loadUserMessages]);
+  }, [isStaff, searchQuery, loadAdminConversations, loadUserMessages]);
 
   React.useEffect(() => {
     if (isStaff && selectedUserId) {
@@ -120,6 +135,42 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
       return () => clearInterval(interval);
     }
   }, [isStaff, selectedUserId, loadAdminThread]);
+
+  const handleDeleteMessage = async (msgId: string) => {
+    setDeletingMsgId(msgId);
+    try {
+      const res = await fetch(`/api/admin/chat?messageId=${msgId}`, { method: "DELETE" });
+      if (res.ok) {
+        setMessages((prev) => prev.filter((m) => m.id !== msgId));
+        loadAdminConversations(searchQuery.trim() || undefined);
+      }
+    } catch (err) {
+      console.error("Failed to delete message:", err);
+    } finally {
+      setDeletingMsgId(null);
+      setConfirmDeleteMsgId(null);
+    }
+  };
+
+  const handleDeleteThread = async (targetUserId: string) => {
+    setDeletingThread(true);
+    try {
+      const res = await fetch(`/api/admin/chat?userId=${targetUserId}`, { method: "DELETE" });
+      if (res.ok) {
+        if (selectedUserId === targetUserId) {
+          setMessages([]);
+          setSelectedUserId(null);
+          setConfirmDeleteThread(false);
+        }
+        setConfirmDeleteUserId(null);
+        await loadAdminConversations(searchQuery.trim() || undefined);
+      }
+    } catch (err) {
+      console.error("Failed to delete chat thread:", err);
+    } finally {
+      setDeletingThread(false);
+    }
+  };
 
   React.useEffect(() => {
     if (open) {
@@ -229,44 +280,135 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
 
           {/* Admin Staff view: conversation list vs thread */}
           {isStaff && !selectedUserId && (
-            <div className="max-h-[420px] min-h-[300px] overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
-              <div className="p-3 bg-slate-50 dark:bg-white/5 border-b border-slate-100 dark:border-white/5 text-xs text-slate-500 dark:text-slate-400 font-medium flex justify-between">
-                <span>Select a user to reply:</span>
-                <span>{conversations.length} conversations</span>
-              </div>
-              {conversations.length === 0 ? (
-                <div className="py-16 text-center text-xs text-slate-400">
-                  No active customer conversations yet.
+            <div className="flex flex-col max-h-[420px] min-h-[320px]">
+              {/* Search Bar & Conversation Count */}
+              <div className="border-b border-slate-100 bg-slate-50/70 p-2.5 dark:border-white/5 dark:bg-white/5">
+                <div className="relative flex items-center">
+                  <Search className="absolute left-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search users by name or email..."
+                    className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-7 text-xs text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none dark:border-white/10 dark:bg-[#131d31] dark:text-slate-100 dark:placeholder:text-slate-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 rounded-full p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      title="Clear search"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
-              ) : (
-                conversations.map((c) => (
-                  <button
-                    key={c.userId}
-                    onClick={() => setSelectedUserId(c.userId)}
-                    className="flex w-full items-start gap-3 p-3 text-left transition hover:bg-slate-50 dark:hover:bg-white/5"
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-brand-600 font-bold text-xs">
-                      {c.userName.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between">
-                        <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
-                          {c.userName}
-                        </p>
-                        {c.unreadCount > 0 && (
-                          <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            {c.unreadCount}
-                          </span>
+                <div className="mt-2 flex items-center justify-between px-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  <span>Select a user to reply:</span>
+                  <span>
+                    {filteredConversations.length}
+                    {searchQuery.trim() ? " found" : " conversations"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Conversation items */}
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
+                {filteredConversations.length === 0 ? (
+                  <div className="py-16 px-4 text-center text-xs text-slate-400">
+                    {searchQuery.trim() ? (
+                      <div className="space-y-2">
+                        <p>No user conversations matching &quot;{searchQuery}&quot;</p>
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery("")}
+                          className="text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                        >
+                          Clear search
+                        </button>
+                      </div>
+                    ) : (
+                      "No active customer conversations yet."
+                    )}
+                  </div>
+                ) : (
+                  filteredConversations.map((c) => (
+                    <div
+                      key={c.userId}
+                      className="group relative flex w-full items-center transition hover:bg-slate-50 dark:hover:bg-white/5"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUserId(c.userId)}
+                        className="flex flex-1 items-start gap-3 p-3 text-left min-w-0"
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-brand-600 font-bold text-xs">
+                          {c.userName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+                              {c.userName}
+                            </p>
+                            {c.unreadCount > 0 && (
+                              <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white shrink-0 ml-1">
+                                {c.unreadCount}
+                              </span>
+                            )}
+                          </div>
+                          <p className="truncate text-[11px] text-slate-400">{c.userEmail}</p>
+                          <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">
+                            {c.lastMessage}
+                          </p>
+                        </div>
+                      </button>
+
+                      {/* Delete conversation button */}
+                      <div className="pr-3 shrink-0">
+                        {confirmDeleteUserId === c.userId ? (
+                          <div className="flex items-center gap-1 rounded bg-red-50 px-1.5 py-1 border border-red-200 dark:bg-red-950/60 dark:border-red-800 text-[10px] shadow-sm">
+                            <span className="text-red-600 dark:text-red-400 font-medium">Delete?</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteThread(c.userId);
+                              }}
+                              disabled={deletingThread}
+                              className="font-bold text-red-600 hover:text-red-800 dark:text-red-400 hover:underline"
+                            >
+                              {deletingThread ? "…" : "Yes"}
+                            </button>
+                            <span className="text-slate-300">|</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteUserId(null);
+                              }}
+                              className="text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteUserId(c.userId);
+                            }}
+                            title="Delete conversation"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         )}
                       </div>
-                      <p className="truncate text-[11px] text-slate-400">{c.userEmail}</p>
-                      <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">
-                        {c.lastMessage}
-                      </p>
                     </div>
-                  </button>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
           )}
 
@@ -274,16 +416,56 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
           {(!isStaff || selectedUserId) && (
             <>
               {isStaff && selectedUserId && (
-                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-xs dark:border-white/5 dark:bg-white/5">
-                  <span className="font-semibold text-slate-600 dark:text-slate-300 truncate">
-                    {conversations.find((c) => c.userId === selectedUserId)?.userName || "User Thread"}
-                  </span>
-                  <button
-                    onClick={() => setSelectedUserId(null)}
-                    className="text-[11px] font-bold text-brand-600 hover:underline dark:text-brand-400"
-                  >
-                    ← All Chats
-                  </button>
+                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs dark:border-white/5 dark:bg-white/5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <button
+                      onClick={() => {
+                        setSelectedUserId(null);
+                        setConfirmDeleteThread(false);
+                        setConfirmDeleteMsgId(null);
+                      }}
+                      className="text-[11px] font-bold text-brand-600 hover:underline dark:text-brand-400 shrink-0"
+                    >
+                      ← All Chats
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-600">|</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">
+                      {conversations.find((c) => c.userId === selectedUserId)?.userName || "User Thread"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {confirmDeleteThread ? (
+                      <div className="flex items-center gap-1.5 bg-red-50 dark:bg-red-950/50 px-2 py-0.5 rounded border border-red-200 dark:border-red-900/50 text-[10px]">
+                        <span className="text-red-600 dark:text-red-400 font-medium">Delete all?</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteThread(selectedUserId)}
+                          disabled={deletingThread}
+                          className="font-bold text-red-600 hover:text-red-800 dark:text-red-400 hover:underline"
+                        >
+                          {deletingThread ? "…" : "Yes"}
+                        </button>
+                        <span className="text-red-300">/</span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteThread(false)}
+                          className="text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteThread(true)}
+                        title="Delete entire conversation"
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span className="text-[10px]">Delete chat</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -307,9 +489,9 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                   return (
                     <div
                       key={m.id}
-                      className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
+                      className={`group relative flex flex-col ${isMe ? "items-end" : "items-start"}`}
                     >
-                      <div className="flex items-end gap-1.5 max-w-[85%]">
+                      <div className={`flex items-end gap-1.5 max-w-[88%] ${isMe ? "flex-row-reverse" : "flex-row"}`}>
                         {!isMe && (
                           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700 dark:bg-white/10 dark:text-slate-200">
                             {isStaff ? "U" : "S"}
@@ -324,6 +506,42 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                         >
                           <p className="whitespace-pre-wrap break-words">{m.message}</p>
                         </div>
+
+                        {/* Staff message deletion action */}
+                        {isStaff && (
+                          <div className="shrink-0 flex items-center self-center">
+                            {confirmDeleteMsgId === m.id ? (
+                              <div className="flex items-center gap-1 rounded bg-red-50 px-1.5 py-0.5 border border-red-200 dark:bg-red-950/70 dark:border-red-800 text-[10px] shadow-sm animate-in fade-in">
+                                <span className="text-red-600 dark:text-red-400 font-medium">Delete?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMessage(m.id)}
+                                  disabled={deletingMsgId === m.id}
+                                  className="font-bold text-red-600 hover:text-red-800 dark:text-red-400 hover:underline"
+                                >
+                                  {deletingMsgId === m.id ? "…" : "Yes"}
+                                </button>
+                                <span className="text-slate-300">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteMsgId(null)}
+                                  className="text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteMsgId(m.id)}
+                                title="Delete message"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <span className="mt-1 px-1 text-[10px] text-slate-400">
                         {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

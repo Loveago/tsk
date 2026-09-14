@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth";
 import {
+  deleteChatMessage,
+  deleteUserChatThread,
   getAdminChatConversations,
   getUserChatMessages,
   sendAdminChatMessage,
@@ -12,13 +14,14 @@ export async function GET(request: NextRequest) {
     await requireStaff();
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
+    const search = searchParams.get("search") || undefined;
 
     if (userId) {
       const messages = await getUserChatMessages(userId);
       return NextResponse.json({ messages });
     }
 
-    const conversations = await getAdminChatConversations();
+    const conversations = await getAdminChatConversations(search);
     return NextResponse.json({ conversations });
   } catch (err) {
     return handleRouteError(err);
@@ -38,6 +41,39 @@ export async function POST(request: NextRequest) {
 
     const msg = await sendAdminChatMessage(userId, actor.id, text);
     return NextResponse.json({ message: msg });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    await requireStaff();
+    const { searchParams } = new URL(request.url);
+    let messageId = searchParams.get("messageId");
+    let userId = searchParams.get("userId");
+
+    if (!messageId && !userId) {
+      try {
+        const body = await request.json();
+        if (typeof body.messageId === "string") messageId = body.messageId;
+        if (typeof body.userId === "string") userId = body.userId;
+      } catch {
+        // body parsing optional
+      }
+    }
+
+    if (messageId) {
+      const success = await deleteChatMessage(messageId);
+      return NextResponse.json({ ok: success, message: "Message deleted successfully" });
+    }
+
+    if (userId) {
+      const success = await deleteUserChatThread(userId);
+      return NextResponse.json({ ok: success, message: "Conversation deleted successfully" });
+    }
+
+    return apiError(400, "messageId or userId is required");
   } catch (err) {
     return handleRouteError(err);
   }

@@ -139,9 +139,93 @@ export async function sendAdminChatMessage(
   };
 }
 
-export async function getAdminChatConversations(): Promise<ChatConversation[]> {
+export async function deleteChatMessage(messageId: string): Promise<boolean> {
   await ensureChatTable();
   try {
+    const count = await prisma.$executeRawUnsafe(
+      `DELETE FROM support_chat_messages WHERE id = $1`,
+      messageId
+    );
+    return count > 0;
+  } catch (err) {
+    console.error("Error deleting chat message:", err);
+    return false;
+  }
+}
+
+export async function deleteUserChatThread(userId: string): Promise<boolean> {
+  await ensureChatTable();
+  try {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM support_chat_messages WHERE user_id = $1`,
+      userId
+    );
+    return true;
+  } catch (err) {
+    console.error("Error deleting user chat thread:", err);
+    return false;
+  }
+}
+
+export async function getAdminChatConversations(search?: string): Promise<ChatConversation[]> {
+  await ensureChatTable();
+  try {
+    const trimmed = search?.trim();
+    let query: string;
+    let params: unknown[] = [];
+
+    if (trimmed) {
+      query = `
+        SELECT 
+          u.id AS user_id,
+          u.name,
+          u.email,
+          m.message AS last_message,
+          m.created_at AS last_message_at,
+          COALESCE(un.unread_count, 0) AS unread_count
+        FROM (
+          SELECT DISTINCT ON (user_id) user_id, message, created_at
+          FROM support_chat_messages
+          ORDER BY user_id, created_at DESC
+        ) m
+        JOIN "User" u ON u.id = m.user_id
+        LEFT JOIN (
+          SELECT user_id, COUNT(*) AS unread_count
+          FROM support_chat_messages
+          WHERE sender = 'USER' AND read = FALSE
+          GROUP BY user_id
+        ) un ON un.user_id = m.user_id
+        WHERE u.name ILIKE $1 OR u.email ILIKE $1
+        ORDER BY m.created_at DESC
+        LIMIT 100;
+      `;
+      params = [`%${trimmed}%`];
+    } else {
+      query = `
+        SELECT 
+          u.id AS user_id,
+          u.name,
+          u.email,
+          m.message AS last_message,
+          m.created_at AS last_message_at,
+          COALESCE(un.unread_count, 0) AS unread_count
+        FROM (
+          SELECT DISTINCT ON (user_id) user_id, message, created_at
+          FROM support_chat_messages
+          ORDER BY user_id, created_at DESC
+        ) m
+        JOIN "User" u ON u.id = m.user_id
+        LEFT JOIN (
+          SELECT user_id, COUNT(*) AS unread_count
+          FROM support_chat_messages
+          WHERE sender = 'USER' AND read = FALSE
+          GROUP BY user_id
+        ) un ON un.user_id = m.user_id
+        ORDER BY m.created_at DESC
+        LIMIT 100;
+      `;
+    }
+
     const rows = await prisma.$queryRawUnsafe<
       Array<{
         user_id: string;
@@ -151,29 +235,7 @@ export async function getAdminChatConversations(): Promise<ChatConversation[]> {
         last_message_at: Date;
         unread_count: string | number;
       }>
-    >(`
-      SELECT 
-        u.id AS user_id,
-        u.name,
-        u.email,
-        m.message AS last_message,
-        m.created_at AS last_message_at,
-        COALESCE(un.unread_count, 0) AS unread_count
-      FROM (
-        SELECT DISTINCT ON (user_id) user_id, message, created_at
-        FROM support_chat_messages
-        ORDER BY user_id, created_at DESC
-      ) m
-      JOIN "User" u ON u.id = m.user_id
-      LEFT JOIN (
-        SELECT user_id, COUNT(*) AS unread_count
-        FROM support_chat_messages
-        WHERE sender = 'USER' AND read = FALSE
-        GROUP BY user_id
-      ) un ON un.user_id = m.user_id
-      ORDER BY m.created_at DESC
-      LIMIT 50;
-    `);
+    >(query, ...params);
 
     return rows.map((r) => ({
       userId: r.user_id,
