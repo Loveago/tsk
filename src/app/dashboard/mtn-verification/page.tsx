@@ -15,6 +15,8 @@ import {
   Send,
   ShieldCheck,
   Info,
+  Upload,
+  FileText,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/types";
 
@@ -47,6 +49,24 @@ export default function UserMtnVerificationPage() {
     type: "success" | "verified" | "pending" | "error";
     message: string;
   } | null>(null);
+
+  // --- Bulk file upload state ---
+  const [uploadFile, setUploadFile] = React.useState<File | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadResult, setUploadResult] = React.useState<{
+    success: boolean;
+    message: string;
+    submitted: number;
+    alreadyPending: number;
+    alreadyVerified: number;
+    failed: number;
+    invalidCount: number;
+    duplicateCount: number;
+    alreadyAcceptedCount: number;
+    totalRows: number;
+    errors?: { raw: string; reason: string; line: number }[];
+  } | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const fetchItems = React.useCallback(async () => {
     setLoading(true);
@@ -129,6 +149,39 @@ export default function UserMtnVerificationPage() {
       toast(err.message ?? "An error occurred", "error");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!uploadFile) return toast("Please select a .txt file first", "error");
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", uploadFile);
+      const res = await fetch("/api/mtn-verification/upload", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast(data.error ?? "Upload failed", "error");
+        return;
+      }
+      setUploadResult(data);
+      if (data.submitted > 0) {
+        toast(`${data.submitted} number(s) submitted for verification`, "success");
+        fetchItems();
+      } else {
+        toast(data.message ?? "No new numbers submitted", "info");
+      }
+      // Reset file input
+      setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err: any) {
+      toast(err.message ?? "An error occurred", "error");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -247,6 +300,118 @@ export default function UserMtnVerificationPage() {
             </div>
           )}
         </form>
+      </div>
+
+      {/* Bulk TXT Upload Card */}
+      <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+          <Upload className="h-4 w-4 text-brand-600" />
+          Bulk Upload via TXT File
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Upload a plain-text file (.txt) with one MTN number per line to submit multiple numbers at once. Supports files over 50 MB.
+        </p>
+
+        <div className="mt-5 space-y-3 max-w-md">
+          {/* Drop / click area */}
+          <label
+            htmlFor="bulkFile"
+            className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 cursor-pointer transition
+              ${uploadFile
+                ? "border-brand-400 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/10"
+                : "border-slate-200 bg-slate-50 hover:border-brand-400 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-brand-500"
+              }`}
+          >
+            {uploadFile ? (
+              <>
+                <FileText className="h-6 w-6 text-brand-600 dark:text-brand-400" />
+                <span className="text-xs font-semibold text-brand-700 dark:text-brand-300">{uploadFile.name}</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {(uploadFile.size / 1024 / 1024).toFixed(2)} MB — click to change
+                </span>
+              </>
+            ) : (
+              <>
+                <Upload className="h-6 w-6 text-slate-400" />
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Click or drag a <strong>.txt</strong> file here
+                </span>
+                <span className="text-[11px] text-slate-400">One MTN number per line · up to 200 MB</span>
+              </>
+            )}
+            <input
+              id="bulkFile"
+              ref={fileInputRef}
+              type="file"
+              accept=".txt,text/plain"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setUploadFile(f);
+                setUploadResult(null);
+              }}
+              disabled={uploading}
+            />
+          </label>
+
+          <Button
+            type="button"
+            onClick={handleFileUpload}
+            disabled={uploading || !uploadFile}
+            className="w-full"
+          >
+            {uploading ? (
+              <><Spinner className="h-4 w-4 mr-2" />Uploading…</>
+            ) : (
+              <><Upload className="h-4 w-4 mr-1.5" />Upload &amp; Submit Numbers</>
+            )}
+          </Button>
+        </div>
+
+        {/* Upload result summary */}
+        {uploadResult && (
+          <div className="mt-5 max-w-md rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60 space-y-3">
+            <p className={`text-sm font-semibold ${uploadResult.submitted > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-slate-700 dark:text-slate-300"}`}>
+              {uploadResult.message}
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 p-2.5">
+                <p className="text-emerald-600 dark:text-emerald-400 font-medium">Submitted</p>
+                <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{uploadResult.submitted}</p>
+              </div>
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 p-2.5">
+                <p className="text-amber-600 dark:text-amber-400 font-medium">Already Pending</p>
+                <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{uploadResult.alreadyPending}</p>
+              </div>
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-500/10 p-2.5">
+                <p className="text-blue-600 dark:text-blue-400 font-medium">Already Verified</p>
+                <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadResult.alreadyVerified}</p>
+              </div>
+              <div className="rounded-lg bg-red-50 dark:bg-red-500/10 p-2.5">
+                <p className="text-red-600 dark:text-red-400 font-medium">Invalid / Skipped</p>
+                <p className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadResult.invalidCount + uploadResult.failed}</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Total rows parsed: {uploadResult.totalRows} · Duplicates in file: {uploadResult.duplicateCount}
+            </p>
+            {uploadResult.errors && uploadResult.errors.length > 0 && (
+              <details className="text-[11px] text-slate-500 dark:text-slate-400 cursor-pointer">
+                <summary className="font-medium text-red-600 dark:text-red-400">
+                  Show {uploadResult.errors.length} error(s)
+                </summary>
+                <ul className="mt-2 space-y-1 list-disc list-inside">
+                  {uploadResult.errors.map((e, i) => (
+                    <li key={i}>
+                      {e.line > 0 && <span className="text-slate-400">Line {e.line}: </span>}
+                      <span className="font-mono">{e.raw}</span> — {e.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Submitted Requests List */}
