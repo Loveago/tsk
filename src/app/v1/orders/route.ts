@@ -576,6 +576,21 @@ export async function POST(request: NextRequest) {
       createdOrder.id
     ).catch(() => undefined);
 
+    // If provider API routing is enabled and not a sandbox simulation, auto-dispatch to provider
+    if (authContext.environment === "LIVE") {
+      try {
+        const { getProviderRoutingConfig, dispatchOrder } = await import("@/lib/provider-apis/router");
+        const config = await getProviderRoutingConfig();
+        if (config.enabled && config.autoDispatch) {
+          dispatchOrder(createdOrder.id, { force: true }).catch((err) => {
+            console.error(`Auto-dispatch failed for dev v1 order #${createdOrder.id}:`, err);
+          });
+        }
+      } catch (err) {
+        console.error("Developer v1 auto-dispatch check error:", err);
+      }
+    }
+
     await logApiRequestEntry({
       userId: authContext.userId,
       credentialId: authContext.credentialId,

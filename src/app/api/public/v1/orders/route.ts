@@ -161,6 +161,19 @@ export async function POST(request: NextRequest) {
           .catch(() => undefined);
       }
 
+      // Automatically dispatch to configured provider API
+      try {
+        const { getProviderRoutingConfig, dispatchOrder } = await import("@/lib/provider-apis/router");
+        const config = await getProviderRoutingConfig();
+        if (config.enabled && config.autoDispatch) {
+          dispatchOrder(order.id, { force: true }).catch((err) => {
+            console.error(`Auto-dispatch failed for public v1 order #${order.id}:`, err);
+          });
+        }
+      } catch (err) {
+        console.error("Public v1 auto-dispatch check error:", err);
+      }
+
       await logApiRequest(keyId, endpoint, "POST", 201, true, ipOf(request));
       return NextResponse.json(
         {

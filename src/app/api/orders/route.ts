@@ -298,6 +298,22 @@ export async function POST(request: NextRequest) {
       }),
     });
 
+    // If automated provider routing is enabled, dispatch to assigned APIs
+    try {
+      const routingEnabled = await prisma.systemSetting.findUnique({
+        where: { key: "provider_routing_enabled" },
+      });
+      if (routingEnabled?.value === "true") {
+        const { dispatchOrdersBatch } = await import("@/lib/provider-apis/router");
+        // Trigger dispatch
+        dispatchOrdersBatch(created.map((o) => o.id)).catch((err) => {
+          console.error("Auto dispatch error:", err);
+        });
+      }
+    } catch (err) {
+      console.error("Auto-dispatch check error:", err);
+    }
+
     return NextResponse.json({
       orders: created,
       batches: createdBatches,

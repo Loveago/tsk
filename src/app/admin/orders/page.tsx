@@ -194,6 +194,27 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const handleBulkDispatchToApi = async () => {
+    if (selectedOrderIds.size === 0) return;
+    try {
+      const res = await fetch(`/api/admin/provider-apis/dispatch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: Array.from(selectedOrderIds) }),
+      });
+      const json = await res.json();
+      if (!res.ok) return toast(json.error ?? "Failed to dispatch orders", "error");
+      toast(
+        `Dispatched: ${json.dispatched} sent, ${json.skippedManual} manual, ${json.failed} failed`,
+        json.failed > 0 ? "error" : "success"
+      );
+      setSelectedOrderIds(new Set());
+      load();
+    } catch {
+      toast("Error during provider API dispatch", "error");
+    }
+  };
+
   // ── storefront reconciliation action ─────────────────────────
   const handleReconcileStorefront = async () => {
     setReconciling(true);
@@ -409,6 +430,14 @@ export default function AdminOrdersPage() {
             </Button>
             <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("CANCELLED")}>
               Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleBulkDispatchToApi}
+              className="bg-brand-600 hover:bg-brand-700 text-white font-medium"
+            >
+              ⚡ Dispatch to API
             </Button>
             <button
               type="button"

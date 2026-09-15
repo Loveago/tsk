@@ -239,6 +239,48 @@ export async function POST(request: NextRequest) {
       newValue: JSON.stringify({ orderId: order.id, seq, reason: input.reason }),
     });
 
+    // Forward to Clickyfied API if enabled and order is associated with Clickyfied
+    const notReceivedSetting = await prisma.systemSetting.findUnique({
+      where: { key: "clickyfied_not_received_enabled" },
+    });
+    const isClickyfiedOrder =
+      order.providerReference?.startsWith("CLICKYFIED:") ||
+      (await prisma.systemSetting.findUnique({ where: { key: `provider_route_${order.network}` } }))?.value === "CLICKYFIED";
+
+    if (notReceivedSetting?.value !== "false" && isClickyfiedOrder) {
+      try {
+        const { getProviderRoutingConfig } = await import("@/lib/provider-apis/router");
+        const { ClickyfiedClient } = await import("@/lib/provider-apis/clickyfied");
+        const config = await getProviderRoutingConfig();
+        const client = new ClickyfiedClient(config.clickyfied);
+
+        const clickyfiedId = order.providerReference?.startsWith("CLICKYFIED:")
+          ? order.providerReference.replace("CLICKYFIED:", "")
+          : order.externalReference || `TSK-ORD-${order.id}`;
+
+        await client.reportNotReceived(clickyfiedId);
+
+        await prisma.deliveryReportEvent.create({
+          data: {
+            reportId: report.id,
+            type: "INVESTIGATION_STARTED",
+            message: `Report forwarded to Clickyfied API (Order Ref: ${clickyfiedId})`,
+            actorLabel: "Clickyfied API",
+          },
+        });
+      } catch (err: any) {
+        console.error("Failed to forward report to Clickyfied:", err);
+        await prisma.deliveryReportEvent.create({
+          data: {
+            reportId: report.id,
+            type: "RESPONSE_ADDED",
+            message: `Could not automatically forward to Clickyfied: ${err?.message || "Network error"}`,
+            actorLabel: "System",
+          },
+        }).catch(() => {});
+      }
+    }
+
     return NextResponse.json(
       { report: { ...report, code: deliveryReportCode(report.seq) } },
       { status: 201 }

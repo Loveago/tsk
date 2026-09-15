@@ -473,6 +473,20 @@ export async function verifyAndSettleStorefrontOrder(reference: string): Promise
         where: { id: row.id },
         select: { underlyingOrderId: true },
       });
+      if (updated?.underlyingOrderId) {
+        // Automatically dispatch storefront order to assigned API provider
+        try {
+          const { getProviderRoutingConfig, dispatchOrder } = await import("./provider-apis/router");
+          const config = await getProviderRoutingConfig();
+          if (config.enabled && config.autoDispatch) {
+            dispatchOrder(updated.underlyingOrderId).catch((err) => {
+              console.error(`Auto-dispatch failed for storefront order #${updated.underlyingOrderId}:`, err);
+            });
+          }
+        } catch (err) {
+          console.error("Storefront auto-dispatch check failed:", err);
+        }
+      }
       return {
         settled: true,
         alreadySettled: false,

@@ -305,7 +305,34 @@ export const settingsSchema = z.object({
   // Global Announcement & Dynamic Categories
   announcement_templates: z.string().max(10000).optional(),
   custom_package_categories: z.string().max(5000).optional(),
-});
+
+  // Provider APIs & Network Routing
+  provider_routing_enabled: z.enum(["true", "false"]).optional(),
+  provider_routing_default: z.string().max(50).optional(),
+  provider_routing_auto_dispatch: z.enum(["true", "false"]).optional(),
+  provider_route_MTN: z.string().max(50).optional(),
+  provider_route_MTN_XPRESS: z.string().max(50).optional(),
+  provider_route_TELECEL: z.string().max(50).optional(),
+  provider_route_AIRTELTIGO: z.string().max(50).optional(),
+  provider_route_AIRTELTIGO_ISHARE: z.string().max(50).optional(),
+  provider_route_AIRTELTIGO_BIGTIME: z.string().max(50).optional(),
+
+  // Bigwindata Settings
+  bigwindata_enabled: z.enum(["true", "false"]).optional(),
+  bigwindata_api_key: z.string().max(255).optional(),
+  bigwindata_base_url: z.string().max(255).optional(),
+  bigwindata_webhook_secret: z.string().max(255).optional(),
+
+  // Clickyfied Settings
+  clickyfied_enabled: z.enum(["true", "false"]).optional(),
+  clickyfied_api_key: z.string().max(255).optional(),
+  clickyfied_base_url: z.string().max(255).optional(),
+  clickyfied_client_id: z.string().max(255).optional(),
+  clickyfied_callback_signing_secret: z.string().max(255).optional(),
+  clickyfied_mtn_verification_enabled: z.enum(["true", "false"]).optional(),
+  clickyfied_not_received_enabled: z.enum(["true", "false"]).optional(),
+  app_base_url: z.string().max(255).optional(),
+}).passthrough();
 
 export const pricingProfileUpdateSchema = pricingProfileSchema;
 

@@ -101,9 +101,30 @@ export async function validateMtnOrderRecipient(
 
   const normalized = normalizeGhanaPhoneNumber(phoneNumber);
   const verificationEnabled = await isMtnVerificationEnabled();
-  const accepted = await isMtnNumberAccepted(normalized);
+  let isAccepted = await isMtnNumberAccepted(normalized);
+  if (verificationEnabled && !isAccepted) {
+    const clickyfiedSetting = await prisma.systemSetting.findUnique({
+      where: { key: "clickyfied_mtn_verification_enabled" },
+    });
+    if (clickyfiedSetting?.value === "true") {
+      try {
+        const { getProviderRoutingConfig } = await import("./provider-apis/router");
+        const { ClickyfiedClient } = await import("./provider-apis/clickyfied");
+        const config = await getProviderRoutingConfig();
+        const client = new ClickyfiedClient(config.clickyfied);
+        const res = await client.verifyNumbers([normalized]);
+        const validNorms = new Set(res.validNumbers.map((n) => normalizeGhanaPhoneNumber(n)));
+        if (validNorms.has(normalized)) {
+          await addAcceptedMtnNumber(normalized, "CLICKYFIED_API", "Clickyfied Verification API").catch(() => {});
+          isAccepted = true;
+        }
+      } catch (err) {
+        console.error("Clickyfied single number verification error:", err);
+      }
+    }
+  }
 
-  if (verificationEnabled && !accepted) {
+  if (verificationEnabled && !isAccepted) {
     const reason =
       "This MTN number has not been verified yet. Please submit the number for verification before purchasing an MTN package.";
     if (opts.throwOnFailure) {
@@ -112,7 +133,7 @@ export async function validateMtnOrderRecipient(
     return { allowed: false, reason };
   }
 
-  if (!accepted && opts.recordUnverified !== false) {
+  if (!isAccepted && opts.recordUnverified !== false) {
     // Verification is OFF: allow the purchase, but record in Blocked/Unverified review list (§2, §13)
     await recordUnverifiedMtnNumber({
       number: normalized,

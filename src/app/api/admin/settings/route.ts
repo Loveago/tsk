@@ -44,6 +44,16 @@ export async function PATCH(request: NextRequest) {
         ? "********"
         : `${auditSafeInput.brevo_api_key.slice(0, 4)}...${auditSafeInput.brevo_api_key.slice(-4)}`;
     }
+    if (typeof auditSafeInput.bigwindata_api_key === "string" && auditSafeInput.bigwindata_api_key) {
+      auditSafeInput.bigwindata_api_key = auditSafeInput.bigwindata_api_key.length <= 8
+        ? "********"
+        : `${auditSafeInput.bigwindata_api_key.slice(0, 4)}...${auditSafeInput.bigwindata_api_key.slice(-4)}`;
+    }
+    if (typeof auditSafeInput.clickyfied_api_key === "string" && auditSafeInput.clickyfied_api_key) {
+      auditSafeInput.clickyfied_api_key = auditSafeInput.clickyfied_api_key.length <= 8
+        ? "********"
+        : `${auditSafeInput.clickyfied_api_key.slice(0, 4)}...${auditSafeInput.clickyfied_api_key.slice(-4)}`;
+    }
 
     await recordAudit({
       userId: actor.id,

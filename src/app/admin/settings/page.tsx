@@ -29,10 +29,13 @@ import {
   AlertTriangle,
   Sparkles,
   Check,
+  Server,
 } from "lucide-react";
+import { ProviderApisSettings } from "@/components/admin/provider-apis-settings";
 
 type Category =
   | "orders"
+  | "provider_apis"
   | "users"
   | "announcements"
   | "mtn"
@@ -50,6 +53,7 @@ type Category =
 
 const CATEGORIES: Array<{ id: Category; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "orders", label: "Orders & Submission", icon: Layers },
+  { id: "provider_apis", label: "Order Processing APIs", icon: Server },
   { id: "users", label: "Users & Roles", icon: Users },
   { id: "announcements", label: "Announcement Banner", icon: Megaphone },
   { id: "mtn", label: "MTN Verification", icon: ShieldCheck },
@@ -1374,6 +1378,16 @@ export default function AdminSettingsPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Category: Provider APIs & Routing */}
+        {activeCat === "provider_apis" && (
+          <ProviderApisSettings
+            settings={settings}
+            setSettings={setSettings}
+            onSave={save}
+            saving={saving}
+          />
         )}
 
         {/* Category 8: Send Claim / MoMo */}
