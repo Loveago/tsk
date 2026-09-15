@@ -129,7 +129,7 @@ export default function OrdersPage() {
               ? {
                   ...o,
                   _hasReportedLocally: true,
-                  deliveryReports: [{ id: json.report?.id ?? json.id ?? "", status: "OPEN" }],
+                  deliveryReports: [{ id: json.report?.id ?? json.id ?? "", status: "UNDER_REVIEW" }],
                 }
               : o
           ),
@@ -356,22 +356,26 @@ export default function OrdersPage() {
                           {/* Cancel order feature removed per user request */}
                           {/* Report only shows on completed orders (SUCCESS or COMPLETED) */}
                           {(o.status === "SUCCESS" || o.status === "COMPLETED") && (() => {
-                            const rep = (o.deliveryReports && o.deliveryReports[0]) || (o._hasReportedLocally ? { id: "", status: "OPEN" } : null);
+                            const rep = (o.deliveryReports && o.deliveryReports[0]) || (o._hasReportedLocally ? { id: "", status: "UNDER_REVIEW" } : null);
                             const isSubmitting = submittingReportId === o.id;
 
                             if (rep) {
-                              const isDelivered = rep.status === "DELIVERED";
+                              const isDelivered = rep.status === "DELIVERED" || rep.status === "CONFIRM_SENT";
                               const isResolved = rep.status === "RESOLVED";
+                              const isRefunded = rep.status === "REFUNDED";
                               const hasProof = Boolean(rep.proofImageMime);
 
                               let badgeText = "Under Review";
-                              let badgeCls = "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20";
+                              let badgeCls = "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20";
                               if (isDelivered) {
-                                badgeText = hasProof ? "Delivered (View Proof)" : "Delivered";
+                                badgeText = hasProof ? "Confirmed Sent (Proof)" : "Confirm Sent";
                                 badgeCls = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20";
                               } else if (isResolved) {
                                 badgeText = "Resolved";
                                 badgeCls = "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20";
+                              } else if (isRefunded) {
+                                badgeText = "Refunded";
+                                badgeCls = "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20";
                               } else if (rep.status === "REJECTED") {
                                 badgeText = "Rejected";
                                 badgeCls = "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20";

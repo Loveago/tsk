@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     // "My Not Received" reports list (§14) — the user's actual filed reports
     if (searchParams.get("view") === "reports") {
       const reportWhere: Record<string, unknown> = { userId: user.id };
-      if (status && ["OPEN", "INVESTIGATING", "DELIVERED", "RESOLVED", "REJECTED"].includes(status)) {
+      if (status && ["OPEN", "UNDER_REVIEW", "INVESTIGATING", "DELIVERED", "RESOLVED", "REFUNDED", "CONFIRM_SENT", "REJECTED"].includes(status)) {
         reportWhere.status = status;
       }
       if (q) {
@@ -67,9 +67,9 @@ export async function GET(request: NextRequest) {
         prisma.deliveryReport.count({ where: reportWhere }),
       ]);
       const [open, investigating, closed] = await Promise.all([
-        prisma.deliveryReport.count({ where: { userId: user.id, status: "OPEN" } }),
+        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["OPEN", "UNDER_REVIEW"] } } }),
         prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["INVESTIGATING", "DELIVERED"] } } }),
-        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["RESOLVED", "REJECTED"] } } }),
+        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["RESOLVED", "REFUNDED", "CONFIRM_SENT", "REJECTED"] } } }),
       ]);
       return NextResponse.json({
         reports: reports.map((r) => ({ ...r, code: deliveryReportCode(r.seq) })),
@@ -219,6 +219,7 @@ export async function POST(request: NextRequest) {
         orderId: order.id,
         seq,
         userId: user.id,
+        status: "UNDER_REVIEW",
         reason: input.reason,
         message: input.message || null,
         events: {

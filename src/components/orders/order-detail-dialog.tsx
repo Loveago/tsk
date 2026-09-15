@@ -87,7 +87,7 @@ export function OrderDetailDialog({
       setLocalReport({
         id: json.report?.id ?? json.id ?? "",
         seq: json.report?.seq ?? 0,
-        status: "OPEN",
+        status: "UNDER_REVIEW",
       });
       onOrderChanged?.();
     } catch {
