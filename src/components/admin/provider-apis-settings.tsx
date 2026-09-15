@@ -73,7 +73,6 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
       provider_route_MTN: "BIGWINDATA",
       provider_route_MTN_XPRESS: "BIGWINDATA",
       provider_route_TELECEL: "CLICKYFIED",
-      provider_route_AIRTELTIGO: "CLICKYFIED",
       provider_route_AIRTELTIGO_ISHARE: "CLICKYFIED",
       provider_route_AIRTELTIGO_BIGTIME: "CLICKYFIED",
       bigwindata_enabled: "true",
@@ -202,7 +201,6 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
       { key: "MTN", label: "MTN (Regular)", network: "MTN" },
       { key: "MTN_XPRESS", label: "MTN Xpress", network: "MTN" },
       { key: "TELECEL", label: "Telecel", network: "TELECEL" },
-      { key: "AIRTELTIGO", label: "AirtelTigo (General)", network: "AIRTELTIGO" },
       { key: "AIRTELTIGO_ISHARE", label: "AirtelTigo iShare", network: "AIRTELTIGO" },
       { key: "AIRTELTIGO_BIGTIME", label: "AirtelTigo Big Time", network: "AIRTELTIGO" },
     ];

@@ -11,7 +11,6 @@ export const SUPPORTED_ROUTING_NETWORKS = [
   "MTN",
   "MTN_XPRESS",
   "TELECEL",
-  "AIRTELTIGO",
   "AIRTELTIGO_ISHARE",
   "AIRTELTIGO_BIGTIME",
 ] as const;
@@ -101,13 +100,19 @@ export async function getProviderForNetwork(
     }
   }
 
+  // If network is AIRTELTIGO without explicit sub-identifier, default to ISHARE then BIGTIME
+  if (net === "AIRTELTIGO") {
+    if (config.networkRoutes["AIRTELTIGO_ISHARE"]) return config.networkRoutes["AIRTELTIGO_ISHARE"];
+    if (config.networkRoutes["AIRTELTIGO_BIGTIME"]) return config.networkRoutes["AIRTELTIGO_BIGTIME"];
+  }
+
   // 2. Direct network key match
   if (config.networkRoutes[net]) {
     return config.networkRoutes[net];
   }
 
-  // 3. Normalized prefix fallback (e.g. AIRTELTIGO_NEW -> AIRTELTIGO)
-  for (const base of ["MTN", "TELECEL", "AIRTELTIGO"]) {
+  // 3. Normalized prefix fallback
+  for (const base of ["MTN", "TELECEL"]) {
     if (net.startsWith(base) && config.networkRoutes[base]) {
       return config.networkRoutes[base];
     }
