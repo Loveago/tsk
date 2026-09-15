@@ -54,7 +54,7 @@ sudo systemctl enable postgresql
 # Create a secure database user and the tskconnect database
 # Replace 'YourSecurePassword123!' with a strong password!
 sudo -u postgres psql << 'EOF'
-CREATE USER tsk_user WITH PASSWORD 'YourSecurePassword123!';
+CREATE USER tsk_user WITH PASSWORD 'Loverboy888112!';
 CREATE DATABASE tskconnect_db OWNER tsk_user;
 GRANT ALL PRIVILEGES ON DATABASE tskconnect_db TO tsk_user;
 ALTER USER tsk_user CREATEDB;
@@ -65,7 +65,7 @@ EOF
 sudo -u postgres psql -d tskconnect_db -c "GRANT ALL ON SCHEMA public TO tsk_user;"
 
 # Test connecting to the local database
-PGPASSWORD='YourSecurePassword123!' psql -U tsk_user -d tskconnect_db -h 127.0.0.1 -c "\conninfo"
+PGPASSWORD='Loverboy888112!' psql -U tsk_user -d tskconnect_db -h 127.0.0.1 -c "\conninfo"
 
 
 --------------------------------------------------------------------------------
@@ -91,15 +91,13 @@ STEP 5: CONFIGURE ENVIRONMENT VARIABLES (.env)
 # Tip: Generate a random AUTH_SECRET with: openssl rand -base64 32
 
 cat << 'EOF' > /var/www/tskconnect/.env
-DATABASE_URL="postgresql://tsk_user:YourSecurePassword123!@localhost:5432/tskconnect_db?schema=public"
-AUTH_SECRET="CHANGE_THIS_TO_A_VERY_LONG_RANDOM_SECRET_KEY_123456"
+DATABASE_URL="postgresql://tsk_user:Loverboy888112!@localhost:5432/tskconnect_db?schema=public"
+AUTH_SECRET="CHANGE_THIS_TO_A_VE122!!2RY_LONG_RANDOM_SEsduudgCRET_KEY_123456"
 
-# Ghana Paystack Secret Key (Optional / When ready)
-PAYSTACK_SECRET_KEY=""
 
 # Initial Admin Credentials (used during seed)
 ADMIN_EMAIL="admin@tsk05.net"
-ADMIN_PASSWORD="AdminPassword123!"
+ADMIN_PASSWORD="Topshants105kv1v2m!"
 ADMIN_NAME="Super Admin"
 
 # Node Environment
@@ -239,6 +237,7 @@ npx prisma generate && \
 npm run db:push && \
 npm run build && \
 pm2 restart tskconnect
+NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 # Helpful monitoring commands:
 # Check app logs:       pm2 logs tskconnect

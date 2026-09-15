@@ -12,8 +12,11 @@ import {
   GHANA_PHONE_REGEX,
   MTN_PHONE_REGEX,
 } from "./phone-utils";
+import { consumeImportStagingSession } from "./mtn-staging";
 
 export * from "./phone-utils";
+export * from "./mtn-staging";
+
 
 export const SETTING_MTN_VERIFICATION_ENABLED = "mtn_number_verification_enabled";
 export const SETTING_MTN_VERIFICATION_INSTRUCTIONS = "mtn_verification_instructions";
@@ -408,152 +411,182 @@ export async function parseMtnNumbersFile(
 ): Promise<FileParseResult> {
   const isTxt = filename.toLowerCase().endsWith(".txt");
   const isCsv = filename.toLowerCase().endsWith(".csv") || (!isTxt && content.includes(","));
-  const rawLines = content.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
 
-  let candidateNumbers: { line: number; raw: string }[] = [];
+  const duplicateSet = new Set<string>();
+  const invalidList: { line: number; raw: string; reason: string }[] = [];
+  const normalizedValid: string[] = [];
+  const seenInFile = new Set<string>();
+  let totalRows = 0;
 
-  if (isCsv && rawLines.length > 0) {
-    const firstLine = rawLines[0];
-    const delimiter = firstLine.includes(";") && !firstLine.includes(",") ? ";" : ",";
-    const headerTokens = firstLine.split(delimiter).map((t) => t.trim().replace(/^["']|["']$/g, ""));
-    const cleanToken = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (isCsv) {
+    // For CSV, split lines once or scan
+    const rawLines = content.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    if (rawLines.length > 0) {
+      const firstLine = rawLines[0];
+      const delimiter = firstLine.includes(";") && !firstLine.includes(",") ? ";" : ",";
+      const headerTokens = firstLine.split(delimiter).map((t) => t.trim().replace(/^["']|["']$/g, ""));
+      const cleanToken = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 
-    const KNOWN_HEADERS = new Set([
-      "number",
-      "phone",
-      "phonenumber",
-      "phoneno",
-      "telephone",
-      "telephonenumber",
-      "mobile",
-      "mobilenumber",
-      "mobileno",
-      "msisdn",
-      "mtnnumber",
-      "mtnno",
-      "mtn",
-      "recipient",
-      "recipientnumber",
-      "recipientphone",
-      "contact",
-      "cellphone",
-      "customerphone",
-    ]);
+      const KNOWN_HEADERS = new Set([
+        "number",
+        "phone",
+        "phonenumber",
+        "phoneno",
+        "telephone",
+        "telephonenumber",
+        "mobile",
+        "mobilenumber",
+        "mobileno",
+        "msisdn",
+        "mtnnumber",
+        "mtnno",
+        "mtn",
+        "recipient",
+        "recipientnumber",
+        "recipientphone",
+        "contact",
+        "cellphone",
+        "customerphone",
+      ]);
 
-    let colIndex = headerTokens.findIndex((h) => KNOWN_HEADERS.has(cleanToken(h)));
-    let startIndex = 0;
+      let colIndex = headerTokens.findIndex((h) => KNOWN_HEADERS.has(cleanToken(h)));
+      let startIndex = 0;
 
-    if (colIndex !== -1) {
-      // First row is a header
-      startIndex = 1;
-    } else {
-      // Inspect row 0 and row 1 to detect column containing phone numbers
-      const row0Cols = firstLine.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ""));
-      const row0PhoneCol = row0Cols.findIndex((c) => isValidGhanaPhoneNumber(c) || isMtnPhoneNumber(c));
+      if (colIndex !== -1) {
+        startIndex = 1;
+      } else {
+        const row0Cols = firstLine.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ""));
+        const row0PhoneCol = row0Cols.findIndex((c) => isValidGhanaPhoneNumber(c) || isMtnPhoneNumber(c));
 
-      if (row0PhoneCol !== -1) {
-        // Row 0 is data itself
-        colIndex = row0PhoneCol;
-        startIndex = 0;
-      } else if (rawLines.length > 1) {
-        const row1Cols = rawLines[1].split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ""));
-        const row1PhoneCol = row1Cols.findIndex((c) => isValidGhanaPhoneNumber(c) || isMtnPhoneNumber(c));
-        if (row1PhoneCol !== -1) {
-          // Row 0 is header, row 1 has phone data
-          colIndex = row1PhoneCol;
-          startIndex = 1;
+        if (row0PhoneCol !== -1) {
+          colIndex = row0PhoneCol;
+          startIndex = 0;
+        } else if (rawLines.length > 1) {
+          const row1Cols = rawLines[1].split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ""));
+          const row1PhoneCol = row1Cols.findIndex((c) => isValidGhanaPhoneNumber(c) || isMtnPhoneNumber(c));
+          if (row1PhoneCol !== -1) {
+            colIndex = row1PhoneCol;
+            startIndex = 1;
+          } else {
+            colIndex = 0;
+            startIndex = 0;
+          }
         } else {
           colIndex = 0;
           startIndex = 0;
         }
-      } else {
-        colIndex = 0;
-        startIndex = 0;
       }
-    }
 
-    for (let i = startIndex; i < rawLines.length; i++) {
-      const line = rawLines[i];
-      if (!line) continue;
-      // Skip comment lines in CSV
-      if (line.startsWith("#") || line.startsWith("//")) continue;
-      const cols = line.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ""));
-      const val = cols[colIndex] ?? cols[0] ?? "";
-      if (val) {
-        candidateNumbers.push({ line: i + 1, raw: val });
+      for (let i = startIndex; i < rawLines.length; i++) {
+        const line = rawLines[i];
+        if (!line || line.startsWith("#") || line.startsWith("//")) continue;
+        const cols = line.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ""));
+        const raw = cols[colIndex] ?? cols[0] ?? "";
+        if (!raw) continue;
+
+        totalRows++;
+        const lineNum = i + 1;
+        const normalized = normalizeGhanaPhoneNumber(raw);
+
+        if (!isValidGhanaPhoneNumber(normalized)) {
+          invalidList.push({ line: lineNum, raw, reason: "Invalid Ghanaian phone number format" });
+          continue;
+        }
+        if (!isMtnPhoneNumber(normalized)) {
+          invalidList.push({ line: lineNum, raw, reason: "Number is not an MTN number" });
+          continue;
+        }
+        if (seenInFile.has(normalized)) {
+          duplicateSet.add(normalized);
+          continue;
+        }
+        seenInFile.add(normalized);
+        normalizedValid.push(normalized);
       }
     }
   } else {
-    // Plain text: 1 phone number per line (supports spaces e.g. +233 55 999 0002)
-    rawLines.forEach((line, idx) => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("#") || trimmed.startsWith("//")) return;
-      // Strip trailing comment e.g. "0241234567 # note" or "0241234567 // note"
-      const withoutComment = trimmed.replace(/(?:#|\/\/).*$/, "").trim();
-      if (!withoutComment) return;
+    // Ultra fast, memory-friendly text scanning for large TXT files
+    let lineStart = 0;
+    let lineNum = 0;
+    const len = content.length;
 
-      // If line contains comma or semicolon (e.g. "0241234567, Alice"), extract phone part
-      let candidate = withoutComment;
-      if (candidate.includes(",")) {
-        candidate = candidate.split(",")[0].trim();
-      } else if (candidate.includes(";")) {
-        candidate = candidate.split(";")[0].trim();
+    while (lineStart < len) {
+      let lineEnd = content.indexOf("\n", lineStart);
+      if (lineEnd === -1) lineEnd = len;
+
+      lineNum++;
+      let line = content.slice(lineStart, lineEnd).trim();
+      lineStart = lineEnd + 1;
+
+      if (!line || line.startsWith("#") || line.startsWith("//")) continue;
+
+      // Strip comments only if comment characters are present
+      const withoutComment = (line.includes("#") || line.includes("/"))
+        ? line.replace(/(?:#|\/\/).*$/, "").trim()
+        : line;
+      if (!withoutComment) continue;
+
+      let raw = withoutComment;
+      if (raw.includes(",")) {
+        raw = raw.split(",")[0].trim();
+      } else if (raw.includes(";")) {
+        raw = raw.split(";")[0].trim();
+      }
+      if (!raw) continue;
+
+      totalRows++;
+      const normalized = normalizeGhanaPhoneNumber(raw);
+
+      if (!MTN_PHONE_REGEX.test(normalized)) {
+        if (!isValidGhanaPhoneNumber(normalized)) {
+          invalidList.push({ line: lineNum, raw, reason: "Invalid Ghanaian phone number format" });
+        } else {
+          invalidList.push({ line: lineNum, raw, reason: "Number is not an MTN number" });
+        }
+        continue;
       }
 
-      if (candidate) {
-        candidateNumbers.push({ line: idx + 1, raw: candidate });
+      if (seenInFile.has(normalized)) {
+        duplicateSet.add(normalized);
+        continue;
       }
-    });
+      seenInFile.add(normalized);
+      normalizedValid.push(normalized);
+    }
   }
 
-  const seenInFile = new Set<string>();
-  const duplicateSet = new Set<string>();
-  const invalidList: { line: number; raw: string; reason: string }[] = [];
-  const normalizedValid: string[] = [];
-
-  for (const item of candidateNumbers) {
-    const raw = item.raw;
-    // Normalize
-    const normalized = normalizeGhanaPhoneNumber(raw);
-
-    if (!isValidGhanaPhoneNumber(normalized)) {
-      invalidList.push({ line: item.line, raw, reason: "Invalid Ghanaian phone number format" });
-      continue;
-    }
-
-    if (!isMtnPhoneNumber(normalized)) {
-      invalidList.push({ line: item.line, raw, reason: "Number is not an MTN number" });
-      continue;
-    }
-
-    if (seenInFile.has(normalized)) {
-      duplicateSet.add(normalized);
-      continue;
-    }
-
-    seenInFile.add(normalized);
-    normalizedValid.push(normalized);
-  }
-
-  // Check against database for already accepted numbers using chunked queries
+  // Fast check for already accepted numbers
   const alreadyAcceptedSet = new Set<string>();
-  const DB_CHUNK_SIZE = 1000;
-  for (let i = 0; i < normalizedValid.length; i += DB_CHUNK_SIZE) {
-    const slice = normalizedValid.slice(i, i + DB_CHUNK_SIZE);
-    const existingRecords = await prisma.acceptedMtnNumber.findMany({
-      where: { normalizedNumber: { in: slice } },
+  const totalAcceptedInDb = await prisma.acceptedMtnNumber.count();
+
+  if (totalAcceptedInDb < 300000) {
+    const existing = await prisma.acceptedMtnNumber.findMany({
       select: { normalizedNumber: true },
     });
-    for (const r of existingRecords) {
+    for (const r of existing) {
       alreadyAcceptedSet.add(r.normalizedNumber);
     }
+  } else {
+    // For very large existing tables, query matching subsets in chunks
+    const DB_CHUNK_SIZE = 5000;
+    for (let i = 0; i < normalizedValid.length; i += DB_CHUNK_SIZE) {
+      const slice = normalizedValid.slice(i, i + DB_CHUNK_SIZE);
+      const existing = await prisma.acceptedMtnNumber.findMany({
+        where: { normalizedNumber: { in: slice } },
+        select: { normalizedNumber: true },
+      });
+      for (const r of existing) {
+        alreadyAcceptedSet.add(r.normalizedNumber);
+      }
+    }
   }
+
 
   const validNumbersToImport = normalizedValid.filter((n) => !alreadyAcceptedSet.has(n));
   const alreadyAcceptedList = normalizedValid.filter((n) => alreadyAcceptedSet.has(n));
 
   return {
-    totalRows: candidateNumbers.length,
+    totalRows,
     validNumbers: validNumbersToImport,
     duplicateCount: duplicateSet.size,
     duplicates: Array.from(duplicateSet),
@@ -565,36 +598,54 @@ export async function parseMtnNumbersFile(
 }
 
 /**
- * Bulk imports pre-validated MTN numbers into AcceptedMtnNumber using chunked createMany (§4).
+ * High-performance bulk imports pre-validated MTN numbers into AcceptedMtnNumber.
+ * Supports direct array of numbers or staged sessionId.
+ * Uses PostgreSQL UNNEST batch insertion and instant set-based request/blocked updates.
  */
 export async function bulkImportAcceptedMtnNumbers({
   numbers,
+  sessionId,
   source,
   actorLabel,
   batchId,
 }: {
-  numbers: string[];
+  numbers?: string[];
+  sessionId?: string;
   source: string;
   actorLabel: string;
   batchId?: string | null;
 }): Promise<{ imported: number; batchId?: string | null; batchReference?: string }> {
-  const chunkSize = 1000;
+  let numbersToImport: string[] = [];
+
+  if (sessionId) {
+    const staged = await consumeImportStagingSession(sessionId);
+    if (!staged || staged.length === 0) {
+      throw new Error("Staging session expired or contained no valid numbers to import");
+    }
+    numbersToImport = staged;
+  } else if (numbers) {
+    numbersToImport = numbers;
+  }
+
+  if (numbersToImport.length === 0) {
+    return { imported: 0, batchId: batchId ?? null };
+  }
+
   let totalImported = 0;
   const now = new Date();
-
   let effectiveBatchId = batchId;
   let batchRef = "";
 
   // Every imported group should have a batch/import record (§5)
-  if (!effectiveBatchId && numbers.length > 0) {
+  if (!effectiveBatchId && numbersToImport.length > 0) {
     batchRef = await generateBatchReference();
     const batch = await prisma.mtnVerificationBatch.create({
       data: {
         batchReference: batchRef,
         status: "COMPLETED",
         createdBy: actorLabel,
-        totalNumbers: numbers.length,
-        verifiedCount: numbers.length,
+        totalNumbers: numbersToImport.length,
+        verifiedCount: numbersToImport.length,
         notes: `Imported from ${source}`,
         completedAt: now,
       },
@@ -602,46 +653,68 @@ export async function bulkImportAcceptedMtnNumbers({
     effectiveBatchId = batch.id;
   }
 
-  for (let i = 0; i < numbers.length; i += chunkSize) {
-    const chunk = numbers.slice(i, i + chunkSize);
-    const data = chunk.map((num) => ({
-      number: num,
-      normalizedNumber: num,
-      source,
-      batchId: effectiveBatchId ?? null,
-      verifiedBy: actorLabel,
-      verifiedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }));
+  // Fast bulk insertion using UNNEST in batches of 15,000
+  const INGEST_CHUNK_SIZE = 15000;
+  for (let i = 0; i < numbersToImport.length; i += INGEST_CHUNK_SIZE) {
+    const chunk = numbersToImport.slice(i, i + INGEST_CHUNK_SIZE);
+    const count = await prisma.$executeRaw`
+      INSERT INTO "AcceptedMtnNumber" ("id", "number", "normalizedNumber", "source", "batchId", "verifiedAt", "verifiedBy", "createdAt", "updatedAt")
+      SELECT
+        gen_random_uuid()::text,
+        val,
+        val,
+        ${source},
+        ${effectiveBatchId ?? null},
+        ${now},
+        ${actorLabel},
+        ${now},
+        ${now}
+      FROM unnest(${chunk}::text[]) AS val
+      ON CONFLICT ("normalizedNumber") DO NOTHING;
+    `;
+    totalImported += count;
+  }
 
-    const result = await prisma.acceptedMtnNumber.createMany({
-      data,
-      skipDuplicates: true,
-    });
-    totalImported += result.count;
+  // Instant set-based status synchronization
+  if (effectiveBatchId) {
+    await prisma.$executeRaw`
+      UPDATE "MtnVerificationRequest"
+      SET "status" = 'VERIFIED', "verifiedAt" = ${now}, "updatedAt" = ${now}
+      WHERE "status" IN ('SUBMITTED', 'PROCESSING')
+        AND EXISTS (
+          SELECT 1 FROM "AcceptedMtnNumber"
+          WHERE "AcceptedMtnNumber"."batchId" = ${effectiveBatchId}
+            AND "AcceptedMtnNumber"."normalizedNumber" = "MtnVerificationRequest"."normalizedNumber"
+        );
+    `;
 
-    // Synchronize pending requests and blocked entries for this chunk
-    await prisma.mtnVerificationRequest.updateMany({
-      where: {
-        normalizedNumber: { in: chunk },
-        status: { in: ["SUBMITTED", "PROCESSING"] },
-      },
-      data: {
-        status: "VERIFIED",
-        verifiedAt: now,
-      },
-    });
-
-    await prisma.blockedMtnNumber.updateMany({
-      where: {
-        normalizedNumber: { in: chunk },
-        status: { in: ["UNVERIFIED", "SUBMITTED", "PROCESSING"] },
-      },
-      data: {
-        status: "ACCEPTED",
-      },
-    });
+    await prisma.$executeRaw`
+      UPDATE "BlockedMtnNumber"
+      SET "status" = 'ACCEPTED', "updatedAt" = ${now}
+      WHERE "status" IN ('UNVERIFIED', 'SUBMITTED', 'PROCESSING')
+        AND EXISTS (
+          SELECT 1 FROM "AcceptedMtnNumber"
+          WHERE "AcceptedMtnNumber"."batchId" = ${effectiveBatchId}
+            AND "AcceptedMtnNumber"."normalizedNumber" = "BlockedMtnNumber"."normalizedNumber"
+        );
+    `;
+  } else {
+    const SYNC_CHUNK_SIZE = 25000;
+    for (let i = 0; i < numbersToImport.length; i += SYNC_CHUNK_SIZE) {
+      const chunk = numbersToImport.slice(i, i + SYNC_CHUNK_SIZE);
+      await prisma.$executeRaw`
+        UPDATE "MtnVerificationRequest"
+        SET "status" = 'VERIFIED', "verifiedAt" = ${now}, "updatedAt" = ${now}
+        WHERE "status" IN ('SUBMITTED', 'PROCESSING')
+          AND "normalizedNumber" = ANY(${chunk}::text[]);
+      `;
+      await prisma.$executeRaw`
+        UPDATE "BlockedMtnNumber"
+        SET "status" = 'ACCEPTED', "updatedAt" = ${now}
+        WHERE "status" IN ('UNVERIFIED', 'SUBMITTED', 'PROCESSING')
+          AND "normalizedNumber" = ANY(${chunk}::text[]);
+      `;
+    }
   }
 
   await recordAudit({
@@ -653,6 +726,7 @@ export async function bulkImportAcceptedMtnNumbers({
 
   return { imported: totalImported, batchId: effectiveBatchId ?? null, batchReference: batchRef };
 }
+
 
 // ---------------------------------------------------------------------------
 // Verification Requests (§6, §7, §8, §27)

@@ -5,7 +5,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/shared";
 import { useToast } from "@/components/toast";
-import { UploadCloud, FileText, CheckCircle2, AlertTriangle, XCircle, Download, Copy } from "lucide-react";
+import { UploadCloud, FileText, CheckCircle2, AlertTriangle, XCircle, Download, Zap } from "lucide-react";
 
 interface ImportAcceptedModalProps {
   open: boolean;
@@ -14,15 +14,18 @@ interface ImportAcceptedModalProps {
 }
 
 interface PreviewData {
+  sessionId?: string;
   filename: string;
   totalRows: number;
-  validNumbers: string[];
+  validCount: number;
+  validNumbers?: string[];
   duplicateCount: number;
-  duplicates: string[];
+  duplicates?: string[];
   alreadyAcceptedCount: number;
-  alreadyAccepted: string[];
+  alreadyAccepted?: string[];
   invalidCount: number;
-  invalid: { line: number; raw: string; reason: string }[];
+  invalid?: { line: number; raw: string; reason: string }[];
+  sampleValid?: string[];
 }
 
 export function ImportAcceptedModal({
@@ -37,6 +40,7 @@ export function ImportAcceptedModal({
   const [importing, setImporting] = React.useState(false);
   const [preview, setPreview] = React.useState<PreviewData | null>(null);
   const [dragActive, setDragActive] = React.useState(false);
+  const [directImport, setDirectImport] = React.useState(false);
 
   const reset = () => {
     setFile(null);
@@ -66,13 +70,41 @@ export function ImportAcceptedModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to parse file");
 
+      // If direct import is requested, immediately trigger confirm
+      if (directImport) {
+        if (data.validCount === 0) {
+          throw new Error("No valid numbers found in the file to import");
+        }
+        setImporting(true);
+        setLoading(false);
+
+        const isCsv = selectedFile.name.toLowerCase().endsWith(".csv");
+        const confirmRes = await fetch("/api/admin/mtn-verification/accepted/import/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: data.sessionId,
+            source: isCsv ? "IMPORT_CSV" : "IMPORT_TXT",
+          }),
+        });
+        const confirmData = await confirmRes.json();
+        if (!confirmRes.ok) throw new Error(confirmData.error ?? "Direct import failed");
+
+        const speed = confirmData.elapsedMs ? ` in ${(confirmData.elapsedMs / 1000).toFixed(1)}s` : "";
+        toast(`Successfully imported ${confirmData.imported.toLocaleString()} MTN numbers${speed}!`, "success");
+        onSuccess();
+        handleClose();
+        return;
+      }
+
       setPreview(data);
     } catch (err: any) {
-      toast(err.message ?? "Error parsing file", "error");
+      toast(err.message ?? "Error processing file", "error");
       setFile(null);
       setPreview(null);
     } finally {
       setLoading(false);
+      setImporting(false);
     }
   };
 
@@ -96,23 +128,31 @@ export function ImportAcceptedModal({
   };
 
   const handleConfirmImport = async () => {
-    if (!preview || preview.validNumbers.length === 0) return;
+    if (!preview || preview.validCount === 0) return;
     setImporting(true);
 
     try {
       const isCsv = preview.filename.toLowerCase().endsWith(".csv");
+      const payload: any = {
+        source: isCsv ? "IMPORT_CSV" : "IMPORT_TXT",
+      };
+
+      if (preview.sessionId) {
+        payload.sessionId = preview.sessionId;
+      } else if (preview.validNumbers && preview.validNumbers.length > 0) {
+        payload.numbers = preview.validNumbers;
+      }
+
       const res = await fetch("/api/admin/mtn-verification/accepted/import/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          numbers: preview.validNumbers,
-          source: isCsv ? "IMPORT_CSV" : "IMPORT_TXT",
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
 
-      toast(`Successfully imported ${data.imported} MTN numbers!`, "success");
+      const speedMsg = data.elapsedMs ? ` in ${(data.elapsedMs / 1000).toFixed(1)}s` : "";
+      toast(`Successfully imported ${data.imported.toLocaleString()} MTN numbers${speedMsg}!`, "success");
       onSuccess();
       handleClose();
     } catch (err: any) {
@@ -124,15 +164,19 @@ export function ImportAcceptedModal({
 
   const downloadErrorReport = () => {
     if (!preview) return;
-    const lines: string[] = ["Type,Line,Raw Value,Reason"];
+    if (preview.sessionId) {
+      window.open(`/api/admin/mtn-verification/accepted/import/errors?sessionId=${encodeURIComponent(preview.sessionId)}`, "_blank");
+      return;
+    }
 
-    preview.invalid.forEach((item) => {
+    const lines: string[] = ["Type,Line,Raw Value,Reason"];
+    (preview.invalid ?? []).forEach((item) => {
       lines.push(`"INVALID",${item.line},"${item.raw}","${item.reason}"`);
     });
-    preview.duplicates.forEach((num) => {
+    (preview.duplicates ?? []).forEach((num) => {
       lines.push(`"DUPLICATE_IN_FILE",,"${num}","Duplicate entry in upload file"`);
     });
-    preview.alreadyAccepted.forEach((num) => {
+    (preview.alreadyAccepted ?? []).forEach((num) => {
       lines.push(`"ALREADY_ACCEPTED",,"${num}","Number is already accepted in database"`);
     });
 
@@ -151,54 +195,74 @@ export function ImportAcceptedModal({
       open={open}
       onClose={handleClose}
       title="Import Accepted MTN Numbers"
-      description="Upload a TXT or CSV file containing verified MTN phone numbers."
+      description="Upload large TXT or CSV files containing verified MTN phone numbers (up to 250MB)."
       className="max-w-xl"
     >
       <div className="space-y-4">
-        {!preview && !loading && (
-          <div
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition ${
-              dragActive
-                ? "border-brand-500 bg-brand-50/50 dark:bg-brand-500/10"
-                : "border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700"
-            }`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.csv"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.[0]) handleFileChange(e.target.files[0]);
-              }}
-            />
-            <div className="rounded-full bg-brand-50 p-3 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-              <UploadCloud className="h-6 w-6" />
+        {!preview && !loading && !importing && (
+          <div className="space-y-3">
+            <div
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition ${
+                dragActive
+                  ? "border-brand-500 bg-brand-50/50 dark:bg-brand-500/10"
+                  : "border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) handleFileChange(e.target.files[0]);
+                }}
+              />
+              <div className="rounded-full bg-brand-50 p-3 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                <UploadCloud className="h-6 w-6" />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Drag &amp; drop your file here, or click to browse
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Supported: TXT (1 number per line) or CSV (max 250MB, handles 100k+ to millions of numbers)
+              </p>
             </div>
-            <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-200">
-              Drag &amp; drop your file here, or click to browse
+
+            <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600 dark:text-slate-300 select-none">
+              <input
+                type="checkbox"
+                checked={directImport}
+                onChange={(e) => setDirectImport(e.target.checked)}
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 h-3.5 w-3.5"
+              />
+              <span className="flex items-center gap-1 font-medium">
+                <Zap className="h-3.5 w-3.5 text-amber-500" />
+                Fast 1-Step Ingestion (Skip preview, import directly into database)
+              </span>
+            </label>
+          </div>
+        )}
+
+        {(loading || importing) && (
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+            <Spinner className="h-8 w-8 text-brand-600" />
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+              {importing
+                ? "Writing numbers into database at high speed..."
+                : `Parsing & validating phone numbers in ${file?.name}...`}
             </p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Supported formats: TXT (one number per line) or CSV with a &quot;number&quot; header (max 10MB)
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {file ? `${(file.size / (1024 * 1024)).toFixed(1)} MB file` : ""}
             </p>
           </div>
         )}
 
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <Spinner className="h-7 w-7 text-brand-600" />
-            <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-              Validating phone numbers in {file?.name}...
-            </p>
-          </div>
-        )}
-
-        {preview && !loading && (
+        {preview && !loading && !importing && (
           <div className="space-y-4">
             <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
               <div className="flex items-center gap-2">
@@ -236,7 +300,7 @@ export function ImportAcceptedModal({
                 <div className="rounded-lg bg-emerald-50 p-2.5 dark:bg-emerald-500/10">
                   <p className="text-emerald-700 dark:text-emerald-400 font-medium">Valid Numbers</p>
                   <p className="mt-0.5 text-base font-bold text-emerald-700 dark:text-emerald-300">
-                    {preview.validNumbers.length.toLocaleString()}
+                    {preview.validCount.toLocaleString()}
                   </p>
                 </div>
 
@@ -260,7 +324,7 @@ export function ImportAcceptedModal({
                   <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     <span>
-                      {preview.invalidCount} invalid, {preview.duplicateCount} duplicate in file, {preview.alreadyAcceptedCount} already verified
+                      {preview.invalidCount.toLocaleString()} invalid, {preview.duplicateCount.toLocaleString()} duplicates, {preview.alreadyAcceptedCount.toLocaleString()} already verified
                     </span>
                   </div>
                   <Button
@@ -283,10 +347,12 @@ export function ImportAcceptedModal({
               </Button>
               <Button
                 onClick={handleConfirmImport}
-                disabled={importing || preview.validNumbers.length === 0}
+                disabled={importing || preview.validCount === 0}
               >
                 {importing && <Spinner className="h-4 w-4 mr-1.5" />}
-                Import {preview.validNumbers.length.toLocaleString()} Valid Numbers
+                {importing
+                  ? "Importing..."
+                  : `Import ${preview.validCount.toLocaleString()} Valid Numbers`}
               </Button>
             </div>
           </div>

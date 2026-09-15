@@ -541,10 +541,14 @@ export const mtnAcceptedBulkDeleteSchema = z.object({
 });
 
 export const mtnImportConfirmSchema = z.object({
-  numbers: z.array(z.string().min(9)).min(1, "No valid numbers to import"),
+  sessionId: z.string().optional(),
+  numbers: z.array(z.string().min(9)).optional(),
   source: z.string().min(1).default("IMPORT_TXT"),
   batchReference: z.string().optional(),
+}).refine((data) => Boolean(data.sessionId) || (Array.isArray(data.numbers) && data.numbers.length > 0), {
+  message: "Either a valid import sessionId or numbers array is required",
 });
+
 
 // ---------- Login OTP ----------
 export const verifyOtpSchema = z.object({
