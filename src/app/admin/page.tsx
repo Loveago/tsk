@@ -7,6 +7,7 @@ import { orderCode } from "@/lib/utils";
 import { PageHeader, StatCard } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { NetworkStatsCards } from "@/components/admin/network-stats-cards";
+import { DashboardAutoRefresh } from "@/components/admin/dashboard-auto-refresh";
 import {
   Users,
   ClipboardList,
@@ -96,7 +97,11 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Admin Dashboard" description="Platform-wide overview" />
+      <PageHeader
+        title="Admin Dashboard"
+        description="Platform-wide overview"
+        actions={<DashboardAutoRefresh />}
+      />
 
       {halted && (
         <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">

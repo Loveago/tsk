@@ -60,18 +60,21 @@ export const EXPORT_BATCH_STATUSES: ExportBatchStatus[] = [
   "CANCELLED",
 ];
 
-export type DeliveryReportStatus = "OPEN" | "INVESTIGATING" | "DELIVERED" | "RESOLVED" | "REJECTED";
+export type DeliveryReportStatus = "OPEN" | "UNDER_REVIEW" | "INVESTIGATING" | "DELIVERED" | "RESOLVED" | "REFUNDED" | "CONFIRM_SENT" | "REJECTED";
 
 export const DELIVERY_REPORT_STATUSES: DeliveryReportStatus[] = [
   "OPEN",
+  "UNDER_REVIEW",
   "INVESTIGATING",
   "DELIVERED",
   "RESOLVED",
+  "REFUNDED",
+  "CONFIRM_SENT",
   "REJECTED",
 ];
 
 /** Report statuses that block a new "Not Received" report for the same order (§7). */
-export const ACTIVE_DELIVERY_REPORT_STATUSES: DeliveryReportStatus[] = ["OPEN", "INVESTIGATING", "DELIVERED"];
+export const ACTIVE_DELIVERY_REPORT_STATUSES: DeliveryReportStatus[] = ["OPEN", "UNDER_REVIEW", "INVESTIGATING", "DELIVERED"];
 
 /** The 24-hour "Not Received" reporting window (§3). */
 export const REPORT_WINDOW_HOURS = 24;
@@ -296,6 +299,11 @@ export const DELIVERY_REPORT_STATUS_META: Record<DeliveryReportStatus, { label: 
     className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
     dot: "bg-amber-500",
   },
+  UNDER_REVIEW: {
+    label: "UNDER REVIEW",
+    className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
+    dot: "bg-violet-500",
+  },
   INVESTIGATING: {
     label: "INVESTIGATING",
     className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
@@ -310,6 +318,16 @@ export const DELIVERY_REPORT_STATUS_META: Record<DeliveryReportStatus, { label: 
     label: "RESOLVED",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
     dot: "bg-emerald-500",
+  },
+  REFUNDED: {
+    label: "REFUNDED",
+    className: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20",
+    dot: "bg-cyan-500",
+  },
+  CONFIRM_SENT: {
+    label: "CONFIRM SENT",
+    className: "bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20",
+    dot: "bg-green-500",
   },
   REJECTED: {
     label: "REJECTED",

@@ -406,6 +406,25 @@ export default function AdminSettingsPage() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-3">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                Dashboard &amp; Orders Auto-Refresh
+              </h3>
+              <div className="space-y-1.5">
+                <Label>Auto-refresh interval (seconds)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={settings.admin_dashboard_refresh_interval ?? "30"}
+                  onChange={(e) => setSettings((s) => ({ ...s, admin_dashboard_refresh_interval: e.target.value }))}
+                  placeholder="30"
+                />
+                <p className="text-[11px] text-slate-400">
+                  Controls how frequently the admin dashboard, orders list, and delivery reports automatically refresh to pull new orders and updates (default: 30 seconds). Set to 0 to disable auto-refresh.
+                </p>
+              </div>
+            </div>
+
             {/* Package & Order Categories (Custom Categories) */}
             <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
               <div>

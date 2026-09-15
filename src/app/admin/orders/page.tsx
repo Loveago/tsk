@@ -42,6 +42,19 @@ export default function AdminOrdersPage() {
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(true);
   const [reconciling, setReconciling] = React.useState(false);
+  const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null);
+  const [refreshInterval, setRefreshInterval] = React.useState(30);
+
+  // Load refresh interval from admin settings once on mount
+  React.useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((r) => r.json())
+      .then((d) => {
+        const val = Number(d.settings?.admin_dashboard_refresh_interval ?? 30);
+        setRefreshInterval(Number.isFinite(val) && val >= 0 ? val : 30);
+      })
+      .catch(() => {/* use default */});
+  }, []);
 
   // auto-switch to single view when a phone number is typed in
   React.useEffect(() => {
@@ -105,6 +118,7 @@ export default function AdminOrdersPage() {
         setBatchTotal(json.total ?? 0);
         setBatchPages(json.pages ?? 1);
       }
+      setLastRefreshed(new Date());
     } finally {
       setLoading(false);
     }
@@ -114,6 +128,13 @@ export default function AdminOrdersPage() {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load]);
+
+  // Auto-refresh interval
+  React.useEffect(() => {
+    if (refreshInterval <= 0) return;
+    const id = setInterval(() => { load(); }, refreshInterval * 1000);
+    return () => clearInterval(id);
+  }, [load, refreshInterval]);
 
   const switchView = (v: ViewMode) => {
     setViewMode(v);
@@ -264,37 +285,48 @@ export default function AdminOrdersPage() {
         title={pageTitle}
         description={pageDesc}
         actions={
-          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
-            <button
-              onClick={() => switchView("batches")}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
-                viewMode === "batches"
-                  ? "bg-brand-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              <Layers className="h-3.5 w-3.5" /> Batches
-            </button>
-            <button
-              onClick={() => switchView("single")}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
-                viewMode === "single"
-                  ? "bg-brand-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              <Search className="h-3.5 w-3.5" /> Single Orders
-            </button>
-            <button
-              onClick={() => switchView("storefront")}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
-                viewMode === "storefront"
-                  ? "bg-violet-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              <Store className="h-3.5 w-3.5" /> Storefront
-            </button>
+          <div className="flex items-center gap-2">
+            {lastRefreshed && (
+              <span className="hidden text-xs text-slate-400 dark:text-slate-500 sm:inline">
+                {lastRefreshed.toLocaleTimeString()}
+              </span>
+            )}
+            <Button size="sm" variant="outline" onClick={() => load()} disabled={loading} className="gap-1.5">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+            <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
+              <button
+                onClick={() => switchView("batches")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
+                  viewMode === "batches"
+                    ? "bg-brand-600 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" /> Batches
+              </button>
+              <button
+                onClick={() => switchView("single")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
+                  viewMode === "single"
+                    ? "bg-brand-600 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                <Search className="h-3.5 w-3.5" /> Single Orders
+              </button>
+              <button
+                onClick={() => switchView("storefront")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
+                  viewMode === "storefront"
+                    ? "bg-violet-600 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                <Store className="h-3.5 w-3.5" /> Storefront
+              </button>
+            </div>
           </div>
         }
       />

@@ -49,6 +49,9 @@ export const EVENT_LABELS: Record<string, string> = {
   RESOLVED: "Report resolved",
   RESEND: "Order queued for resend",
   REFUND: "Order refunded",
+  MARKED_UNDER_REVIEW: "Marked as under review",
+  REFUNDED: "Report closed — refunded",
+  CONFIRM_SENT: "Report closed — data confirmed sent",
 };
 
 /** User-facing Not Received report view (§15): report info, order info, response, evidence, timeline. */

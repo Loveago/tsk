@@ -17,6 +17,9 @@ const EVENT_FOR_ACTION: Record<string, string> = {
   RESOLVE: "RESOLVED",
   RESOLVE_RESEND: "RESEND",
   RESOLVE_REFUND: "REFUND",
+  MARK_UNDER_REVIEW: "MARKED_UNDER_REVIEW",
+  RESOLVE_REFUNDED: "REFUNDED",
+  RESOLVE_CONFIRM_SENT: "CONFIRM_SENT",
 };
 
 /** Admin "Not Received" reports queue (§33/§34). */
@@ -121,7 +124,11 @@ export async function PATCH(request: NextRequest) {
     });
     if (!report) return apiError(404, "Report not found");
 
-    const isClosed = report.status === "RESOLVED" || report.status === "REJECTED";
+    const isClosed =
+      report.status === "RESOLVED" ||
+      report.status === "REJECTED" ||
+      report.status === "REFUNDED" ||
+      report.status === "CONFIRM_SENT";
     if (isClosed && input.action !== "ADD_RESPONSE") {
       return apiError(409, "This report has already been closed");
     }
@@ -131,10 +138,13 @@ export async function PATCH(request: NextRequest) {
     const data: Record<string, unknown> = {};
 
     if (input.action === "START_INVESTIGATION") {
-      if (report.status !== "OPEN") {
-        return apiError(409, "Only open reports can move to investigating");
+      if (report.status !== "OPEN" && report.status !== "UNDER_REVIEW") {
+        return apiError(409, "Only open or under-review reports can move to investigating");
       }
       data.status = "INVESTIGATING";
+    } else if (input.action === "MARK_UNDER_REVIEW") {
+      data.status = "UNDER_REVIEW";
+      if (input.resolutionNote) data.adminNote = input.resolutionNote;
     } else if (input.action === "MARK_DELIVERED") {
       if (report.status === "DELIVERED") {
         return apiError(409, "This report is already marked as delivered");
@@ -188,8 +198,36 @@ export async function PATCH(request: NextRequest) {
       data.resolvedAt = new Date();
       data.resolvedBy = actor.email;
       if (input.resolutionNote) data.adminNote = input.resolutionNote;
+    } else if (input.action === "RESOLVE_REFUNDED") {
+      // Close report as REFUNDED (also refunds order if FAILED)
+      if (report.order.status === "FAILED") {
+        await changeOrderStatus(
+          report.orderId,
+          "REFUNDED",
+          `Report closed as refunded${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
+          actorLabel,
+          { force: true }
+        );
+        orderUpdated = "REFUNDED";
+      }
+      data.status = "REFUNDED";
+      data.resolvedAt = new Date();
+      data.resolvedBy = actor.email;
+      if (input.resolutionNote) data.adminNote = input.resolutionNote;
+    } else if (input.action === "RESOLVE_CONFIRM_SENT") {
+      // Close report confirming data was sent successfully
+      data.status = "CONFIRM_SENT";
+      data.resolvedAt = new Date();
+      data.resolvedBy = actor.email;
+      if (input.resolutionNote) data.adminNote = input.resolutionNote;
     }
     // KEEP_INVESTIGATING changes nothing structurally — only the timeline event below
+
+    if (input.adminResponse?.trim() && input.action !== "ADD_RESPONSE") {
+      data.adminResponse = input.adminResponse.trim();
+      data.respondedAt = new Date();
+      data.respondedBy = actor.email;
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const row = await tx.deliveryReport.update({

@@ -9,14 +9,17 @@ import { Button } from "@/components/ui/button";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { formatDateTime, formatGHS } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { FileWarning, Image as ImageIcon } from "lucide-react";
+import { FileWarning, Image as ImageIcon, RefreshCw } from "lucide-react";
 
 const TABS = [
   { key: "", label: "All" },
   { key: "OPEN", label: "Open" },
+  { key: "UNDER_REVIEW", label: "Under Review" },
   { key: "INVESTIGATING", label: "Investigating" },
   { key: "DELIVERED", label: "Delivered" },
   { key: "RESOLVED", label: "Resolved" },
+  { key: "REFUNDED", label: "Refunded" },
+  { key: "CONFIRM_SENT", label: "Confirm Sent" },
   { key: "REJECTED", label: "Rejected" },
 ];
 
@@ -58,6 +61,19 @@ export default function DeliveryReportsPage() {
   const [q, setQ] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [manageId, setManageId] = React.useState<string | null>(null);
+  const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null);
+  const [refreshInterval, setRefreshInterval] = React.useState(30);
+
+  // Load refresh interval from admin settings
+  React.useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((r) => r.json())
+      .then((d) => {
+        const val = Number(d.settings?.admin_dashboard_refresh_interval ?? 30);
+        setRefreshInterval(Number.isFinite(val) && val >= 0 ? val : 30);
+      })
+      .catch(() => {/* use default */});
+  }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -72,6 +88,7 @@ export default function DeliveryReportsPage() {
         setStats(json.stats ?? {});
         setTotal(json.total ?? 0);
         setPages(json.pages ?? 1);
+        setLastRefreshed(new Date());
       }
     } finally {
       setLoading(false);
@@ -83,11 +100,36 @@ export default function DeliveryReportsPage() {
     return () => clearTimeout(t);
   }, [load]);
 
+  // Auto-refresh interval
+  React.useEffect(() => {
+    if (refreshInterval <= 0) return;
+    const id = setInterval(() => { load(); }, refreshInterval * 1000);
+    return () => clearInterval(id);
+  }, [load, refreshInterval]);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Not Received Reports"
         description={`${total} report${total === 1 ? "" : "s"} filed by customers`}
+        actions={
+          <div className="flex items-center gap-2">
+            {lastRefreshed && (
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                Updated {lastRefreshed.toLocaleTimeString()}
+              </span>
+            )}
+            {refreshInterval > 0 && (
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                · auto-refreshes every {refreshInterval}s
+              </span>
+            )}
+            <Button size="sm" variant="outline" onClick={() => load()} disabled={loading} className="gap-1.5">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
+        }
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">

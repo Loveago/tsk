@@ -147,6 +147,10 @@ export const deliveryReportActionSchema = z.object({
     "MARK_DELIVERED",
     "ADD_RESPONSE",
     "RESOLVE",
+    // New statuses
+    "MARK_UNDER_REVIEW",
+    "RESOLVE_REFUNDED",
+    "RESOLVE_CONFIRM_SENT",
   ]),
   resolutionNote: z.string().max(300).optional().or(z.literal("")),
   adminResponse: z.string().max(1000).optional().or(z.literal("")),

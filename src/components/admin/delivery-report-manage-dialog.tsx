@@ -7,35 +7,84 @@ import { Spinner } from "@/components/shared";
 import { StatusBadge, DeliveryReportStatusBadge } from "@/components/status-badge";
 import { formatGHS, formatDateTime } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { EVENT_LABELS, type NotReceivedReportDetail } from "@/components/orders/not-received-report-dialog";
+import { type NotReceivedReportDetail } from "@/components/orders/not-received-report-dialog";
 import { useToast } from "@/components/toast";
 import {
   Image as ImageIcon,
   Upload,
   Eye,
-  Search,
   CheckCircle2,
-  XCircle,
   MessageSquarePlus,
-  RefreshCw,
   Clipboard,
 } from "lucide-react";
 
 const MAX_PROOF_BYTES = 4 * 1024 * 1024; // 4 MB — mirrors the proof API limit
 
-type ResolveAction = "RESOLVE_RESEND" | "RESOLVE_REFUND" | "REJECT";
+export type ReportStatusAction =
+  | "MARK_UNDER_REVIEW"
+  | "RESOLVE_CONFIRM_SENT"
+  | "RESOLVE"
+  | "RESOLVE_REFUNDED"
+  | "REJECT";
 
-const RESOLVE_LABELS: Record<ResolveAction, string> = {
-  RESOLVE_RESEND: "Resend — queue order back to PROCESSING",
-  RESOLVE_REFUND: "Refund — mark order REFUNDED",
-  REJECT: "Reject report — leave order untouched",
-};
+interface StatusOption {
+  action: ReportStatusAction;
+  label: string;
+  badge: string;
+  hint: string;
+  isClose: boolean;
+  activeColor: string;
+}
+
+const STATUS_OPTIONS: StatusOption[] = [
+  {
+    action: "MARK_UNDER_REVIEW",
+    label: "Under Review",
+    badge: "UNDER REVIEW",
+    hint: "Keep report open while reviewing the case",
+    isClose: false,
+    activeColor: "border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-500/10 dark:text-violet-300 shadow-sm",
+  },
+  {
+    action: "RESOLVE_CONFIRM_SENT",
+    label: "Confirm Sent",
+    badge: "CONFIRM SENT",
+    hint: "Close report — data confirmed sent successfully",
+    isClose: true,
+    activeColor: "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300 shadow-sm",
+  },
+  {
+    action: "RESOLVE",
+    label: "Resolved",
+    badge: "RESOLVED",
+    hint: "Close report as resolved (order unchanged)",
+    isClose: true,
+    activeColor: "border-brand-500 bg-brand-50 text-brand-800 dark:bg-brand-500/10 dark:text-brand-300 shadow-sm",
+  },
+  {
+    action: "RESOLVE_REFUNDED",
+    label: "Refunded",
+    badge: "REFUNDED",
+    hint: "Close report and refund order if failed",
+    isClose: true,
+    activeColor: "border-cyan-500 bg-cyan-50 text-cyan-800 dark:bg-cyan-500/10 dark:text-cyan-300 shadow-sm",
+  },
+  {
+    action: "REJECT",
+    label: "Reject",
+    badge: "REJECTED",
+    hint: "Reject customer report — leave order untouched",
+    isClose: true,
+    activeColor: "border-red-500 bg-red-50 text-red-800 dark:bg-red-500/10 dark:text-red-400 shadow-sm",
+  },
+];
 
 /**
- * Admin "Manage report" dialog (§9/§16/§20): report + order info, admin
- * response, delivery evidence upload/view, the full workflow actions
- * (investigate / mark delivered / response / resolve / reject) and the
- * report timeline.
+ * Admin "Manage report" dialog:
+ *  1. Order Details & Report Time
+ *  2. Actions First (Under Review, Confirm Sent, Resolved, Refunded, Reject)
+ *  3. Delivery Evidence (Upload / Clipboard Paste)
+ *  4. Optional Message / Note
  */
 export function DeliveryReportManageDialog({
   reportId,
@@ -54,9 +103,8 @@ export function DeliveryReportManageDialog({
   const [busy, setBusy] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const [proofUrl, setProofUrl] = React.useState<string | null>(null);
-  const [response, setResponse] = React.useState("");
-  const [resolveAction, setResolveAction] = React.useState<ResolveAction>("RESOLVE_RESEND");
-  const [note, setNote] = React.useState("");
+  const [selectedAction, setSelectedAction] = React.useState<ReportStatusAction>("RESOLVE_CONFIRM_SENT");
+  const [message, setMessage] = React.useState("");
 
   const load = React.useCallback(async () => {
     if (!reportId) {
@@ -76,9 +124,8 @@ export function DeliveryReportManageDialog({
 
   React.useEffect(() => {
     if (open) {
-      setResponse("");
-      setNote("");
-      setResolveAction("RESOLVE_RESEND");
+      setMessage("");
+      setSelectedAction("RESOLVE_CONFIRM_SENT");
       load();
     } else {
       setReport(null);
@@ -106,13 +153,29 @@ export function DeliveryReportManageDialog({
           : "Report updated",
         "success"
       );
-      setResponse("");
-      setNote("");
+      setMessage("");
       await load();
       onChanged?.();
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleApplyAction = () => {
+    const trimmed = message.trim();
+    act(selectedAction, {
+      resolutionNote: trimmed || undefined,
+      adminResponse: trimmed || undefined,
+    });
+  };
+
+  const handleSendResponseOnly = () => {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      toast("Please enter a response message", "error");
+      return;
+    }
+    act("ADD_RESPONSE", { adminResponse: trimmed });
   };
 
   const viewProof = async () => {
@@ -125,7 +188,7 @@ export function DeliveryReportManageDialog({
     setProofUrl(URL.createObjectURL(await res.blob()));
   };
 
-  const uploadProof = async (file: File) => {
+  const uploadProof = React.useCallback(async (file: File) => {
     if (!reportId) return;
     if (file.size > MAX_PROOF_BYTES) {
       toast("Proof image must be 4 MB or smaller", "error");
@@ -151,14 +214,13 @@ export function DeliveryReportManageDialog({
     } finally {
       setUploading(false);
     }
-  };
+  }, [reportId, load, onChanged, toast]);
 
-  // Clipboard paste support for proof image
+  // Global clipboard paste listener for proof image
   React.useEffect(() => {
     if (!open || !reportId) return;
 
     const handlePaste = (e: ClipboardEvent) => {
-      // Don't intercept paste if user is typing into an input or textarea
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
         const textData = e.clipboardData?.getData("text/plain");
@@ -186,170 +248,198 @@ export function DeliveryReportManageDialog({
     return () => window.removeEventListener("paste", handlePaste);
   }, [open, reportId, uploadProof, toast]);
 
-  const isClosed = report ? report.status === "RESOLVED" || report.status === "REJECTED" : false;
+  const isClosed =
+    report
+      ? report.status === "RESOLVED" ||
+        report.status === "REJECTED" ||
+        report.status === "REFUNDED" ||
+        report.status === "CONFIRM_SENT"
+      : false;
+
+  const currentOption = STATUS_OPTIONS.find((s) => s.action === selectedAction) ?? STATUS_OPTIONS[1];
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title={report ? `Manage Report ${report.code}` : "Manage Report"}
-      className="max-w-xl max-h-[82vh] sm:max-h-[85vh]"
+      className="max-w-xl max-h-[85vh] sm:max-h-[90vh] overflow-y-auto"
     >
       {loading || !report ? (
         <div className="flex justify-center py-12">
           <Spinner className="h-6 w-6 text-brand-600" />
         </div>
       ) : (
-        <ManageBody
-          report={report}
-          busy={busy}
-          uploading={uploading}
-          proofUrl={proofUrl}
-          response={response}
-          note={note}
-          resolveAction={resolveAction}
-          isClosed={isClosed}
-          setResponse={setResponse}
-          setNote={setNote}
-          setResolveAction={setResolveAction}
-          onAct={act}
-          onViewProof={viewProof}
-          onUploadProof={uploadProof}
-        />
+        <div className="space-y-4 text-sm pr-1">
+          {/* 1. ORDER DETAILS & REPORT TIME */}
+          <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 dark:border-white/10 dark:bg-white/[0.02] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 pb-2.5 dark:border-white/5">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
+                  {report.code}
+                </span>
+                <DeliveryReportStatusBadge status={report.status} />
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Filed: <strong className="text-slate-700 dark:text-slate-200">{formatDateTime(report.createdAt)}</strong>
+              </p>
+            </div>
+
+            {/* Order info grid */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 text-xs">
+              <div>
+                <p className="text-[11px] text-slate-500">Order Code</p>
+                <p className="font-mono font-bold text-slate-800 dark:text-slate-200">{orderCode(report.order.id)}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500">Order Status</p>
+                <div className="mt-0.5"><StatusBadge status={report.order.status} /></div>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500">Recipient</p>
+                <p className="font-medium text-slate-800 dark:text-slate-200">{report.order.phoneNumber}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500">Network & Size</p>
+                <p className="font-medium text-slate-800 dark:text-slate-200">{report.order.network} · {report.order.gbAmount} GB</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500">Amount</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">{formatGHS(report.order.amount)}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-500">Batch</p>
+                <p className="font-mono font-medium text-slate-800 dark:text-slate-200 truncate">
+                  {report.order.batch?.batchCode ?? "Single"}
+                </p>
+              </div>
+            </div>
+
+            {/* Customer reason / message */}
+            {(report.reason || report.message) && (
+              <div className="rounded-lg bg-amber-50/70 border border-amber-200/70 p-2.5 text-xs text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                <p className="font-semibold">Reason: {report.reason || "Not received"}</p>
+                {report.message && <p className="mt-1 text-slate-600 dark:text-slate-300">{report.message}</p>}
+              </div>
+            )}
+
+            {/* Current response if any */}
+            {report.adminResponse && (
+              <div className="rounded-lg border border-teal-200 bg-teal-50/80 p-2.5 text-xs dark:border-teal-500/20 dark:bg-teal-500/10">
+                <p className="font-semibold text-teal-800 dark:text-teal-300">Previous Response to Customer:</p>
+                <p className="mt-0.5 text-teal-900 dark:text-teal-200">{report.adminResponse}</p>
+              </div>
+            )}
+          </section>
+
+          {/* 2. ACTIONS FIRST */}
+          <section className="rounded-xl border border-slate-200 p-3.5 dark:border-white/10 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                Select Status
+              </p>
+              {isClosed && (
+                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                  Report is closed
+                </span>
+              )}
+            </div>
+
+            {!isClosed ? (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {STATUS_OPTIONS.map((opt) => {
+                  const isSelected = selectedAction === opt.action;
+                  return (
+                    <button
+                      key={opt.action}
+                      type="button"
+                      onClick={() => setSelectedAction(opt.action)}
+                      className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition-all ${
+                        isSelected
+                          ? opt.activeColor
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.02] dark:hover:border-white/20 dark:hover:bg-white/[0.04]"
+                      }`}
+                    >
+                      <span className="text-xs font-bold">{opt.label}</span>
+                      <span className="mt-1 text-[10px] leading-tight opacity-75">{opt.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                This report is closed ({report.status}). You can still send an additional message to the customer below.
+              </div>
+            )}
+          </section>
+
+          {/* 3. UPLOAD / PASTE FROM CLIPBOARD */}
+          <section className="rounded-xl border border-slate-200 p-3.5 dark:border-white/10 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                Delivery Evidence
+              </p>
+              {report.proofImageMime && (
+                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                  Proof Attached
+                </span>
+              )}
+            </div>
+
+            <EvidenceBox
+              reportId={report.id}
+              hasProof={!!report.proofImageMime}
+              uploadedAt={report.proofImageUploadedAt}
+              proofUrl={proofUrl}
+              uploading={uploading}
+              onView={viewProof}
+              onUpload={uploadProof}
+            />
+          </section>
+
+          {/* 4. OPTIONAL MESSAGE & SUBMIT */}
+          <section className="rounded-xl border border-slate-200 p-3.5 dark:border-white/10 space-y-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Optional Message / Note
+            </p>
+            <textarea
+              className="h-20 w-full rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 caret-brand-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400"
+              placeholder="e.g. Verified with network: 5GB bundle successfully credited on 15 Sep."
+              value={message}
+              maxLength={1000}
+              onChange={(e) => setMessage(e.target.value)}
+            />
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+              {isClosed ? (
+                <Button
+                  size="sm"
+                  disabled={busy || !message.trim()}
+                  onClick={handleSendResponseOnly}
+                  className="gap-1.5"
+                >
+                  <MessageSquarePlus className="h-3.5 w-3.5" /> Send Message to Customer
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={handleApplyAction}
+                  className="gap-1.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold"
+                >
+                  {busy ? <Spinner className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  Apply: {currentOption.label}
+                </Button>
+              )}
+            </div>
+          </section>
+        </div>
       )}
     </Dialog>
   );
-
-interface ManageBodyProps {
-  report: NotReceivedReportDetail;
-  busy: boolean;
-  uploading: boolean;
-  proofUrl: string | null;
-  response: string;
-  note: string;
-  resolveAction: ResolveAction;
-  isClosed: boolean;
-  setResponse: (v: string) => void;
-  setNote: (v: string) => void;
-  setResolveAction: (v: ResolveAction) => void;
-  onAct: (action: string, extra?: Record<string, unknown>) => Promise<void>;
-  onViewProof: () => Promise<void>;
-  onUploadProof: (file: File) => Promise<void>;
 }
 
-function ManageBody({
-  report,
-  busy,
-  uploading,
-  proofUrl,
-  response,
-  note,
-  resolveAction,
-  isClosed,
-  setResponse,
-  setNote,
-  setResolveAction,
-  onAct,
-  onViewProof,
-  onUploadProof,
-}: ManageBodyProps) {
-  return (
-    <div className="space-y-4 text-sm pr-1">
-      <InfoSections report={report} />
-
-      {report.adminResponse && (
-        <section className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5 dark:border-teal-500/20 dark:bg-teal-500/10">
-          <p className="text-xs font-semibold text-teal-700 dark:text-teal-400">CURRENT RESPONSE TO CUSTOMER</p>
-          <p className="mt-1 text-teal-800 dark:text-teal-300">{report.adminResponse}</p>
-          {report.respondedAt && (
-            <p className="mt-0.5 text-[11px] text-teal-600/70 dark:text-teal-400/70">
-              {formatDateTime(report.respondedAt)}
-              {report.respondedBy ? ` · by ${report.respondedBy}` : ""}
-            </p>
-          )}
-        </section>
-      )}
-
-      <EvidenceSection
-        reportId={report.id}
-        hasProof={!!report.proofImageMime}
-        uploadedAt={report.proofImageUploadedAt}
-        proofUrl={proofUrl}
-        uploading={uploading}
-        onView={onViewProof}
-        onUpload={onUploadProof}
-      />
-
-      <ActionsSection
-        report={report}
-        busy={busy}
-        response={response}
-        note={note}
-        resolveAction={resolveAction}
-        isClosed={isClosed}
-        setResponse={setResponse}
-        setNote={setNote}
-        setResolveAction={setResolveAction}
-        onAct={onAct}
-      />
-
-      <TimelineSection events={report.events} />
-    </div>
-  );
-}
-
-function InfoSections({ report }: { report: NotReceivedReportDetail }) {
-  return (
-    <>
-      <section className="rounded-lg border border-slate-200 px-3 py-2.5 dark:border-white/10">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-slate-500">REPORT</p>
-          <DeliveryReportStatusBadge status={report.status} />
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <Info label="Report code" value={report.code} mono />
-          <Info label="Filed" value={formatDateTime(report.createdAt)} />
-          <Info label="Reason" value={report.reason || "—"} />
-          <Info
-            label="Completed at"
-            value={report.order.completedAt ? formatDateTime(report.order.completedAt) : "—"}
-          />
-        </div>
-        {report.message && (
-          <p className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600 dark:bg-white/5 dark:text-slate-300">
-            {report.message}
-          </p>
-        )}
-        {report.adminNote && (
-          <p className="mt-1.5 text-xs text-emerald-600 dark:text-emerald-400">Admin note: {report.adminNote}</p>
-        )}
-      </section>
-
-      <section>
-        <p className="mb-2 text-xs font-semibold text-slate-500">ORDER</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <Info label="Order" value={orderCode(report.order.id)} mono />
-          <Info label="Status" value={<StatusBadge status={report.order.status} />} />
-          <Info label="Recipient" value={report.order.phoneNumber} />
-          <Info label="Network" value={report.order.network} />
-          <Info label="Size" value={`${report.order.gbAmount} GB`} />
-          <Info label="Amount" value={formatGHS(report.order.amount)} />
-        </div>
-      </section>
-    </>
-  );
-}
-
-function Info({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
-  return (
-    <div>
-      <p className="text-[11px] text-slate-500">{label}</p>
-      <p className={mono ? "font-mono text-xs font-semibold" : "text-xs font-medium"}>{value}</p>
-    </div>
-  );
-}
-
-function EvidenceSection({
+function EvidenceBox({
   reportId,
   hasProof,
   uploadedAt,
@@ -394,60 +484,58 @@ function EvidenceSection({
   };
 
   return (
-    <section>
-      <p className="mb-2 text-xs font-semibold text-slate-500">DELIVERY EVIDENCE</p>
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-white/10">
-        <p className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-          <ImageIcon className="h-4 w-4 text-slate-400" />
-          {hasProof
-            ? `Proof image uploaded${uploadedAt ? ` · ${formatDateTime(uploadedAt)}` : ""}`
-            : "No proof image yet"}
-        </p>
-        <div className="flex items-center gap-2">
-          {hasProof && (
-            <Button size="sm" variant="outline" disabled={uploading} onClick={onView}>
-              <Eye className="mr-1.5 h-3.5 w-3.5" /> View
-            </Button>
-          )}
-          <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
-            <Upload className="mr-1.5 h-3.5 w-3.5" /> {uploading ? "Uploading…" : hasProof ? "Replace" : "Upload"}
-          </Button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) onUpload(file);
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Interactive Clipboard Paste & Drop Box */}
+    <div className="space-y-2">
       <div
         onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
         onPaste={handlePaste}
         tabIndex={0}
-        className={`relative mt-2 flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-3.5 text-center transition cursor-pointer outline-none focus:border-brand-500 ${
+        onClick={() => fileRef.current?.click()}
+        className={`relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-3.5 text-center transition cursor-pointer outline-none focus:border-brand-500 ${
           dragActive
             ? "border-brand-500 bg-brand-50/50 dark:bg-brand-500/10"
             : "border-slate-200 bg-slate-50/60 hover:border-slate-300 dark:border-white/10 dark:bg-white/[0.02] dark:hover:border-white/20"
         }`}
-        onClick={() => fileRef.current?.click()}
       >
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
           <Clipboard className="h-4 w-4 text-brand-600 dark:text-brand-400" />
-          <span>Copy & Paste image from clipboard (Ctrl+V / ⌘+V)</span>
+          <span>Paste screenshot from clipboard (Ctrl+V) or click to browse</span>
         </div>
         <p className="mt-1 text-[11px] text-slate-400">
-          or drag & drop here, or click to choose file (JPG, PNG, WEBP up to 4 MB)
+          Supports JPG, PNG, WEBP up to 4 MB
         </p>
       </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) onUpload(file);
+        }}
+      />
+
+      {hasProof && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+          <p className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+            <ImageIcon className="h-4 w-4 text-emerald-500" />
+            Proof uploaded {uploadedAt ? `· ${formatDateTime(uploadedAt)}` : ""}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" disabled={uploading} onClick={onView}>
+              <Eye className="mr-1 h-3.5 w-3.5" /> View
+            </Button>
+            <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
+              <Upload className="mr-1 h-3.5 w-3.5" /> {uploading ? "Uploading…" : "Replace"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {proofUrl && (
         <div className="mt-2 space-y-1.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -466,165 +554,6 @@ function EvidenceSection({
           </a>
         </div>
       )}
-    </section>
+    </div>
   );
-}
-
-function ActionsSection({
-  report,
-  busy,
-  response,
-  note,
-  resolveAction,
-  isClosed,
-  setResponse,
-  setNote,
-  setResolveAction,
-  onAct,
-}: {
-  report: NotReceivedReportDetail;
-  busy: boolean;
-  response: string;
-  note: string;
-  resolveAction: ResolveAction;
-  isClosed: boolean;
-  setResponse: (v: string) => void;
-  setNote: (v: string) => void;
-  setResolveAction: (v: ResolveAction) => void;
-  onAct: (action: string, extra?: Record<string, unknown>) => Promise<void>;
-}) {
-  const canWork = !isClosed && report.status !== "DELIVERED";
-  return (
-    <section className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-white/10">
-      <p className="text-xs font-semibold text-slate-500">ACTIONS</p>
-
-      {/* Workflow progress actions */}
-      <div className="flex flex-wrap gap-2">
-        {report.status === "OPEN" && (
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => onAct("START_INVESTIGATION")}>
-            <Search className="mr-1.5 h-3.5 w-3.5" /> Start Investigating
-          </Button>
-        )}
-        {report.status === "INVESTIGATING" && (
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => onAct("KEEP_INVESTIGATING")}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Keep Investigating
-          </Button>
-        )}
-        {canWork && (
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => onAct("MARK_DELIVERED")}>
-            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Mark Delivered
-          </Button>
-        )}
-      </div>
-
-      {/* Administrative response — always allowed (server re-verifies) */}
-      <div className="space-y-2">
-        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-          <MessageSquarePlus className="h-3.5 w-3.5" /> ADMIN RESPONSE (visible to customer)
-        </p>
-        <textarea
-          className="h-16 w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 caret-brand-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400"
-          placeholder="e.g. We have verified delivery with the network. Please see the attached proof."
-          value={response}
-          maxLength={1000}
-          onChange={(e) => setResponse(e.target.value)}
-        />
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            disabled={busy || !response.trim()}
-            onClick={() => onAct("ADD_RESPONSE", { adminResponse: response.trim() })}
-          >
-            Add Response
-          </Button>
-        </div>
-      </div>
-
-
-      {/* Resolve / reject — only while the report is open */}
-      {!isClosed && (
-        <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-white/5">
-          <p className="text-[11px] font-semibold text-slate-500">CLOSE REPORT</p>
-          <div className="space-y-1.5">
-            {(Object.keys(RESOLVE_LABELS) as ResolveAction[]).map((a) => {
-              const orderFailed = report.order.status === "FAILED";
-              const disabled =
-                (a === "RESOLVE_RESEND" || a === "RESOLVE_REFUND") && !orderFailed;
-              return (
-                <label
-                  key={a}
-                  className={
-                    "flex items-start gap-2 rounded-lg border p-2.5 text-xs transition " +
-                    (resolveAction === a
-                      ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10"
-                      : "border-slate-200 dark:border-white/10") +
-                    (disabled ? " opacity-50" : " cursor-pointer")
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="manage-resolve"
-                    checked={resolveAction === a}
-                    disabled={disabled}
-                    onChange={() => setResolveAction(a)}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    {RESOLVE_LABELS[a]}
-                    {disabled ? " (order is not FAILED)" : ""}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          <textarea
-            className="h-16 w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 caret-brand-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400"
-            placeholder="Resolution note (stored as admin note, visible in the timeline)"
-            value={note}
-            maxLength={300}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => onAct(resolveAction, { resolutionNote: note || undefined })}
-            >
-              <XCircle className="mr-1.5 h-3.5 w-3.5" />
-              {resolveAction === "REJECT" ? "Reject Report" : "Resolve Report"}
-            </Button>
-          </div>
-        </div>
-      )}
-      {isClosed && (
-        <p className="text-[11px] text-slate-400">
-          This report is closed — only admin responses can still be added.
-        </p>
-      )}
-    </section>
-  );
-}
-
-
-function TimelineSection({ events }: { events: NotReceivedReportDetail["events"] }) {
-  if (events.length === 0) return null;
-  return (
-    <section>
-      <p className="mb-2 text-xs font-semibold text-slate-500">REPORT TIMELINE</p>
-      <ol className="space-y-3 border-l border-slate-200 pl-4 dark:border-white/10">
-        {events.map((e) => (
-          <li key={e.id} className="relative">
-            <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-brand-500" />
-            <p className="text-xs font-medium">{EVENT_LABELS[e.type] ?? e.type}</p>
-            {e.message && <p className="text-xs text-slate-500">{e.message}</p>}
-            <p className="text-[11px] text-slate-400">
-              {formatDateTime(e.createdAt)} · {e.actorLabel}
-            </p>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
 }
