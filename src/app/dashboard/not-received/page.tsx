@@ -253,7 +253,7 @@ export default function NotReceivedPage() {
                 setPage(1);
               }}
               placeholder={view === "reports" ? "Search by phone or reason..." : "Search by phone number..."}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 caret-brand-600 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-[#0d1526] dark:caret-brand-400"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
