@@ -90,14 +90,14 @@ export function NotReceivedReportDetailDialog({
         open={open}
         onClose={onClose}
         title={report ? `Not Received Report ${report.code}` : "Not Received Report"}
-        className="max-w-2xl"
+        className="max-w-xl max-h-[82vh] sm:max-h-[85vh]"
       >
         {loading || !report ? (
           <div className="flex justify-center py-12">
             <Spinner className="h-6 w-6 text-brand-600" />
           </div>
         ) : (
-          <div className="space-y-5 text-sm">
+          <div className="space-y-4 text-sm pr-1">
             <ReportInfoSection report={report} />
             <OrderInfoSection order={report.order} />
             {report.adminResponse && <AdminResponseSection report={report} />}
@@ -113,13 +113,13 @@ export function NotReceivedReportDetailDialog({
         )}
       </Dialog>
 
-      <Dialog open={proofOpen} onClose={() => setProofOpen(false)} title="Delivery proof" className="max-w-2xl">
+      <Dialog open={proofOpen} onClose={() => setProofOpen(false)} title="Delivery proof" className="max-w-xl max-h-[82vh] sm:max-h-[85vh]">
         {reportId && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={`/api/reports/not-received/${reportId}/proof`}
             alt="Delivery proof"
-            className="max-h-[70vh] w-full rounded-lg object-contain"
+            className="max-h-[60vh] w-full rounded-lg object-contain"
           />
         )}
       </Dialog>

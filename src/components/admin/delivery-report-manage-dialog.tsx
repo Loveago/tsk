@@ -193,7 +193,7 @@ export function DeliveryReportManageDialog({
       open={open}
       onClose={onClose}
       title={report ? `Manage Report ${report.code}` : "Manage Report"}
-      className="max-w-2xl"
+      className="max-w-xl max-h-[82vh] sm:max-h-[85vh]"
     >
       {loading || !report ? (
         <div className="flex justify-center py-12">
@@ -254,7 +254,7 @@ function ManageBody({
   onUploadProof,
 }: ManageBodyProps) {
   return (
-    <div className="max-h-[75vh] space-y-5 overflow-y-auto pr-1 text-sm">
+    <div className="space-y-4 text-sm pr-1">
       <InfoSections report={report} />
 
       {report.adminResponse && (
@@ -454,7 +454,7 @@ function EvidenceSection({
           <img
             src={proofUrl}
             alt={`Delivery proof for report ${reportId}`}
-            className="max-h-72 w-full rounded-lg border border-slate-200 object-contain dark:border-white/10"
+            className="max-h-52 w-full rounded-lg border border-slate-200 object-contain dark:border-white/10"
           />
           <a
             href={proofUrl}
