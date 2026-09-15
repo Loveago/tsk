@@ -145,7 +145,7 @@ export function PricingEditor({
           onChange={(e) => setBulkMarkup(e.target.value)}
           placeholder="e.g. 2.00"
           inputMode="decimal"
-          className="h-9 w-28 rounded-lg border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-transparent"
+          className="h-9 w-28 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
         />
         <span className="text-sm text-slate-500">GHS added on top of cost for selected ({selected.size})</span>
         <button
@@ -245,7 +245,7 @@ function ProductCard({
             placeholder="0.00"
             inputMode="decimal"
             disabled={busy}
-            className="h-9 w-full rounded-lg border border-slate-300 pl-10 pr-2 text-sm font-semibold dark:border-slate-700 dark:bg-transparent"
+            className="h-9 w-full rounded-lg border border-slate-300 pl-10 pr-2 text-sm font-semibold text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
           />
         </div>
         <button

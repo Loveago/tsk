@@ -79,7 +79,8 @@ export function StorefrontSettingsForm({ initial }: { initial: Initial }) {
     }
   }
 
-  const inputCls = "h-10 w-full rounded-lg border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-transparent";
+  const inputCls =
+    "h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 caret-brand-600 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400";
 
   return (
     <div className="space-y-4">

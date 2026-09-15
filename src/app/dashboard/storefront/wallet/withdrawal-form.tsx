@@ -63,12 +63,12 @@ export function WithdrawalForm({
           placeholder="Amount (GHS)"
           inputMode="decimal"
           required
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-transparent"
+          className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
         />
         <select
           value={network}
           onChange={(e) => setNetwork(e.target.value)}
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-[#0d1526]"
+          className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-[#0d1526] dark:text-slate-100"
         >
           <option value="MTN">MTN MoMo</option>
           <option value="TELECEL">Telecel Cash</option>
@@ -81,14 +81,14 @@ export function WithdrawalForm({
           inputMode="tel"
           pattern="0[0-9]{9}"
           required
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-transparent"
+          className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
         />
         <input
           value={accountName}
           onChange={(e) => setAccountName(e.target.value)}
           placeholder="Account name"
           required
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-transparent"
+          className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
         />
       </div>
       <button

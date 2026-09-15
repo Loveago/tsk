@@ -64,7 +64,7 @@ const REPORT_META = {
 } as const;
 
 const dateInputCls =
-  "h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:[color-scheme:dark]";
+  "h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 placeholder:text-slate-400 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400 dark:[color-scheme:dark] [&>option]:bg-white dark:[&>option]:bg-[#0d1526]";
 
 function ReportBadge({ s }: { s: ReportRow["reportStatus"] }) {
   const m = REPORT_META[s];

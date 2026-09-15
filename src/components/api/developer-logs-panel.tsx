@@ -49,7 +49,7 @@ export function DeveloperLogsPanel() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+            className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
         </div>
 

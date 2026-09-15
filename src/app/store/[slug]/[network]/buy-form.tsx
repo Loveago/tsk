@@ -83,7 +83,7 @@ export function NetworkBuyForm({ slug, products }: { slug: string; products: Pro
         onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
         placeholder="0XXXXXXXXX"
         inputMode="numeric"
-        className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base tracking-wide outline-none transition-colors placeholder:text-slate-300 focus:border-yellow-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-600"
+        className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base tracking-wide text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-yellow-400 caret-yellow-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:caret-yellow-400"
       />
       <p className="mt-1.5 text-xs text-slate-400">10 digits starting with 0 only (not 233…)</p>
 

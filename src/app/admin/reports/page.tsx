@@ -93,7 +93,7 @@ export default function AdminReportsPage() {
           <select
             value={range}
             onChange={(e) => setRange(e.target.value)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [&>option]:bg-white dark:[&>option]:bg-slate-800"
           >
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>

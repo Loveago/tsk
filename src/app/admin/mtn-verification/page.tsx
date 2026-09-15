@@ -596,14 +596,14 @@ export default function AdminMtnVerificationPage() {
                     placeholder="Search number, user..."
                     value={reqSearch}
                     onChange={(e) => setReqSearch(e.target.value)}
-                    className="h-8.5 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900"
+                    className="h-8.5 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                 </div>
 
                 <select
                   value={reqStatus}
                   onChange={(e) => setReqStatus(e.target.value)}
-                  className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900"
+                  className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="ALL">All Statuses</option>
                   <option value="SUBMITTED">Submitted (Pending)</option>
@@ -796,14 +796,14 @@ export default function AdminMtnVerificationPage() {
                     placeholder="Search accepted number..."
                     value={accSearch}
                     onChange={(e) => setAccSearch(e.target.value)}
-                    className="h-8.5 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900"
+                    className="h-8.5 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                 </div>
 
                 <select
                   value={accSource}
                   onChange={(e) => setAccSource(e.target.value)}
-                  className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900"
+                  className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="ALL">All Sources</option>
                   <option value="MANUAL">Manual</option>
@@ -1006,14 +1006,14 @@ export default function AdminMtnVerificationPage() {
                     placeholder="Search batch reference..."
                     value={batchSearch}
                     onChange={(e) => setBatchSearch(e.target.value)}
-                    className="h-8.5 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900"
+                    className="h-8.5 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                 </div>
 
                 <select
                   value={batchStatus}
                   onChange={(e) => setBatchStatus(e.target.value)}
-                  className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900"
+                  className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="ALL">All Batch Statuses</option>
                   <option value="READY">Ready</option>
@@ -1207,14 +1207,14 @@ export default function AdminMtnVerificationPage() {
                     placeholder="Search number..."
                     value={blockSearch}
                     onChange={(e) => setBlockSearch(e.target.value)}
-                    className="h-8.5 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900"
+                    className="h-8.5 w-56 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                 </div>
 
                 <select
                   value={blockStatus}
                   onChange={(e) => setBlockStatus(e.target.value)}
-                  className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900"
+                  className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="ALL">All Statuses</option>
                   <option value="UNVERIFIED">Unverified</option>

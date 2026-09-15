@@ -507,7 +507,7 @@ export default function AdminSettingsPage() {
                 <select
                   value={defaultRole}
                   onChange={(e) => setSettings((s) => ({ ...s, default_register_role: e.target.value }))}
-                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white [&>option]:bg-white dark:[&>option]:bg-slate-900"
                 >
                   <option value="USER">USER (Regular data customer)</option>
                   <option value="RESELLER">RESELLER (Wholesale / Reseller account)</option>

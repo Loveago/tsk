@@ -59,7 +59,7 @@ export function DeveloperOrdersPanel() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              className="h-9 w-48 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+              className="h-9 w-48 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
             />
           </div>
 
@@ -69,7 +69,7 @@ export function DeveloperOrdersPanel() {
               setStatusFilter(e.target.value);
               setPage(1);
             }}
-            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800"
+            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           >
             <option value="ALL">All Statuses</option>
             <option value="COMPLETED">COMPLETED</option>
@@ -84,7 +84,7 @@ export function DeveloperOrdersPanel() {
               setNetworkFilter(e.target.value);
               setPage(1);
             }}
-            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800"
+            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           >
             <option value="ALL">All Networks</option>
             <option value="MTN">MTN</option>

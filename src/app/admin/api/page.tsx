@@ -802,14 +802,14 @@ export default function AdminApiManagementPage() {
                       placeholder="Search recipient, ref, or email..."
                       value={orderSearch}
                       onChange={(e) => setOrderSearch(e.target.value)}
-                      className="h-9 w-64 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                      className="h-9 w-64 rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                   </div>
 
                   <select
                     value={orderSourceFilter}
                     onChange={(e) => setOrderSourceFilter(e.target.value)}
-                    className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800"
+                    className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   >
                     <option value="ALL">All Sources (WEB, STOREFRONT, API)</option>
                     <option value="API">API Only</option>
@@ -993,7 +993,7 @@ export default function AdminApiManagementPage() {
                     placeholder="Search request ID, IP, or user..."
                     value={logSearch}
                     onChange={(e) => setLogSearch(e.target.value)}
-                    className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                 </div>
                 <Button variant="outline" size="sm" onClick={() => loadTab("logs")} className="h-9">
@@ -1427,7 +1427,7 @@ export default function AdminApiManagementPage() {
                         max={1000}
                         value={configuredRateLimit}
                         onChange={(e) => setConfiguredRateLimit(parseInt(e.target.value, 10))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 dark:border-slate-700 dark:bg-slate-800"
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       />
                     </div>
                     <div>
@@ -1437,7 +1437,7 @@ export default function AdminApiManagementPage() {
                         min={100}
                         value={configuredDailyLimit}
                         onChange={(e) => setConfiguredDailyLimit(parseInt(e.target.value, 10))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 dark:border-slate-700 dark:bg-slate-800"
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       />
                     </div>
                   </div>
@@ -1451,7 +1451,7 @@ export default function AdminApiManagementPage() {
                         max={100000}
                         value={configuredMaxVolume}
                         onChange={(e) => setConfiguredMaxVolume(parseInt(e.target.value, 10))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 dark:border-slate-700 dark:bg-slate-800"
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       />
                     </div>
                     <div>
@@ -1474,7 +1474,7 @@ export default function AdminApiManagementPage() {
                       type="text"
                       value={configuredScopes}
                       onChange={(e) => setConfiguredScopes(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 font-mono text-[11px] dark:border-slate-700 dark:bg-slate-800"
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 font-mono text-[11px] text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                     />
                   </div>
 
@@ -1485,7 +1485,7 @@ export default function AdminApiManagementPage() {
                       placeholder="e.g. 197.251.1.2, 102.176.4.5"
                       value={configuredIps}
                       onChange={(e) => setConfiguredIps(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 font-mono text-[11px] dark:border-slate-700 dark:bg-slate-800"
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 font-mono text-[11px] text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                   </div>
 
@@ -1519,7 +1519,7 @@ export default function AdminApiManagementPage() {
                   value={adminNotes}
                   onChange={(e) => setAdminNotes(e.target.value)}
                   placeholder="Optional internal or feedback note..."
-                  className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  className="mt-1 w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
 

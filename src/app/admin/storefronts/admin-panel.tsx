@@ -141,7 +141,8 @@ export function AdminStorefrontPanel({
     }
   }
 
-  const inputCls = "h-10 w-full rounded-lg border border-slate-300 px-3 text-sm dark:border-slate-700 dark:bg-transparent";
+  const inputCls =
+    "h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500";
 
   return (
     <div className="space-y-6">
@@ -253,7 +254,7 @@ export function AdminStorefrontPanel({
                       value={notes[a.id] ?? ""}
                       onChange={(e) => setNotes((n) => ({ ...n, [a.id]: e.target.value }))}
                       placeholder="Reason (optional)"
-                      className="h-9 w-40 rounded-lg border border-slate-300 px-3 text-xs dark:border-slate-700 dark:bg-transparent"
+                      className="h-9 w-40 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                     <button
                       onClick={() => call("/api/admin/storefronts", { userId: a.userId, action: "REJECT", note: notes[a.id] ?? "" }, "Application rejected.")}
@@ -362,7 +363,7 @@ export function AdminStorefrontPanel({
                     value={notes[w.id] ?? ""}
                     onChange={(e) => setNotes((n) => ({ ...n, [w.id]: e.target.value }))}
                     placeholder="Note (optional)"
-                    className="h-9 w-44 rounded-lg border border-slate-300 px-3 text-xs dark:border-slate-700 dark:bg-transparent"
+                    className="h-9 w-44 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                   <button onClick={() => reviewWithdrawal(w.id, "APPROVE")} disabled={busy} className="h-9 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
                     Approve &amp; pay

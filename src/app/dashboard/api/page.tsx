@@ -127,7 +127,7 @@ export default function DeveloperDashboardPage() {
                 window.history.replaceState({}, "", url.toString());
               }
             }}
-            className="h-10 w-full appearance-none rounded-xl border-2 border-blue-600/70 bg-white pl-10 pr-10 text-xs font-bold uppercase tracking-wider text-slate-900 shadow-sm focus:outline-none dark:border-blue-500/70 dark:bg-slate-900 dark:text-white"
+            className="h-10 w-full appearance-none rounded-xl border-2 border-blue-600/70 bg-white pl-10 pr-10 text-xs font-bold uppercase tracking-wider text-slate-900 shadow-sm focus:outline-none dark:border-blue-500/70 dark:bg-slate-900 dark:text-white [&>option]:bg-white dark:[&>option]:bg-slate-900"
           >
             {navItems.map((item) => (
               <option key={item.key} value={item.key}>

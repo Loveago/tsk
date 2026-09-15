@@ -120,7 +120,7 @@ export function NotReceivedReportFormDialog({
           {order?.phoneNumber} ({order?.gbAmount} GB {order?.network}).
         </p>
         <select
-          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100"
+          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-slate-800 dark:text-slate-100 [&>option]:bg-white dark:[&>option]:bg-slate-800"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         >
@@ -131,7 +131,7 @@ export function NotReceivedReportFormDialog({
           ))}
         </select>
         <textarea
-          className="h-20 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100"
+          className="h-20 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 caret-brand-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400"
           placeholder="Describe the issue (optional)"
           value={message}
           maxLength={600}

@@ -590,7 +590,7 @@ export default function SendOrderPage() {
                 onBlur={() => {
                   if (bulkText) setBulkText(normalizeTextNumbers(bulkText));
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 caret-brand-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400"
               />
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="space-y-1">

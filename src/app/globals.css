@@ -67,7 +67,62 @@ html.dark, .dark {
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   input, textarea, select {
-    color: inherit;
+    color: var(--color-slate-900);
+    caret-color: var(--color-slate-900);
+  }
+  :is(.dark, .dark *) input,
+  :is(.dark, .dark *) textarea,
+  :is(.dark, .dark *) select,
+  html.dark input,
+  html.dark textarea,
+  html.dark select {
+    color: var(--color-slate-100);
+    caret-color: var(--color-brand-400, #60a5fa);
+  }
+  ::placeholder {
+    color: var(--color-slate-400);
+  }
+  :is(.dark, .dark *) ::placeholder,
+  html.dark ::placeholder {
+    color: var(--color-slate-500);
+  }
+
+  /* Autofill styling so browser defaults don't hide typed/filled text in dark mode */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus,
+  select:-webkit-autofill,
+  select:-webkit-autofill:hover,
+  select:-webkit-autofill:focus {
+    -webkit-text-fill-color: #0f172a !important;
+    caret-color: #0f172a !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+  :is(.dark, .dark *) input:-webkit-autofill,
+  :is(.dark, .dark *) input:-webkit-autofill:hover,
+  :is(.dark, .dark *) input:-webkit-autofill:focus,
+  :is(.dark, .dark *) textarea:-webkit-autofill,
+  :is(.dark, .dark *) textarea:-webkit-autofill:hover,
+  :is(.dark, .dark *) textarea:-webkit-autofill:focus,
+  :is(.dark, .dark *) select:-webkit-autofill,
+  :is(.dark, .dark *) select:-webkit-autofill:hover,
+  :is(.dark, .dark *) select:-webkit-autofill:focus,
+  html.dark input:-webkit-autofill,
+  html.dark input:-webkit-autofill:hover,
+  html.dark input:-webkit-autofill:focus,
+  html.dark textarea:-webkit-autofill,
+  html.dark textarea:-webkit-autofill:hover,
+  html.dark textarea:-webkit-autofill:focus,
+  html.dark select:-webkit-autofill,
+  html.dark select:-webkit-autofill:hover,
+  html.dark select:-webkit-autofill:focus {
+    -webkit-text-fill-color: #f1f5f9 !important;
+    caret-color: #60a5fa !important;
+    -webkit-box-shadow: 0 0 0px 1000px #0d1526 inset !important;
+    transition: background-color 5000s ease-in-out 0s;
   }
   ::selection {
     @apply bg-brand-200 text-brand-900;

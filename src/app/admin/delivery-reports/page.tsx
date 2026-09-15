@@ -106,7 +106,7 @@ export default function DeliveryReportsPage() {
           />
         </div>
         <input
-          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-brand-500 lg:w-64 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100"
+          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 placeholder:text-slate-400 lg:w-64 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400"
           placeholder="Search phone, user, order code…"
           value={q}
           onChange={(e) => {

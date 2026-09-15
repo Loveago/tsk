@@ -63,7 +63,7 @@ export function TrackForm({ slug }: { slug: string }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="CLQ-XXXXXXXX · 024 XXX XXXX · you@example.com"
-          className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none transition-colors placeholder:text-slate-300 focus:border-yellow-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-600"
+          className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-yellow-400 caret-yellow-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:caret-yellow-400"
         />
         <button
           type="submit"

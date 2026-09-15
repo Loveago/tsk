@@ -523,7 +523,7 @@ function ActionsSection({
           <MessageSquarePlus className="h-3.5 w-3.5" /> ADMIN RESPONSE (visible to customer)
         </p>
         <textarea
-          className="h-16 w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100"
+          className="h-16 w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 caret-brand-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400"
           placeholder="e.g. We have verified delivery with the network. Please see the attached proof."
           value={response}
           maxLength={1000}
@@ -578,7 +578,7 @@ function ActionsSection({
             })}
           </div>
           <textarea
-            className="h-16 w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100"
+            className="h-16 w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 caret-brand-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400"
             placeholder="Resolution note (stored as admin note, visible in the timeline)"
             value={note}
             maxLength={300}
