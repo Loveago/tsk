@@ -57,30 +57,93 @@ export async function POST(request: NextRequest) {
         });
 
         if (report) {
+          const rawStatus = String(repData?.status || "").toLowerCase();
           const newStatus =
-            event === "report.not_received.confirmed_sent"
+            event === "report.not_received.confirmed_sent" || ["confirmed_sent", "sent", "delivered"].includes(rawStatus)
               ? "DELIVERED"
-              : repData?.status === "resolved"
-              ? "RESOLVED"
-              : repData?.status === "rejected"
+              : rawStatus === "rejected" || rawStatus === "cancelled"
               ? "REJECTED"
               : "RESOLVED";
+
+          const adminNotes =
+            repData?.adminNotes ||
+            repData?.adminNote ||
+            repData?.notes ||
+            repData?.resolutionNote ||
+            null;
+
+          const evidenceUrl =
+            repData?.evidenceUrl ||
+            repData?.evidence_url ||
+            repData?.proofUrl ||
+            repData?.proof_url ||
+            repData?.imageUrl ||
+            repData?.image_url ||
+            repData?.evidence?.url ||
+            null;
+
+          let proofImage = report.proofImage;
+          let proofImageMime = report.proofImageMime;
+          let newProofAttached = false;
+
+          if (evidenceUrl && (!report.proofImage || report.proofImage.startsWith("http"))) {
+            try {
+              const imgRes = await fetch(evidenceUrl, {
+                headers: { "User-Agent": "Tskconnect/1.0" },
+                signal: AbortSignal.timeout(10000),
+              });
+              if (imgRes.ok) {
+                const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+                const buffer = Buffer.from(await imgRes.arrayBuffer());
+                proofImage = buffer.toString("base64");
+                proofImageMime = contentType;
+                newProofAttached = true;
+              } else {
+                proofImage = evidenceUrl;
+                proofImageMime = "image/jpeg";
+                newProofAttached = true;
+              }
+            } catch {
+              proofImage = evidenceUrl;
+              proofImageMime = "image/jpeg";
+              newProofAttached = true;
+            }
+          }
 
           await prisma.deliveryReport.update({
             where: { id: report.id },
             data: {
               status: newStatus,
-              adminResponse: repData?.adminNotes || report.adminResponse,
+              adminResponse: adminNotes || report.adminResponse,
+              ...(newProofAttached
+                ? {
+                    proofImage,
+                    proofImageMime,
+                    proofImageUploadedAt: new Date(),
+                    proofImageUploadedBy: "Clickyfied Callback",
+                  }
+                : {}),
               resolvedAt: new Date(),
               resolvedBy: "Clickyfied Callback",
             },
           });
 
+          if (newProofAttached) {
+            await prisma.deliveryReportEvent.create({
+              data: {
+                reportId: report.id,
+                type: "EVIDENCE_UPLOADED",
+                message: `Delivery proof image received from Clickyfied${evidenceUrl ? ` (${evidenceUrl})` : ""}`,
+                actorLabel: "Clickyfied API",
+              },
+            });
+          }
+
           await prisma.deliveryReportEvent.create({
             data: {
               reportId: report.id,
               type: newStatus === "DELIVERED" ? "MARKED_DELIVERED" : "RESOLVED",
-              message: `Clickyfied report update: ${newStatus}. Notes: ${repData?.adminNotes || "None"}`,
+              message: `Clickyfied report update: ${newStatus}. Notes: ${adminNotes || "None"}`,
               actorLabel: "Clickyfied API",
             },
           });

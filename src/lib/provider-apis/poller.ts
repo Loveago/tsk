@@ -1,11 +1,11 @@
 import { prisma } from "../prisma";
-import { syncClickyfiedOrder } from "./router";
+import { syncClickyfiedOrder, syncClickyfiedDeliveryReport } from "./router";
 
 let isPolling = false;
 
 /**
- * Self-scheduling background poller for in-flight Clickyfied orders.
- * Automatically synchronizes pending and processing orders with Clickify every 25 seconds.
+ * Self-scheduling background poller for in-flight Clickyfied orders and open delivery reports.
+ * Automatically synchronizes pending/processing orders and reports with Clickify every 25 seconds.
  */
 export function startProviderSyncPoller() {
   if (typeof window !== "undefined") return;
@@ -16,7 +16,7 @@ export function startProviderSyncPoller() {
   }
   g.__providerSyncPollerStarted = true;
 
-  console.log("[ProviderSyncPoller] Automated background order status poller initialized.");
+  console.log("[ProviderSyncPoller] Automated background status poller initialized.");
 
   const poll = async () => {
     if (isPolling) return;
@@ -45,6 +45,33 @@ export function startProviderSyncPoller() {
       for (const order of inFlightOrders) {
         try {
           await syncClickyfiedOrder(order, "Automatic Background Poller");
+        } catch {
+          // continue
+        }
+      }
+
+      // Also sync open or unproven delivery reports on Clickify orders
+      const openReports = await prisma.deliveryReport.findMany({
+        where: {
+          OR: [
+            { status: { in: ["OPEN", "INVESTIGATING", "UNDER_REVIEW"] } },
+            { proofImageMime: null, status: { in: ["RESOLVED", "DELIVERED"] } },
+          ],
+          order: {
+            OR: [
+              { providerReference: { startsWith: "CLICKYFIED:" } },
+              { externalReference: { not: null } },
+            ],
+          },
+          updatedAt: { lte: thirtyTwoSecsAgo },
+        },
+        take: 10,
+        orderBy: { updatedAt: "asc" },
+      });
+
+      for (const rep of openReports) {
+        try {
+          await syncClickyfiedDeliveryReport(rep.id, "Automatic Background Poller");
         } catch {
           // continue
         }

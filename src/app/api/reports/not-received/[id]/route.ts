@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { deliveryReportCode } from "@/lib/types";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
+import { syncClickyfiedDeliveryReport } from "@/lib/provider-apis/router";
+
 /**
  * User report detail (§15): report information, order information, admin
  * response, evidence metadata and the report timeline. Ownership is enforced —
@@ -16,6 +18,13 @@ export async function GET(
   try {
     const user = await requireUser();
     const { id } = await params;
+
+    // Trigger on-demand sync if this report is from a Clickyfied order
+    try {
+      await syncClickyfiedDeliveryReport(id, "On-Demand View Sync");
+    } catch {
+      // Non-blocking fallback
+    }
 
     const report = await prisma.deliveryReport.findUnique({
       where: { id },

@@ -564,6 +564,193 @@ export async function syncClickyfiedOrder(
 }
 
 /**
+ * Synchronizes a Not Received DeliveryReport with Clickyfied's not-received endpoint.
+ * Pulls admin notes, resolution status, and evidenceUrl (proof image),
+ * and attaches it directly to the delivery report for users and admins to view.
+ */
+export async function syncClickyfiedDeliveryReport(
+  reportId: string,
+  actorLabel = "Clickyfied Sync"
+): Promise<{ changed: boolean; error?: string }> {
+  try {
+    const report = await prisma.deliveryReport.findUnique({
+      where: { id: reportId },
+      include: {
+        order: {
+          select: {
+            id: true,
+            providerReference: true,
+            externalReference: true,
+            network: true,
+          },
+        },
+      },
+    });
+
+    if (!report || !report.order) return { changed: false };
+
+    // If report is already closed AND has proof image attached, no further sync needed
+    if (
+      (report.status === "RESOLVED" || report.status === "DELIVERED" || report.status === "REJECTED") &&
+      report.proofImageMime &&
+      report.proofImage
+    ) {
+      return { changed: false };
+    }
+
+    // Identify Clickify order identifier
+    let clickyfiedId = report.order.providerReference?.startsWith("CLICKYFIED:")
+      ? report.order.providerReference.replace("CLICKYFIED:", "").trim()
+      : null;
+
+    if (!clickyfiedId && report.order.externalReference) {
+      clickyfiedId = report.order.externalReference;
+    }
+
+    if (!clickyfiedId) {
+      const config = await getProviderRoutingConfig();
+      const route = config.networkRoutes[report.order.network] || config.defaultProvider;
+      if (route === "CLICKYFIED") {
+        clickyfiedId = `TSK-ORD-${report.order.id}`;
+      }
+    }
+
+    if (!clickyfiedId) return { changed: false };
+
+    const config = await getProviderRoutingConfig();
+    const client = new ClickyfiedClient(config.clickyfied);
+
+    let res: any;
+    try {
+      res = await client.getNotReceivedStatus(clickyfiedId);
+    } catch (apiErr: any) {
+      return { changed: false, error: apiErr?.message };
+    }
+
+    if (!res) return { changed: false };
+
+    const repData =
+      Array.isArray(res?.reports) && res.reports.length > 0
+        ? res.reports[0]
+        : res?.report || res?.data || res;
+
+    if (!repData || typeof repData !== "object") return { changed: false };
+
+    const rawStatus = String(repData.status || "").toLowerCase();
+    let newStatus = report.status;
+    if (["confirmed_sent", "sent", "delivered"].includes(rawStatus)) {
+      newStatus = "DELIVERED";
+    } else if (["resolved", "completed"].includes(rawStatus)) {
+      newStatus = "RESOLVED";
+    } else if (["rejected", "cancelled", "canceled"].includes(rawStatus)) {
+      newStatus = "REJECTED";
+    } else if (["pending_resolution", "pending", "investigating"].includes(rawStatus)) {
+      newStatus = "INVESTIGATING";
+    }
+
+    const adminNotes =
+      repData.adminNotes ||
+      repData.adminNote ||
+      repData.notes ||
+      repData.resolutionNote ||
+      null;
+
+    const evidenceUrl =
+      repData.evidenceUrl ||
+      repData.evidence_url ||
+      repData.proofUrl ||
+      repData.proof_url ||
+      repData.imageUrl ||
+      repData.image_url ||
+      repData.evidence?.url ||
+      null;
+
+    let proofImage = report.proofImage;
+    let proofImageMime = report.proofImageMime;
+    let newProofAttached = false;
+
+    if (evidenceUrl && (!report.proofImage || report.proofImage.startsWith("http"))) {
+      try {
+        const imgRes = await fetch(evidenceUrl, {
+          headers: { "User-Agent": "Tskconnect/1.0" },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (imgRes.ok) {
+          const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+          const buffer = Buffer.from(await imgRes.arrayBuffer());
+          proofImage = buffer.toString("base64");
+          proofImageMime = contentType;
+          newProofAttached = true;
+        } else {
+          proofImage = evidenceUrl;
+          proofImageMime = "image/jpeg";
+          newProofAttached = true;
+        }
+      } catch {
+        proofImage = evidenceUrl;
+        proofImageMime = "image/jpeg";
+        newProofAttached = true;
+      }
+    }
+
+    const statusChanged = newStatus !== report.status;
+    const notesChanged = Boolean(adminNotes && adminNotes !== report.adminResponse);
+
+    if (statusChanged || notesChanged || newProofAttached) {
+      await prisma.deliveryReport.update({
+        where: { id: report.id },
+        data: {
+          status: newStatus,
+          adminResponse: adminNotes || report.adminResponse,
+          ...(newProofAttached
+            ? {
+                proofImage,
+                proofImageMime,
+                proofImageUploadedAt: new Date(),
+                proofImageUploadedBy: "Clickyfied API",
+              }
+            : {}),
+          ...(newStatus === "RESOLVED" || newStatus === "DELIVERED"
+            ? {
+                resolvedAt: report.resolvedAt || new Date(),
+                resolvedBy: report.resolvedBy || "Clickyfied API",
+              }
+            : {}),
+        },
+      });
+
+      if (newProofAttached) {
+        await prisma.deliveryReportEvent.create({
+          data: {
+            reportId: report.id,
+            type: "EVIDENCE_UPLOADED",
+            message: `Delivery proof image received from Clickyfied${evidenceUrl ? ` (${evidenceUrl})` : ""}`,
+            actorLabel,
+          },
+        });
+      }
+
+      if (statusChanged) {
+        await prisma.deliveryReportEvent.create({
+          data: {
+            reportId: report.id,
+            type: newStatus === "DELIVERED" ? "MARKED_DELIVERED" : "RESOLVED",
+            message: `Clickyfied report update: ${newStatus}. Notes: ${adminNotes || "None"}`,
+            actorLabel,
+          },
+        });
+      }
+
+      return { changed: true };
+    }
+
+    return { changed: false };
+  } catch (err: any) {
+    return { changed: false, error: err?.message || "Report sync failed" };
+  }
+}
+
+/**
  * Bulk dispatch a list of order IDs according to network routing
  */
 export async function dispatchOrdersBatch(orderIds: number[]): Promise<{

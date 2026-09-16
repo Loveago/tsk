@@ -116,14 +116,26 @@ export function NotReceivedReportDetailDialog({
         )}
       </Dialog>
 
-      <Dialog open={proofOpen} onClose={() => setProofOpen(false)} title="Delivery proof" className="max-w-xl max-h-[82vh] sm:max-h-[85vh]">
+      <Dialog open={proofOpen} onClose={() => setProofOpen(false)} title="Delivery proof" className="max-w-2xl max-h-[85vh]">
         {reportId && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/api/reports/not-received/${reportId}/proof`}
-            alt="Delivery proof"
-            className="max-h-[60vh] w-full rounded-lg object-contain"
-          />
+          <div className="space-y-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/reports/not-received/${reportId}/proof`}
+              alt="Delivery proof"
+              className="max-h-[60vh] w-full rounded-lg object-contain bg-slate-950/5 dark:bg-white/5 border border-slate-200 dark:border-white/10"
+            />
+            <div className="flex justify-end">
+              <a
+                href={`/api/reports/not-received/${reportId}/proof`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-500 hover:underline dark:text-emerald-400"
+              >
+                Open full image in new tab ↗
+              </a>
+            </div>
+          </div>
         )}
       </Dialog>
     </>

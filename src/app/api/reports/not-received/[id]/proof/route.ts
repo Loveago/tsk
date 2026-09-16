@@ -28,6 +28,27 @@ export async function GET(
     const isStaff = user.role === "ADMIN" || user.role === "MANAGER";
     if (!isStaff && report.userId !== user.id) return apiError(403, "Not allowed");
 
+    // If proofImage is a remote URL, fetch and stream it or redirect
+    if (report.proofImage.startsWith("http://") || report.proofImage.startsWith("https://")) {
+      try {
+        const remoteRes = await fetch(report.proofImage, {
+          headers: { "User-Agent": "Tskconnect/1.0" },
+        });
+        if (remoteRes.ok) {
+          const contentType = remoteRes.headers.get("content-type") || report.proofImageMime || "image/jpeg";
+          const arrayBuf = await remoteRes.arrayBuffer();
+          return new NextResponse(new Uint8Array(arrayBuf), {
+            headers: {
+              "Content-Type": contentType,
+              "Cache-Control": "private, max-age=3600",
+            },
+          });
+        }
+      } catch {
+        return NextResponse.redirect(report.proofImage);
+      }
+    }
+
     const buffer = Buffer.from(report.proofImage, "base64");
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
