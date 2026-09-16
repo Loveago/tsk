@@ -589,11 +589,12 @@ export async function syncClickyfiedDeliveryReport(
 
     if (!report || !report.order) return { changed: false };
 
-    // If report is already closed AND has proof image attached, no further sync needed
+    // If report is already closed AND has proof image attached (or is REFUNDED), no further sync needed
     if (
-      (report.status === "RESOLVED" || report.status === "DELIVERED" || report.status === "REJECTED") &&
-      report.proofImageMime &&
-      report.proofImage
+      report.status === "REFUNDED" ||
+      ((report.status === "RESOLVED" || report.status === "DELIVERED" || report.status === "REJECTED") &&
+        report.proofImageMime &&
+        report.proofImage)
     ) {
       return { changed: false };
     }
@@ -624,21 +625,50 @@ export async function syncClickyfiedDeliveryReport(
     try {
       res = await client.getNotReceivedStatus(clickyfiedId);
     } catch (apiErr: any) {
-      return { changed: false, error: apiErr?.message };
+      res = null;
     }
 
-    if (!res) return { changed: false };
+    let orderRes: any = null;
+    try {
+      orderRes = await client.getOrderStatus(clickyfiedId);
+    } catch {
+      orderRes = null;
+    }
+
+    if (!res && !orderRes) return { changed: false };
 
     const repData =
       Array.isArray(res?.reports) && res.reports.length > 0
         ? res.reports[0]
-        : res?.report || res?.data || res;
+        : res?.report || res?.data || res || {};
 
-    if (!repData || typeof repData !== "object") return { changed: false };
+    const rawStatus = String(repData?.status || "").toLowerCase();
+    const adminNotes =
+      repData?.adminNotes ||
+      repData?.adminNote ||
+      repData?.notes ||
+      repData?.resolutionNote ||
+      null;
+    const notesLower = String(adminNotes || "").toLowerCase();
 
-    const rawStatus = String(repData.status || "").toLowerCase();
+    const rawOrderStatus = String(
+      orderRes?.status || orderRes?.raw?.status || orderRes?.order?.status || ""
+    ).toLowerCase();
+    const orderSummary = orderRes?.raw?.order?.entrySummary || orderRes?.raw?.entrySummary;
+    const orderMappedStatus = rawOrderStatus ? mapClickyfiedStatus(rawOrderStatus, orderSummary) : null;
+
+    const isFailedOrRefunded =
+      ["failed", "refund", "refunded", "fail", "failure", "unsuccessful"].includes(rawStatus) ||
+      orderMappedStatus === "FAILED" ||
+      ["failed", "cancelled", "canceled", "rejected", "error", "unsuccessful", "refunded"].includes(rawOrderStatus) ||
+      notesLower.includes("refund") ||
+      notesLower.includes("failed") ||
+      notesLower.includes("fail ");
+
     let newStatus = report.status;
-    if (["confirmed_sent", "sent", "delivered"].includes(rawStatus)) {
+    if (isFailedOrRefunded) {
+      newStatus = "REFUNDED";
+    } else if (["confirmed_sent", "sent", "delivered"].includes(rawStatus)) {
       newStatus = "DELIVERED";
     } else if (["resolved", "completed"].includes(rawStatus)) {
       newStatus = "RESOLVED";
@@ -647,13 +677,6 @@ export async function syncClickyfiedDeliveryReport(
     } else if (["pending_resolution", "pending", "investigating"].includes(rawStatus)) {
       newStatus = "INVESTIGATING";
     }
-
-    const adminNotes =
-      repData.adminNotes ||
-      repData.adminNote ||
-      repData.notes ||
-      repData.resolutionNote ||
-      null;
 
     const evidenceUrl =
       repData.evidenceUrl ||
@@ -710,7 +733,7 @@ export async function syncClickyfiedDeliveryReport(
                 proofImageUploadedBy: "Clickyfied API",
               }
             : {}),
-          ...(newStatus === "RESOLVED" || newStatus === "DELIVERED"
+          ...(newStatus === "RESOLVED" || newStatus === "DELIVERED" || newStatus === "REFUNDED"
             ? {
                 resolvedAt: report.resolvedAt || new Date(),
                 resolvedBy: report.resolvedBy || "Clickyfied API",
@@ -718,6 +741,21 @@ export async function syncClickyfiedDeliveryReport(
             : {}),
         },
       });
+
+      // If order failed/refunded, update order to FAILED (which refunds wallet or flags storefront)
+      if (newStatus === "REFUNDED" && report.order.id) {
+        try {
+          await changeOrderStatus(
+            report.order.id,
+            "FAILED",
+            adminNotes || "Order failed on Clickyfied and was refunded",
+            { id: "system", label: actorLabel },
+            { force: true }
+          );
+        } catch (orderErr) {
+          console.error("Failed to update order status during delivery report refund:", orderErr);
+        }
+      }
 
       if (newProofAttached) {
         await prisma.deliveryReportEvent.create({
@@ -734,7 +772,7 @@ export async function syncClickyfiedDeliveryReport(
         await prisma.deliveryReportEvent.create({
           data: {
             reportId: report.id,
-            type: newStatus === "DELIVERED" ? "MARKED_DELIVERED" : "RESOLVED",
+            type: newStatus === "DELIVERED" ? "MARKED_DELIVERED" : newStatus === "REFUNDED" ? "REFUND" : "RESOLVED",
             message: `Clickyfied report update: ${newStatus}. Notes: ${adminNotes || "None"}`,
             actorLabel,
           },

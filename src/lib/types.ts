@@ -114,7 +114,7 @@ export function deliveryReportCode(seq: number | null | undefined): string {
 export const ALLOWED_ORDER_TRANSITIONS: Record<OrderStatus, Partial<Record<OrderStatus, true | "OVERRIDE">>> = {
   PENDING: { PROCESSING: true, SUCCESS: "OVERRIDE", FAILED: true, CANCELLED: true },
   PROCESSING: { SUCCESS: true, PENDING: "OVERRIDE", FAILED: true, CANCELLED: true },
-  SUCCESS: { REFUNDED: "OVERRIDE" },
+  SUCCESS: { REFUNDED: "OVERRIDE", FAILED: "OVERRIDE" },
   FAILED: { PROCESSING: true, PENDING: true, SUCCESS: "OVERRIDE", REFUNDED: "OVERRIDE" },
   CANCELLED: { REFUNDED: "OVERRIDE", SUCCESS: "OVERRIDE" },
   REFUNDED: {},

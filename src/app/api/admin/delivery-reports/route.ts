@@ -183,33 +183,28 @@ export async function PATCH(request: NextRequest) {
       data.resolvedBy = actor.email;
       if (input.resolutionNote) data.adminNote = input.resolutionNote;
     } else if (input.action === "RESOLVE_REFUND") {
-      if (report.order.status === "FAILED") {
-        // FAILED -> REFUNDED is an override transition by design (§16)
-        await changeOrderStatus(
-          report.orderId,
-          "REFUNDED",
-          `Report resolved: refund${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
-          actorLabel,
-          { force: true }
-        );
-        orderUpdated = "REFUNDED";
-      }
+      await changeOrderStatus(
+        report.orderId,
+        "FAILED",
+        `Report resolved: refund${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
+        actorLabel,
+        { force: true }
+      );
+      orderUpdated = "FAILED";
       data.status = "RESOLVED";
       data.resolvedAt = new Date();
       data.resolvedBy = actor.email;
       if (input.resolutionNote) data.adminNote = input.resolutionNote;
     } else if (input.action === "RESOLVE_REFUNDED") {
-      // Close report as REFUNDED (also refunds order if FAILED)
-      if (report.order.status === "FAILED") {
-        await changeOrderStatus(
-          report.orderId,
-          "REFUNDED",
-          `Report closed as refunded${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
-          actorLabel,
-          { force: true }
-        );
-        orderUpdated = "REFUNDED";
-      }
+      // Close report as REFUNDED and mark order FAILED (refunds wallet for dashboard orders)
+      await changeOrderStatus(
+        report.orderId,
+        "FAILED",
+        `Report closed as refunded${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
+        actorLabel,
+        { force: true }
+      );
+      orderUpdated = "FAILED";
       data.status = "REFUNDED";
       data.resolvedAt = new Date();
       data.resolvedBy = actor.email;

@@ -58,19 +58,27 @@ export async function POST(request: NextRequest) {
 
         if (report) {
           const rawStatus = String(repData?.status || "").toLowerCase();
-          const newStatus =
-            event === "report.not_received.confirmed_sent" || ["confirmed_sent", "sent", "delivered"].includes(rawStatus)
-              ? "DELIVERED"
-              : rawStatus === "rejected" || rawStatus === "cancelled"
-              ? "REJECTED"
-              : "RESOLVED";
-
           const adminNotes =
             repData?.adminNotes ||
             repData?.adminNote ||
             repData?.notes ||
             repData?.resolutionNote ||
             null;
+          const notesLower = String(adminNotes || "").toLowerCase();
+
+          const isFailedOrRefunded =
+            ["failed", "refund", "refunded", "fail", "failure", "unsuccessful"].includes(rawStatus) ||
+            notesLower.includes("refund") ||
+            notesLower.includes("failed") ||
+            notesLower.includes("fail ");
+
+          const newStatus = isFailedOrRefunded
+            ? "REFUNDED"
+            : event === "report.not_received.confirmed_sent" || ["confirmed_sent", "sent", "delivered"].includes(rawStatus)
+            ? "DELIVERED"
+            : rawStatus === "rejected" || rawStatus === "cancelled"
+            ? "REJECTED"
+            : "RESOLVED";
 
           const evidenceUrl =
             repData?.evidenceUrl ||
@@ -128,6 +136,21 @@ export async function POST(request: NextRequest) {
             },
           });
 
+          // If failed/refunded on Clickyfied, update the order to FAILED (which refunds wallet or flags storefront)
+          if (newStatus === "REFUNDED" && order) {
+            try {
+              await changeOrderStatus(
+                order.id,
+                "FAILED",
+                adminNotes || "Order failed on Clickyfied and was refunded",
+                { id: "system", label: "Clickyfied Callback" },
+                { force: true }
+              );
+            } catch (err) {
+              console.error("Failed to update order status during webhook refund:", err);
+            }
+          }
+
           if (newProofAttached) {
             await prisma.deliveryReportEvent.create({
               data: {
@@ -142,7 +165,7 @@ export async function POST(request: NextRequest) {
           await prisma.deliveryReportEvent.create({
             data: {
               reportId: report.id,
-              type: newStatus === "DELIVERED" ? "MARKED_DELIVERED" : "RESOLVED",
+              type: newStatus === "DELIVERED" ? "MARKED_DELIVERED" : newStatus === "REFUNDED" ? "REFUND" : "RESOLVED",
               message: `Clickyfied report update: ${newStatus}. Notes: ${adminNotes || "None"}`,
               actorLabel: "Clickyfied API",
             },

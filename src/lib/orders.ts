@@ -365,27 +365,84 @@ export async function changeOrderStatus(
   // refund/failure. No-op for ordinary orders.
   await syncCommissionForOrder(orderId, target);
 
-  // If order is REFUNDED:
-  // Ordinary orders (WEB / API): refund to user's wallet balance.
-  // Storefront orders: DO NOT credit the agent's wallet — customer is refunded via Paystack.
-  if (target === "REFUNDED") {
+  // If order is REFUNDED or FAILED:
+  // Ordinary orders (WEB / API): refund to user's wallet balance if not already refunded.
+  // Storefront orders: DO NOT credit the agent's wallet — customer is refunded via Paystack/manual.
+  if (target === "REFUNDED" || target === "FAILED") {
     if (order.source !== "STOREFRONT" && order.userId) {
-      await prisma.$transaction([
-        prisma.user.update({
-          where: { id: order.userId },
-          data: { balance: { increment: order.amount } },
-        }),
-        prisma.walletTransaction.create({
+      const existingRefund = await prisma.walletTransaction.findFirst({
+        where: {
+          userId: order.userId,
+          reference: `REF-ORDER-${order.id}`,
+        },
+      });
+
+      if (!existingRefund) {
+        await prisma.$transaction([
+          prisma.user.update({
+            where: { id: order.userId },
+            data: { balance: { increment: order.amount } },
+          }),
+          prisma.walletTransaction.create({
+            data: {
+              userId: order.userId,
+              type: "REFUND",
+              amount: order.amount,
+              status: "APPROVED",
+              reference: `REF-ORDER-${order.id}`,
+              note: `Refund for ${target === "FAILED" ? "Failed" : "Refunded"} Order #${order.id} (${order.phoneNumber})`,
+            },
+          }),
+        ]);
+      }
+    } else if (order.source === "STOREFRONT") {
+      const curReason = order.failureReason || reason || "";
+      if (!curReason.toLowerCase().includes("refund")) {
+        await prisma.order.update({
+          where: { id: orderId },
           data: {
-            userId: order.userId,
-            type: "REFUND",
-            amount: order.amount,
-            status: "APPROVED",
-            reference: `REF-ORDER-${order.id}`,
-            note: `Refund for Order #${order.id} (${order.phoneNumber})`,
+            failureReason: curReason
+              ? `${curReason} [Refund required: Storefront customer order]`
+              : "Refund required: Storefront customer order",
           },
-        }),
-      ]);
+        });
+      }
+    }
+
+    // Automatically resolve any open delivery reports for this order
+    const activeReports = await prisma.deliveryReport.findMany({
+      where: {
+        orderId,
+        status: { in: ["OPEN", "UNDER_REVIEW", "INVESTIGATING"] },
+      },
+    });
+    for (const rep of activeReports) {
+      const reportMsg =
+        order.source === "STOREFRONT"
+          ? `Order marked as ${target}. Storefront order flagged for manual refund.`
+          : `Order marked as ${target}. Refund credited to user wallet.`;
+
+      await prisma.deliveryReport.update({
+        where: { id: rep.id },
+        data: {
+          status: "REFUNDED",
+          resolvedAt: new Date(),
+          resolvedBy: actor.label,
+          adminResponse:
+            rep.adminResponse ||
+            (order.source === "STOREFRONT"
+              ? "Order failed on provider. Storefront customer manual refund required."
+              : "Order failed on provider. Amount refunded to user wallet."),
+        },
+      });
+      await prisma.deliveryReportEvent.create({
+        data: {
+          reportId: rep.id,
+          type: "REFUND",
+          message: reportMsg,
+          actorLabel: actor.label,
+        },
+      });
     }
   }
 
