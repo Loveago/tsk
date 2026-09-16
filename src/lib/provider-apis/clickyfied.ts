@@ -127,9 +127,11 @@ export class ClickyfiedClient {
       }),
     };
 
-    if (params.callbackUrl) body.callbackUrl = params.callbackUrl;
-    if (params.callbackSigningSecret || this.callbackSigningSecret) {
-      body.callbackSigningSecret = params.callbackSigningSecret || this.callbackSigningSecret;
+    const signingSecret = (params.callbackSigningSecret || this.callbackSigningSecret || "").trim();
+    // Clickify strictly requires callbackSigningSecret whenever callbackUrl is provided
+    if (params.callbackUrl && signingSecret) {
+      body.callbackUrl = params.callbackUrl;
+      body.callbackSigningSecret = signingSecret;
     }
 
     const res = await this.request<any>(

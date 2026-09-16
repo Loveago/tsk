@@ -330,14 +330,16 @@ export async function dispatchOrder(
 
     const client = new ClickyfiedClient(config.clickyfied);
     try {
-      // Use public https callbackUrl only if appBaseUrl is a valid external URL
+      // Use public https callbackUrl only if appBaseUrl is a valid external URL AND callbackSigningSecret is provided
+      const signingSecret = (config.clickyfied.callbackSigningSecret || "").trim();
       const isPublicUrl =
         appBaseUrl &&
         appBaseUrl.startsWith("https://") &&
         !appBaseUrl.includes("localhost") &&
         !appBaseUrl.includes("127.0.0.1");
 
-      const callbackUrl = isPublicUrl
+      // Clickify strictly requires callbackSigningSecret whenever callbackUrl is provided
+      const callbackUrl = isPublicUrl && signingSecret
         ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
         : undefined;
 
@@ -348,7 +350,7 @@ export async function dispatchOrder(
         externalReference,
         entries: [{ number: order.phoneNumber, allocationGB: order.gbAmount }],
         callbackUrl,
-        callbackSigningSecret: config.clickyfied.callbackSigningSecret || undefined,
+        callbackSigningSecret: signingSecret || undefined,
         idempotencyKey: externalReference,
       });
 
