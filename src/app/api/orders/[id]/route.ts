@@ -15,7 +15,7 @@ export async function GET(
     const { id } = await params;
     const orderId = Number(id);
 
-    const order = await prisma.order.findUnique({
+    let order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
         history: { orderBy: { createdAt: "asc" } },
@@ -43,6 +43,44 @@ export async function GET(
     if (!order) return apiError(404, "Order not found");
     if (order.userId !== user.id && user.role !== "ADMIN" && user.role !== "MANAGER") {
       return apiError(403, "Not allowed");
+    }
+
+    // On-demand sync if this order has an active Clickyfied delivery report
+    const initialActiveReport = order.deliveryReports.find((r) =>
+      (ACTIVE_DELIVERY_REPORT_STATUSES as string[]).includes(r.status)
+    );
+    if (initialActiveReport && (order.providerReference?.startsWith("CLICKYFIED:") || order.externalReference)) {
+      try {
+        const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+        const res = await syncClickyfiedDeliveryReport(initialActiveReport.id, "Order Detail View Sync");
+        if (res.changed) {
+          const refreshed = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+              history: { orderBy: { createdAt: "asc" } },
+              batch: { select: { id: true, batchCode: true, network: true, status: true } },
+              deliveryReports: {
+                orderBy: { createdAt: "desc" },
+                select: {
+                  id: true,
+                  seq: true,
+                  status: true,
+                  reason: true,
+                  message: true,
+                  adminNote: true,
+                  adminResponse: true,
+                  respondedAt: true,
+                  proofImageMime: true,
+                  proofImageUploadedAt: true,
+                  resolvedAt: true,
+                  createdAt: true,
+                },
+              },
+            },
+          });
+          if (refreshed) order = refreshed;
+        }
+      } catch {}
     }
 
     const { deliveryReports, ...safeOrder } = order;

@@ -599,41 +599,48 @@ export async function syncClickyfiedDeliveryReport(
       return { changed: false };
     }
 
-    // Identify Clickify order identifier
-    let clickyfiedId = report.order.providerReference?.startsWith("CLICKYFIED:")
-      ? report.order.providerReference.replace("CLICKYFIED:", "").trim()
-      : null;
-
-    if (!clickyfiedId && report.order.externalReference) {
-      clickyfiedId = report.order.externalReference;
+    // Identify all possible Clickify order identifier candidates
+    const idCandidates: string[] = [];
+    if (report.order.providerReference?.startsWith("CLICKYFIED:")) {
+      idCandidates.push(report.order.providerReference.replace("CLICKYFIED:", "").trim());
+    } else if (report.order.providerReference) {
+      idCandidates.push(report.order.providerReference.trim());
     }
-
-    if (!clickyfiedId) {
-      const config = await getProviderRoutingConfig();
-      const route = config.networkRoutes[report.order.network] || config.defaultProvider;
-      if (route === "CLICKYFIED") {
-        clickyfiedId = `TSK-ORD-${report.order.id}`;
-      }
+    if (report.order.externalReference) {
+      idCandidates.push(report.order.externalReference.trim());
     }
+    idCandidates.push(`TSK-ORD-${report.order.id}`);
+    idCandidates.push(`order-${report.order.id}`);
 
-    if (!clickyfiedId) return { changed: false };
+    const uniqueIds = Array.from(new Set(idCandidates.filter(Boolean)));
+    if (uniqueIds.length === 0) return { changed: false };
 
     const config = await getProviderRoutingConfig();
     if (!config.clickyfied.enabled) return { changed: false };
     const client = new ClickyfiedClient(config.clickyfied);
 
-    let res: any;
-    try {
-      res = await client.getNotReceivedStatus(clickyfiedId);
-    } catch (apiErr: any) {
-      res = null;
-    }
-
+    let res: any = null;
     let orderRes: any = null;
-    try {
-      orderRes = await client.getOrderStatus(clickyfiedId);
-    } catch {
-      orderRes = null;
+
+    // Robust multi-ID polling: check candidates until valid data is received
+    for (const cid of uniqueIds) {
+      if (!res) {
+        try {
+          const repRes = await client.getNotReceivedStatus(cid);
+          if (repRes && (repRes.reports || repRes.report || repRes.data || repRes.status)) {
+            res = repRes;
+          }
+        } catch {}
+      }
+      if (!orderRes) {
+        try {
+          const ordRes = await client.getOrderStatus(cid);
+          if (ordRes && (ordRes.status || ordRes.raw)) {
+            orderRes = ordRes;
+          }
+        } catch {}
+      }
+      if (res && orderRes) break;
     }
 
     if (!res && !orderRes) return { changed: false };
@@ -651,6 +658,9 @@ export async function syncClickyfiedDeliveryReport(
       repData?.resolutionNote ||
       null;
     const notesLower = String(adminNotes || "").toLowerCase();
+    const resolutionStr = String(
+      repData?.resolution || repData?.resolutionType || repData?.action || ""
+    ).toLowerCase();
 
     const rawOrderStatus = String(
       orderRes?.status || orderRes?.raw?.status || orderRes?.order?.status || ""
@@ -659,12 +669,19 @@ export async function syncClickyfiedDeliveryReport(
     const orderMappedStatus = rawOrderStatus ? mapClickyfiedStatus(rawOrderStatus, orderSummary) : null;
 
     const isFailedOrRefunded =
-      ["failed", "refund", "refunded", "fail", "failure", "unsuccessful"].includes(rawStatus) ||
+      ["failed", "refund", "refunded", "fail", "failure", "unsuccessful", "cancelled", "canceled", "rejected"].includes(rawStatus) ||
       orderMappedStatus === "FAILED" ||
-      ["failed", "cancelled", "canceled", "rejected", "error", "unsuccessful", "refunded"].includes(rawOrderStatus) ||
+      orderMappedStatus === "CANCELLED" ||
+      ["failed", "cancelled", "canceled", "rejected", "error", "unsuccessful", "refunded", "refund"].includes(rawOrderStatus) ||
       notesLower.includes("refund") ||
       notesLower.includes("failed") ||
-      notesLower.includes("fail ");
+      notesLower.includes("cancel") ||
+      notesLower.includes("reverse") ||
+      notesLower.includes("credit back") ||
+      notesLower.includes("return") ||
+      resolutionStr.includes("refund") ||
+      resolutionStr.includes("fail") ||
+      resolutionStr.includes("cancel");
 
     let newStatus = report.status;
     if (isFailedOrRefunded) {
@@ -673,8 +690,6 @@ export async function syncClickyfiedDeliveryReport(
       newStatus = "DELIVERED";
     } else if (["resolved", "completed"].includes(rawStatus)) {
       newStatus = "RESOLVED";
-    } else if (["rejected", "cancelled", "canceled"].includes(rawStatus)) {
-      newStatus = "REJECTED";
     } else if (["pending_resolution", "pending", "investigating"].includes(rawStatus)) {
       newStatus = "INVESTIGATING";
     }

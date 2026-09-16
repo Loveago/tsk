@@ -88,6 +88,45 @@ export async function GET(request: NextRequest) {
     const stats: Record<string, number> = {};
     for (const row of byStatus) stats[row.status] = row._count._all;
 
+    // On-demand sync for open reports in the admin queue
+    const openAdminReports = data.filter((r) => ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status));
+    if (openAdminReports.length > 0) {
+      try {
+        const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+        await Promise.allSettled(
+          openAdminReports.slice(0, 5).map(async (rep: any) => {
+            const res = await syncClickyfiedDeliveryReport(rep.id, "Admin Queue View Sync");
+            if (res.changed) {
+              const refreshed = await prisma.deliveryReport.findUnique({
+                where: { id: rep.id },
+                select: {
+                  status: true,
+                  adminNote: true,
+                  adminResponse: true,
+                  respondedAt: true,
+                  proofImageMime: true,
+                  proofImageUploadedAt: true,
+                  resolvedAt: true,
+                  order: { select: { status: true, failureReason: true } },
+                },
+              });
+              if (refreshed) {
+                rep.status = refreshed.status;
+                rep.adminResponse = refreshed.adminResponse;
+                rep.proofImageMime = refreshed.proofImageMime;
+                rep.proofImageUploadedAt = refreshed.proofImageUploadedAt;
+                rep.resolvedAt = refreshed.resolvedAt;
+                if (refreshed.order) {
+                  rep.order.status = refreshed.order.status;
+                  rep.order.failureReason = refreshed.order.failureReason;
+                }
+              }
+            }
+          })
+        );
+      } catch {}
+    }
+
     return NextResponse.json({
       data: data.map((r) => ({ ...r, code: deliveryReportCode(r.seq) })),
       stats,

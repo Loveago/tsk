@@ -66,6 +66,29 @@ export async function GET(request: NextRequest) {
         }),
         prisma.deliveryReport.count({ where: reportWhere }),
       ]);
+      // On-demand sync for open reports in My Reports view
+      const openReportsToSync = reports.filter((r) => ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status));
+      if (openReportsToSync.length > 0) {
+        try {
+          const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+          await Promise.allSettled(
+            openReportsToSync.slice(0, 5).map(async (rep: any) => {
+              const res = await syncClickyfiedDeliveryReport(rep.id, "My Reports View Sync");
+              if (res.changed) {
+                const refreshed = await prisma.deliveryReport.findUnique({
+                  where: { id: rep.id },
+                  select: {
+                    ...reportLightSelect,
+                    order: { select: { id: true, phoneNumber: true, network: true, gbAmount: true, amount: true, status: true } },
+                  },
+                });
+                if (refreshed) Object.assign(rep, refreshed);
+              }
+            })
+          );
+        } catch {}
+      }
+
       const [open, investigating, closed] = await Promise.all([
         prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["OPEN", "UNDER_REVIEW"] } } }),
         prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["INVESTIGATING", "DELIVERED"] } } }),
@@ -133,6 +156,23 @@ export async function GET(request: NextRequest) {
     const reportByOrder = new Map<number, (typeof reports)[number]>();
     for (const rep of reports) {
       if (!reportByOrder.has(rep.orderId)) reportByOrder.set(rep.orderId, rep);
+    }
+
+    // On-demand sync for open reports in order-based view
+    const openOrderReports = reports.filter((r) => ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status));
+    if (openOrderReports.length > 0) {
+      try {
+        const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+        await Promise.allSettled(
+          openOrderReports.slice(0, 5).map(async (rep) => {
+            const res = await syncClickyfiedDeliveryReport(rep.id, "Not Received Orders View Sync");
+            if (res.changed) {
+              const refreshed = await prisma.deliveryReport.findUnique({ where: { id: rep.id } });
+              if (refreshed) reportByOrder.set(rep.orderId, refreshed);
+            }
+          })
+        );
+      } catch {}
     }
 
     const total = filtered.length;

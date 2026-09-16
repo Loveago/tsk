@@ -51,6 +51,7 @@ export function startProviderSyncPoller() {
       }
 
       // Also sync open or unproven delivery reports on Clickify orders
+      const fifteenSecsAgo = new Date(Date.now() - 15 * 1000);
       const openReports = await prisma.deliveryReport.findMany({
         where: {
           OR: [
@@ -63,9 +64,9 @@ export function startProviderSyncPoller() {
               { externalReference: { not: null } },
             ],
           },
-          updatedAt: { lte: thirtyTwoSecsAgo },
+          updatedAt: { lte: fifteenSecsAgo },
         },
-        take: 10,
+        take: 15,
         orderBy: { updatedAt: "asc" },
       });
 
@@ -83,7 +84,7 @@ export function startProviderSyncPoller() {
     }
   };
 
-  // Run initial poll after 5 seconds, then recurring every 25 seconds
-  setTimeout(poll, 5000);
-  setInterval(poll, 25000);
+  // Run initial poll after 3 seconds, then recurring every 15 seconds
+  setTimeout(poll, 3000);
+  setInterval(poll, 15000);
 }

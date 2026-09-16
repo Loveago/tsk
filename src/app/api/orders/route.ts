@@ -352,6 +352,17 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: {
+          deliveryReports: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              seq: true,
+              status: true,
+              proofImageMime: true,
+            },
+          },
+        },
       }),
       prisma.order.count({ where }),
     ]);
@@ -377,6 +388,49 @@ export async function GET(request: NextRequest) {
         );
       } catch (syncErr) {
         console.error("On-demand orders sync error:", syncErr);
+      }
+    }
+
+    // On-demand sync for open delivery reports on this page
+    const ordersWithOpenReports = data.filter(
+      (o: any) =>
+        o.deliveryReports?.some((r: any) => ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status)) &&
+        (o.providerReference?.startsWith("CLICKYFIED:") || o.externalReference)
+    );
+
+    if (ordersWithOpenReports.length > 0) {
+      try {
+        const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+        await Promise.allSettled(
+          ordersWithOpenReports.slice(0, 5).map(async (o: any) => {
+            const rep = o.deliveryReports?.find((r: any) =>
+              ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status)
+            );
+            if (rep) {
+              const res = await syncClickyfiedDeliveryReport(rep.id, "Orders Page View Sync");
+              if (res.changed) {
+                const refreshed = await prisma.deliveryReport.findUnique({
+                  where: { id: rep.id },
+                  select: { id: true, seq: true, status: true, proofImageMime: true },
+                });
+                if (refreshed) {
+                  rep.status = refreshed.status;
+                  rep.proofImageMime = refreshed.proofImageMime;
+                }
+                const refreshedOrder = await prisma.order.findUnique({
+                  where: { id: o.id },
+                  select: { status: true, failureReason: true },
+                });
+                if (refreshedOrder) {
+                  o.status = refreshedOrder.status;
+                  o.failureReason = refreshedOrder.failureReason;
+                }
+              }
+            }
+          })
+        );
+      } catch (repSyncErr) {
+        console.error("On-demand orders delivery report sync error:", repSyncErr);
       }
     }
 
