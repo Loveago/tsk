@@ -22,6 +22,14 @@ export function startProviderSyncPoller() {
     if (isPolling) return;
     isPolling = true;
     try {
+      // Check if automated poller is enabled in system settings (default: true)
+      const setting = await prisma.systemSetting.findUnique({
+        where: { key: "provider_sync_poller_enabled" },
+      });
+      if (setting && setting.value === "false") {
+        return;
+      }
+
       // Respect Clickify 30s rate limit (check orders last updated >= 32 seconds ago)
       const thirtyTwoSecsAgo = new Date(Date.now() - 32 * 1000);
       const inFlightOrders = await prisma.order.findMany({

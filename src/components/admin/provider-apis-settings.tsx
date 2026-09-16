@@ -337,6 +337,59 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
             </p>
           </div>
         </div>
+
+        {/* Background Status Poller Setting */}
+        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/40">
+          <div className="space-y-0.5">
+            <div className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <RefreshCw
+                className={`h-4 w-4 ${
+                  settings.provider_sync_poller_enabled !== "false"
+                    ? "text-brand-600"
+                    : "text-slate-400"
+                }`}
+              />
+              Automated Background Status Poller
+              <span
+                className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                  settings.provider_sync_poller_enabled !== "false"
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                    : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                }`}
+              >
+                {settings.provider_sync_poller_enabled !== "false" ? "Active (Every 25s)" : "Paused"}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xl leading-relaxed">
+              When <strong>ON</strong>, the server automatically queries Clickify every 25 seconds for in-flight orders and syncs their status to Completed or Failed. Turn <strong>OFF</strong> if you want to pause polling and rely strictly on callbacks and manual sync.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={settings.provider_sync_poller_enabled !== "false"}
+            onClick={() =>
+              setSettings((s) => ({
+                ...s,
+                provider_sync_poller_enabled:
+                  s.provider_sync_poller_enabled === "false" ? "true" : "false",
+              }))
+            }
+            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+              settings.provider_sync_poller_enabled !== "false"
+                ? "bg-brand-600"
+                : "bg-slate-300 dark:bg-slate-700"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                settings.provider_sync_poller_enabled !== "false"
+                  ? "left-[22px]"
+                  : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
       </div>
 
       {/* Test Feedback Banner */}
