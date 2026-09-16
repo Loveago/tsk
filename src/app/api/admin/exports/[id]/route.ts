@@ -8,15 +8,28 @@ import {
   recomputeExportBatchStatus,
 } from "@/lib/orders";
 import { statsFromCounts, batchProgress } from "@/lib/batches";
-import { BATCH_ACTION_ELIGIBLE } from "@/lib/types";
+import { BATCH_ACTION_ELIGIBLE, normalizeOrderStatus } from "@/lib/types";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
 const ACTION_TARGET: Record<string, string> = {
+  PENDING: "PENDING",
+  MARK_PENDING: "PENDING",
+  Pending: "PENDING",
+  PROCESSING: "PROCESSING",
   MARK_PROCESSING: "PROCESSING",
+  Processing: "PROCESSING",
+  PROCESSED: "SUCCESS",
+  MARK_PROCESSED: "SUCCESS",
   MARK_COMPLETED: "SUCCESS",
+  COMPLETED: "SUCCESS",
+  Processed: "SUCCESS",
   MARK_FAILED: "FAILED",
-  CANCEL: "CANCELLED",
+  CANCEL: "REFUNDED",
+  REFUND: "REFUNDED",
+  MARK_REFUND: "REFUNDED",
+  REFUNDED: "REFUNDED",
+  Refund: "REFUNDED",
 };
 
 /** Export batch detail (§30): export meta + linked batches + recipients. */
@@ -104,15 +117,17 @@ export async function POST(
     const exportBatch = await prisma.exportBatch.findUnique({ where: { id } });
     if (!exportBatch) return apiError(404, "Export batch not found");
 
-    const target = ACTION_TARGET[input.action];
-    const eligible = BATCH_ACTION_ELIGIBLE[input.action] ?? [];
+    const target = ACTION_TARGET[input.action] || normalizeOrderStatus(input.action);
+    const eligible = BATCH_ACTION_ELIGIBLE[input.action] ?? (BATCH_ACTION_ELIGIBLE[target] ?? []);
 
     let candidates = await prisma.order.findMany({
       where: input.orderIds?.length
         ? { id: { in: input.orderIds }, exportBatchId: id }
         : { exportBatchId: id },
     });
-    candidates = candidates.filter((o) => eligible.includes(o.status as never));
+    if (eligible.length > 0) {
+      candidates = candidates.filter((o) => eligible.includes(o.status as never));
+    }
 
     let applied = 0;
     let skipped = 0;
@@ -121,8 +136,8 @@ export async function POST(
 
     for (const order of candidates) {
       try {
-        // MARK_COMPLETED from PENDING must pass through PROCESSING (§16 rules)
-        if (input.action === "MARK_COMPLETED" && order.status === "PENDING") {
+        // Transition to SUCCESS from PENDING must pass through PROCESSING (§16 rules)
+        if ((input.action === "MARK_COMPLETED" || target === "SUCCESS") && order.status === "PENDING") {
           await changeOrderStatus(
             order.id,
             "PROCESSING",

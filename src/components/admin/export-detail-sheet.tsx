@@ -16,7 +16,7 @@ import { formatDateTime, formatGHS, BATCH_ACTION_ELIGIBLE } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
 import { Download } from "lucide-react";
 
-type ExportAction = "MARK_PROCESSING" | "MARK_COMPLETED" | "MARK_FAILED" | "CANCEL";
+type ExportAction = "Pending" | "Processing" | "Processed" | "Refund" | "MARK_PROCESSING" | "MARK_COMPLETED" | "MARK_FAILED" | "CANCEL";
 
 interface DetailOrder {
   id: number;
@@ -57,10 +57,9 @@ interface ExportDetail {
 }
 
 const ACTIONS: Array<{ action: ExportAction; label: string; destructive?: boolean }> = [
-  { action: "MARK_PROCESSING", label: "→ Processing" },
-  { action: "MARK_COMPLETED", label: "→ Completed" },
-  { action: "MARK_FAILED", label: "→ Failed", destructive: true },
-  { action: "CANCEL", label: "Cancel recipients", destructive: true },
+  { action: "Processing", label: "Processing" },
+  { action: "Processed", label: "Processed" },
+  { action: "Refund", label: "Refund", destructive: true },
 ];
 
 export function ExportDetailSheet({

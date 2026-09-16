@@ -118,7 +118,7 @@ export const bulkStatusSchema = z.object({
 
 // ---------- Batches ----------
 export const batchActionSchema = z.object({
-  action: z.enum(["MARK_PROCESSING", "MARK_COMPLETED", "MARK_FAILED", "CANCEL"]),
+  action: z.string().min(1),
   orderIds: z.array(z.coerce.number().int().positive()).optional(),
   reason: z.string().max(300).optional().or(z.literal("")),
   force: z.boolean().optional(),

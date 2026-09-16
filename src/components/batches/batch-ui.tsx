@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 import { BATCH_STATUS_META, type BatchStatus } from "@/lib/types";
 
 export function BatchStatusBadge({ status, className }: { status: string; className?: string }) {
-  const meta = BATCH_STATUS_META[status as BatchStatus];
+  const upper = typeof status === "string" ? status.toUpperCase() : status;
+  const meta = BATCH_STATUS_META[status] || BATCH_STATUS_META[upper] || (status === "COMPLETED" ? BATCH_STATUS_META["Processed"] : undefined);
   if (!meta) {
     return (
       <Badge variant="muted" className={className}>
@@ -34,9 +35,9 @@ export function BatchStatsChips({ stats, className }: { stats: BatchStats; class
   const chips = [
     { label: "pending", value: stats.pending, cls: "text-amber-600 dark:text-amber-400" },
     { label: "processing", value: stats.processing, cls: "text-blue-600 dark:text-blue-400" },
-    { label: "completed", value: stats.completed, cls: "text-emerald-600 dark:text-emerald-400" },
+    { label: "processed", value: stats.completed, cls: "text-emerald-600 dark:text-emerald-400" },
     { label: "failed", value: stats.failed, cls: "text-red-600 dark:text-red-400" },
-    { label: "cancelled", value: stats.cancelled, cls: "text-slate-500" },
+    { label: "refund", value: stats.cancelled, cls: "text-violet-500" },
   ];
   return (
     <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 text-xs", className)}>

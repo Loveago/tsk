@@ -302,31 +302,71 @@ export const NETWORK_META: Record<NetworkProvider, { label: string; className: s
   },
 };
 
-export const BATCH_STATUS_META: Record<BatchStatus, { label: string; className: string; dot: string }> = {
+export const BATCH_STATUS_META: Record<string, { label: string; className: string; dot: string }> = {
   PENDING: {
-    label: "PENDING",
+    label: "Pending",
+    className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+    dot: "bg-amber-500",
+  },
+  Pending: {
+    label: "Pending",
     className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
     dot: "bg-amber-500",
   },
   PROCESSING: {
-    label: "PROCESSING",
+    label: "Processing",
+    className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
+    dot: "bg-blue-500",
+  },
+  Processing: {
+    label: "Processing",
     className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
     dot: "bg-blue-500",
   },
   COMPLETED: {
-    label: "COMPLETED",
+    label: "Processed",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+    dot: "bg-emerald-500",
+  },
+  SUCCESS: {
+    label: "Processed",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+    dot: "bg-emerald-500",
+  },
+  PROCESSED: {
+    label: "Processed",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+    dot: "bg-emerald-500",
+  },
+  Processed: {
+    label: "Processed",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
     dot: "bg-emerald-500",
   },
   FAILED: {
-    label: "FAILED",
+    label: "Failed",
     className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
     dot: "bg-red-500",
   },
   CANCELLED: {
-    label: "CANCELLED",
-    className: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20",
-    dot: "bg-slate-400",
+    label: "Refund",
+    className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
+    dot: "bg-violet-500",
+  },
+  REFUNDED: {
+    label: "Refund",
+    className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
+    dot: "bg-violet-500",
+  },
+  REFUND: {
+    label: "Refund",
+    className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
+    dot: "bg-violet-500",
+  },
+  Refund: {
+    label: "Refund",
+    className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
+    dot: "bg-violet-500",
   },
 };
 
@@ -375,8 +415,25 @@ export const DELIVERY_REPORT_STATUS_META: Record<DeliveryReportStatus, { label: 
 
 /** Batch action → which individual order statuses it applies to (§5/§13 eligible recipients). */
 export const BATCH_ACTION_ELIGIBLE: Record<string, OrderStatus[]> = {
-  MARK_PROCESSING: ["PENDING"],
-  MARK_COMPLETED: ["PENDING", "PROCESSING"],
+  PENDING: ["PROCESSING", "FAILED", "CANCELLED", "SUCCESS", "REFUNDED"],
+  MARK_PENDING: ["PROCESSING", "FAILED", "CANCELLED", "SUCCESS", "REFUNDED"],
+  Pending: ["PROCESSING", "FAILED", "CANCELLED", "SUCCESS", "REFUNDED"],
+
+  PROCESSING: ["PENDING", "FAILED", "CANCELLED", "SUCCESS", "REFUNDED"],
+  MARK_PROCESSING: ["PENDING", "FAILED", "CANCELLED", "SUCCESS", "REFUNDED"],
+  Processing: ["PENDING", "FAILED", "CANCELLED", "SUCCESS", "REFUNDED"],
+
+  PROCESSED: ["PENDING", "PROCESSING", "FAILED", "CANCELLED"],
+  MARK_PROCESSED: ["PENDING", "PROCESSING", "FAILED", "CANCELLED"],
+  MARK_COMPLETED: ["PENDING", "PROCESSING", "FAILED", "CANCELLED"],
+  COMPLETED: ["PENDING", "PROCESSING", "FAILED", "CANCELLED"],
+  Processed: ["PENDING", "PROCESSING", "FAILED", "CANCELLED"],
+
   MARK_FAILED: ["PENDING", "PROCESSING"],
-  CANCEL: ["PENDING"],
+  CANCEL: ["PENDING", "PROCESSING", "FAILED", "SUCCESS"],
+
+  REFUND: ["PENDING", "PROCESSING", "SUCCESS", "FAILED", "CANCELLED"],
+  MARK_REFUND: ["PENDING", "PROCESSING", "SUCCESS", "FAILED", "CANCELLED"],
+  REFUNDED: ["PENDING", "PROCESSING", "SUCCESS", "FAILED", "CANCELLED"],
+  Refund: ["PENDING", "PROCESSING", "SUCCESS", "FAILED", "CANCELLED"],
 };

@@ -13,7 +13,7 @@ import { formatDateTime, formatGHS, BATCH_ACTION_ELIGIBLE } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
 import { FileSpreadsheet } from "lucide-react";
 
-type BatchAction = "MARK_PROCESSING" | "MARK_COMPLETED" | "MARK_FAILED" | "CANCEL";
+type BatchAction = "Pending" | "Processing" | "Processed" | "Refund" | "MARK_PROCESSING" | "MARK_COMPLETED" | "MARK_FAILED" | "CANCEL";
 
 interface DetailOrder {
   id: number;
@@ -57,10 +57,10 @@ interface BatchDetail {
 }
 
 const ACTIONS: Array<{ action: BatchAction; label: string; destructive?: boolean }> = [
-  { action: "MARK_PROCESSING", label: "→ Processing" },
-  { action: "MARK_COMPLETED", label: "→ Completed" },
-  { action: "MARK_FAILED", label: "→ Failed", destructive: true },
-  { action: "CANCEL", label: "Cancel batch", destructive: true },
+  { action: "Pending", label: "Pending" },
+  { action: "Processing", label: "Processing" },
+  { action: "Processed", label: "Processed" },
+  { action: "Refund", label: "Refund", destructive: true },
 ];
 
 export function BatchDetailSheet({

@@ -434,17 +434,17 @@ export default function AdminOrdersPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200">
           <span>{selectedBatchIds.size} batch(es) selected</span>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("MARK_PROCESSING")}>
-              → Processing
+            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("Pending")}>
+              Pending
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("MARK_COMPLETED")}>
-              → Completed
+            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("Processing")}>
+              Processing
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("MARK_FAILED")}>
-              → Failed
+            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("Processed")}>
+              Processed
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("CANCEL")}>
-              Cancel
+            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("Refund")}>
+              Refund
             </Button>
             <button
               type="button"
