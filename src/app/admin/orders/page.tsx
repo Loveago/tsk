@@ -380,11 +380,22 @@ export default function AdminOrdersPage() {
             }}
           >
             <option value="">All statuses</option>
-            {(viewMode === "storefront" ? STOREFRONT_STATUSES : BATCH_STATUSES).map((s) => (
-              <option key={s} value={s}>
-                {s.replaceAll("_", " ")}
-              </option>
-            ))}
+            {viewMode === "single"
+              ? [
+                  { value: "PENDING", label: "Pending" },
+                  { value: "PROCESSING", label: "Processing" },
+                  { value: "SUCCESS", label: "Processed" },
+                  { value: "REFUNDED", label: "Refund" },
+                ].map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))
+              : (viewMode === "storefront" ? STOREFRONT_STATUSES : BATCH_STATUSES).map((s) => (
+                  <option key={s} value={s}>
+                    {s.replaceAll("_", " ")}
+                  </option>
+                ))}
           </select>
 
           {/* Search */}
@@ -451,17 +462,17 @@ export default function AdminOrdersPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200">
           <span>{selectedOrderIds.size} order(s) selected</span>
           <div className="flex flex-wrap items-center gap-1.5">
+            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("PENDING")}>
+              Pending
+            </Button>
             <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("PROCESSING")}>
-              → Processing
+              Processing
             </Button>
             <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("SUCCESS")}>
-              → Completed
+              Processed
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("FAILED")}>
-              → Failed
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("CANCELLED")}>
-              Cancel
+            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("REFUNDED")}>
+              Refund
             </Button>
             <Button
               size="sm"

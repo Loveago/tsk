@@ -120,9 +120,11 @@ export const ALLOWED_ORDER_TRANSITIONS: Record<OrderStatus, Partial<Record<Order
   REFUNDED: {},
 };
 
-/** Normalize a status coming from the UI/API — COMPLETED is stored as SUCCESS. */
+/** Normalize a status coming from the UI/API — COMPLETED/PROCESSED is stored as SUCCESS, REFUND as REFUNDED. */
 export function normalizeOrderStatus(status: string): OrderStatus {
-  return (status === "COMPLETED" ? "SUCCESS" : status) as OrderStatus;
+  if (status === "COMPLETED" || status === "PROCESSED") return "SUCCESS";
+  if (status === "REFUND") return "REFUNDED";
+  return status as OrderStatus;
 }
 
 export function canTransition(from: string, to: string): { allowed: boolean; override: boolean } {
@@ -192,12 +194,17 @@ export const STATUS_META: Record<
     dot: "bg-blue-500",
   },
   SUCCESS: {
-    label: "COMPLETED",
+    label: "PROCESSED",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
     dot: "bg-emerald-500",
   },
   COMPLETED: {
-    label: "COMPLETED",
+    label: "PROCESSED",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+    dot: "bg-emerald-500",
+  },
+  PROCESSED: {
+    label: "PROCESSED",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
     dot: "bg-emerald-500",
   },
@@ -213,6 +220,11 @@ export const STATUS_META: Record<
   },
   REFUNDED: {
     label: "REFUNDED",
+    className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
+    dot: "bg-violet-500",
+  },
+  REFUND: {
+    label: "REFUND",
     className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
     dot: "bg-violet-500",
   },

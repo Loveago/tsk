@@ -93,15 +93,25 @@ export const packageToggleSchema = z.object({
   active: z.boolean(),
 });
 
+export const manualOrderStatusSchema = z.preprocess((val) => {
+  if (typeof val === "string") {
+    const upper = val.toUpperCase().trim();
+    if (upper === "PROCESSED" || upper === "COMPLETED") return "SUCCESS";
+    if (upper === "REFUND") return "REFUNDED";
+    return upper;
+  }
+  return val;
+}, z.enum(ORDER_STATUSES as [string, ...string[]]));
+
 export const orderStatusChangeSchema = z.object({
-  status: z.enum(ORDER_STATUSES as [string, ...string[]]),
+  status: manualOrderStatusSchema,
   reason: z.string().max(300).optional().or(z.literal("")),
   force: z.boolean().optional(),
 });
 
 export const bulkStatusSchema = z.object({
   orderIds: z.array(z.coerce.number().int().positive()).min(1),
-  status: z.enum(ORDER_STATUSES as [string, ...string[]]),
+  status: manualOrderStatusSchema,
   reason: z.string().max(300).optional().or(z.literal("")),
   force: z.boolean().optional(),
 });
