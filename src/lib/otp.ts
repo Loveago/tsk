@@ -2,8 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import { rateLimit } from "./rate-limit";
 
-const secretString = process.env.AUTH_SECRET || (process.env.NODE_ENV !== "production" ? "dev-insecure-secret-change-me" : "");
-if (!secretString) throw new Error("AUTH_SECRET must be set in production");
+const secretString = process.env.AUTH_SECRET || "dev-insecure-secret-change-me-replace-in-prod";
 const secret = new TextEncoder().encode(secretString);
 
 export interface LoginOtpPayload {

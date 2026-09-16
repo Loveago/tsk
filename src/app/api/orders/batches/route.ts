@@ -36,6 +36,45 @@ export async function GET(request: NextRequest) {
       prisma.orderBatch.count({ where }),
     ]);
 
+    // On-demand sync for in-flight Clickyfied orders belonging to these batches
+    const inFlightBatchIds = data
+      .filter((b) => b.status === "PROCESSING" || b.status === "PENDING")
+      .map((b) => b.id);
+
+    if (inFlightBatchIds.length > 0) {
+      try {
+        const thirtyTwoSecsAgo = new Date(Date.now() - 32 * 1000);
+        const inFlightOrders = await prisma.order.findMany({
+          where: {
+            batchId: { in: inFlightBatchIds },
+            status: { in: ["PENDING", "PROCESSING"] },
+            providerReference: { startsWith: "CLICKYFIED:" },
+            updatedAt: { lte: thirtyTwoSecsAgo },
+          },
+          take: 15,
+          select: { id: true, status: true, providerReference: true, updatedAt: true },
+        });
+
+        if (inFlightOrders.length > 0) {
+          const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+          await Promise.allSettled(
+            inFlightOrders.map((o) => syncClickyfiedOrder(o, "User Batches View Sync"))
+          );
+          // Refresh batch status if any orders transitioned
+          const refreshedBatches = await prisma.orderBatch.findMany({
+            where: { id: { in: inFlightBatchIds } },
+          });
+          const freshMap = new Map(refreshedBatches.map((b) => [b.id, b]));
+          for (let i = 0; i < data.length; i++) {
+            const fresh = freshMap.get(data[i].id);
+            if (fresh) data[i] = fresh;
+          }
+        }
+      } catch (syncErr) {
+        console.error("Batches view sync error:", syncErr);
+      }
+    }
+
     const aggregates = await getBatchAggregates(data.map((b) => b.id));
     const rows = data.map((b) => {
       const stats = statsFromCounts(aggregates.get(b.id)?.counts);

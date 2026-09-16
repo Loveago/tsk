@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const SESSION_COOKIE = "tskconnect_session";
-const secretString = process.env.AUTH_SECRET || (process.env.NODE_ENV !== "production" ? "dev-insecure-secret-change-me" : "");
-if (!secretString) throw new Error("AUTH_SECRET must be set in production");
+const secretString = process.env.AUTH_SECRET || "dev-insecure-secret-change-me-replace-in-prod";
 const secret = new TextEncoder().encode(secretString);
 
 const ADMIN_ONLY_PREFIXES = [

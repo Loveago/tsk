@@ -437,7 +437,8 @@ export function mapClickyfiedStatus(
     processing?: number;
     sent?: number;
     error?: number;
-  } | null
+  } | null,
+  processedAt?: string | Date | null
 ): "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" {
   if (entrySummary && typeof entrySummary.total === "number" && entrySummary.total > 0) {
     const total = entrySummary.total;
@@ -454,6 +455,9 @@ export function mapClickyfiedStatus(
 
   const s = (rawStatus || "").trim().toLowerCase();
   if (["completed", "delivered", "sent", "processed", "success"].includes(s)) {
+    return "SUCCESS";
+  }
+  if (processedAt && !["failed", "rejected", "error", "unsuccessful", "cancelled", "canceled"].includes(s)) {
     return "SUCCESS";
   }
   if (["processing", "in_progress", "sending", "in-progress"].includes(s)) {
@@ -474,7 +478,7 @@ export function mapClickyfiedStatus(
 
 // In-memory set to prevent concurrent requests to the same order
 const syncingOrders = new Set<number>();
-// Cache of last checked timestamp per order to respect rate limit (15s)
+// Cache of last checked timestamp per order to respect Clickify rate limit (32s)
 const lastCheckedOrders = new Map<number, number>();
 
 /**
@@ -499,7 +503,7 @@ export async function syncClickyfiedOrder(
 
   const now = Date.now();
   const lastChecked = lastCheckedOrders.get(orderId) || 0;
-  if (!options.forceCheck && now - lastChecked < 15000) {
+  if (!options.forceCheck && now - lastChecked < 32000) {
     return { changed: false };
   }
 
@@ -532,8 +536,9 @@ export async function syncClickyfiedOrder(
     const rawAny = res.raw as any;
     const summary = rawAny?.order?.entrySummary || rawAny?.entrySummary;
     const rawStatus = rawAny?.order?.status || res.status || rawAny?.status;
+    const processedAt = rawAny?.order?.processedAt || rawAny?.processedAt;
 
-    const targetStatus = mapClickyfiedStatus(rawStatus, summary);
+    const targetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
     if (targetStatus && targetStatus !== order.status) {
       await changeOrderStatus(
@@ -548,6 +553,10 @@ export async function syncClickyfiedOrder(
 
     return { changed: false, newStatus: order.status };
   } catch (err: any) {
+    // If rate limited by Clickify (429), silently return unchanged without throwing
+    if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("Polling too frequently")) {
+      return { changed: false, error: "Rate limit: wait 30s" };
+    }
     return { changed: false, error: err?.message || "Sync failed" };
   } finally {
     syncingOrders.delete(orderId);

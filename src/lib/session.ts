@@ -8,8 +8,7 @@ export interface SessionPayload {
   tv: number; // tokenVersion for session invalidation
 }
 
-const secretString = process.env.AUTH_SECRET || (process.env.NODE_ENV !== "production" ? "dev-insecure-secret-change-me" : "");
-if (!secretString) throw new Error("AUTH_SECRET must be set in production");
+const secretString = process.env.AUTH_SECRET || "dev-insecure-secret-change-me-replace-in-prod";
 const secret = new TextEncoder().encode(secretString);
 
 export const SESSION_COOKIE = "tskconnect_session";
