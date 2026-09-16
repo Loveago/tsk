@@ -619,6 +619,7 @@ export async function syncClickyfiedDeliveryReport(
     if (!clickyfiedId) return { changed: false };
 
     const config = await getProviderRoutingConfig();
+    if (!config.clickyfied.enabled) return { changed: false };
     const client = new ClickyfiedClient(config.clickyfied);
 
     let res: any;
