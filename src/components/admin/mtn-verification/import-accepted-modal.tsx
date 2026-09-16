@@ -19,6 +19,8 @@ interface PreviewData {
   totalRows: number;
   validCount: number;
   validNumbers?: string[];
+  portedCount?: number;
+  samplePorted?: { number: string; network: string }[];
   duplicateCount: number;
   duplicates?: string[];
   alreadyAcceptedCount: number;
@@ -90,8 +92,9 @@ export function ImportAcceptedModal({
         const confirmData = await confirmRes.json();
         if (!confirmRes.ok) throw new Error(confirmData.error ?? "Direct import failed");
 
+        const portedMsg = confirmData.portedCount ? ` (including ${confirmData.portedCount.toLocaleString()} ported numbers)` : "";
         const speed = confirmData.elapsedMs ? ` in ${(confirmData.elapsedMs / 1000).toFixed(1)}s` : "";
-        toast(`Successfully imported ${confirmData.imported.toLocaleString()} MTN numbers${speed}!`, "success");
+        toast(`Successfully imported ${confirmData.imported.toLocaleString()} MTN numbers${portedMsg}${speed}!`, "success");
         onSuccess();
         handleClose();
         return;
@@ -151,8 +154,9 @@ export function ImportAcceptedModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
 
+      const portedMsg = data.portedCount ? ` (including ${data.portedCount.toLocaleString()} ported numbers)` : "";
       const speedMsg = data.elapsedMs ? ` in ${(data.elapsedMs / 1000).toFixed(1)}s` : "";
-      toast(`Successfully imported ${data.imported.toLocaleString()} MTN numbers${speedMsg}!`, "success");
+      toast(`Successfully imported ${data.imported.toLocaleString()} MTN numbers${portedMsg}${speedMsg}!`, "success");
       onSuccess();
       handleClose();
     } catch (err: any) {
@@ -284,12 +288,47 @@ export function ImportAcceptedModal({
               </Button>
             </div>
 
+            {/* Ported Numbers Notification Banner */}
+            {typeof preview.portedCount === "number" && preview.portedCount > 0 && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3.5 text-xs text-indigo-950 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-200">
+                <div className="flex items-start gap-2.5">
+                  <Zap className="h-4 w-4 mt-0.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-indigo-950 dark:text-indigo-100">
+                      Ported Numbers Detected ({preview.portedCount.toLocaleString()})
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-indigo-700 dark:text-indigo-300">
+                      {preview.portedCount.toLocaleString()} valid Ghanaian number(s) with non-MTN prefixes (Telecel / AirtelTigo) were detected. Because these numbers are ported to MTN, they are accepted and will be imported into the whitelist.
+                    </p>
+                    {preview.samplePorted && preview.samplePorted.length > 0 && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">Samples:</span>
+                        {preview.samplePorted.map((item) => (
+                          <span
+                            key={item.number}
+                            className="inline-flex items-center rounded bg-white/90 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-indigo-800 shadow-sm ring-1 ring-inset ring-indigo-200 dark:bg-indigo-900/60 dark:text-indigo-200 dark:ring-indigo-700"
+                          >
+                            {item.number} ({item.network})
+                          </span>
+                        ))}
+                        {preview.portedCount > preview.samplePorted.length && (
+                          <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
+                            +{preview.portedCount - preview.samplePorted.length} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Validation Breakdown */}
             <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Import Preview Results
               </h3>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
                 <div className="rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/50">
                   <p className="text-slate-500">Total Rows</p>
                   <p className="mt-0.5 text-base font-bold text-slate-800 dark:text-white">
@@ -301,6 +340,13 @@ export function ImportAcceptedModal({
                   <p className="text-emerald-700 dark:text-emerald-400 font-medium">Valid Numbers</p>
                   <p className="mt-0.5 text-base font-bold text-emerald-700 dark:text-emerald-300">
                     {preview.validCount.toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-indigo-50 p-2.5 dark:bg-indigo-500/10">
+                  <p className="text-indigo-700 dark:text-indigo-400 font-medium">Ported Numbers</p>
+                  <p className="mt-0.5 text-base font-bold text-indigo-700 dark:text-indigo-300">
+                    {(preview.portedCount ?? 0).toLocaleString()}
                   </p>
                 </div>
 

@@ -533,7 +533,7 @@ export const mtnBatchVerifySchema = z.object({
 });
 
 export const mtnAcceptedAddSchema = z.object({
-  phoneNumber: mtnPhoneSchema,
+  phoneNumber: phoneSchema,
 });
 
 export const mtnAcceptedBulkDeleteSchema = z.object({

@@ -136,8 +136,12 @@ invalid_phone
   assert(txtPreview.validNumbers.includes(testNumberA), "TXT preview finds valid 024 number");
   assert(txtPreview.validNumbers.includes(testNumberB), "TXT preview normalizes +233 number");
   assert(txtPreview.validNumbers.includes(testNumberC), "TXT preview finds 059 number");
+  assert(txtPreview.validNumbers.includes("0201234567"), "TXT preview allows ported number with Telecel prefix");
+  assert(txtPreview.portedCount === 1, "TXT preview accurately counts 1 ported number");
+  assert(txtPreview.portedNumbers.includes("0201234567"), "TXT preview tracks ported number in portedNumbers");
+  assert(txtPreview.samplePorted.length > 0 && txtPreview.samplePorted[0].network === "Telecel", "TXT preview identifies Telecel as original network");
   assert(txtPreview.duplicateCount === 1, "TXT preview identifies duplicate line");
-  assert(txtPreview.invalidCount === 2, "TXT preview catches non-MTN number and text line");
+  assert(txtPreview.invalidCount === 1, "TXT preview catches invalid non-phone text line");
 
   // TXT with comments and commas inside comments
   const txtWithComments = `
@@ -207,6 +211,12 @@ Ama,0539990005`;
     actorLabel: "test_admin@tskconnect.com",
   });
   assert(dupImportRes.imported === 0, "Duplicate import safely skipped existing accepted numbers");
+
+  // Test adding ported number via addAcceptedMtnNumber
+  const testPortedNumber = "0209998877";
+  const portedRecord = await addAcceptedMtnNumber(testPortedNumber, "MANUAL", "test_admin@tskconnect.com");
+  assert(portedRecord.normalizedNumber === testPortedNumber, "Ported number added to accepted whitelist via addAcceptedMtnNumber");
+  assert(await isMtnNumberAccepted(testPortedNumber), "Ported number is considered accepted");
 
   // -------------------------------------------------------------------------
   // 3. VERIFICATION REQUESTS & AUTOMATIC STATUS SYNC

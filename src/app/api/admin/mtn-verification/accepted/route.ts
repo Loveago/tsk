@@ -5,6 +5,8 @@ import {
   addAcceptedMtnNumber,
   removeAcceptedMtnNumber,
   bulkRemoveAcceptedMtnNumbers,
+  isMtnPhoneNumber,
+  detectNetworkNameByPrefix,
 } from "@/lib/mtn-verification";
 import { mtnAcceptedAddSchema, mtnAcceptedBulkDeleteSchema } from "@/lib/validation";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
@@ -57,8 +59,17 @@ export async function GET(request: NextRequest) {
       prisma.acceptedMtnNumber.count({ where }),
     ]);
 
+    const enriched = items.map((item) => {
+      const isPorted = !isMtnPhoneNumber(item.normalizedNumber);
+      return {
+        ...item,
+        isPorted,
+        originalNetwork: isPorted ? detectNetworkNameByPrefix(item.normalizedNumber) : "MTN",
+      };
+    });
+
     return NextResponse.json({
-      data: items,
+      data: enriched,
       total,
       page,
       pageSize,
@@ -81,9 +92,15 @@ export async function POST(request: NextRequest) {
       admin.email
     );
 
+    const isPorted = !isMtnPhoneNumber(record.normalizedNumber);
+
     return NextResponse.json({
       success: true,
-      data: record,
+      data: {
+        ...record,
+        isPorted,
+        originalNetwork: isPorted ? detectNetworkNameByPrefix(record.normalizedNumber) : "MTN",
+      },
     });
   } catch (err: any) {
     if (err.message && !err.status) {

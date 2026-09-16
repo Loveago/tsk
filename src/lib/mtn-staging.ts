@@ -8,6 +8,8 @@ export interface StagingData {
   filename: string;
   totalRows: number;
   validNumbers: string[];
+  portedCount?: number;
+  portedNumbers?: string[];
   duplicateCount: number;
   duplicates: string[];
   alreadyAcceptedCount: number;

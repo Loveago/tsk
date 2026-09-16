@@ -13,14 +13,10 @@ import { FileWarning, Image as ImageIcon, RefreshCw } from "lucide-react";
 
 const TABS = [
   { key: "", label: "All" },
-  { key: "OPEN", label: "Open" },
   { key: "UNDER_REVIEW", label: "Under Review" },
-  { key: "INVESTIGATING", label: "Investigating" },
-  { key: "DELIVERED", label: "Delivered" },
   { key: "RESOLVED", label: "Resolved" },
   { key: "REFUNDED", label: "Refunded" },
   { key: "CONFIRM_SENT", label: "Confirm Sent" },
-  { key: "REJECTED", label: "Rejected" },
 ];
 
 interface ReportRow {

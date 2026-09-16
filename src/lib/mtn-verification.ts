@@ -11,6 +11,7 @@ import {
   AIRTELTIGO_PREFIXES,
   GHANA_PHONE_REGEX,
   MTN_PHONE_REGEX,
+  detectNetworkNameByPrefix,
 } from "./phone-utils";
 import { consumeImportStagingSession } from "./mtn-staging";
 
@@ -308,9 +309,11 @@ export async function addAcceptedMtnNumber(
   batchId?: string | null
 ) {
   const canonical = normalizeGhanaPhoneNumber(number);
-  if (!isMtnPhoneNumber(canonical)) {
-    throw new Error(`Invalid MTN phone number: ${number}`);
+  if (!isValidGhanaPhoneNumber(canonical)) {
+    throw new Error(`Invalid Ghanaian phone number: ${number}`);
   }
+  const isPorted = !isMtnPhoneNumber(canonical);
+  const detectedNetwork = isPorted ? detectNetworkNameByPrefix(canonical) : "MTN";
 
   const existing = await prisma.acceptedMtnNumber.findUnique({
     where: { normalizedNumber: canonical },
@@ -337,7 +340,7 @@ export async function addAcceptedMtnNumber(
       actorLabel: verifiedBy,
       action: "ADMIN_ADDED_ACCEPTED_MTN_NUMBER",
       target: `mtn_accepted:${canonical}`,
-      newValue: JSON.stringify({ number: canonical, source }),
+      newValue: JSON.stringify({ number: canonical, source, isPorted, originalNetwork: detectedNetwork }),
     });
   }
 
@@ -391,6 +394,9 @@ export async function bulkRemoveAcceptedMtnNumbers(ids: string[], actorLabel = "
 export interface FileParseResult {
   totalRows: number;
   validNumbers: string[];
+  portedCount: number;
+  portedNumbers: string[];
+  samplePorted: { number: string; network: string }[];
   duplicateCount: number;
   duplicates: string[];
   alreadyAcceptedCount: number;
@@ -404,6 +410,7 @@ export interface FileParseResult {
  * Supports:
  *  - TXT: 1 phone number per line
  *  - CSV: column 'number', 'phone', 'phonenumber', 'msisdn', etc., or 1st column
+ *  - Allows valid Ghanaian numbers ported to MTN (Telecel/AirtelTigo prefixes)
  */
 export async function parseMtnNumbersFile(
   content: string,
@@ -415,6 +422,7 @@ export async function parseMtnNumbersFile(
   const duplicateSet = new Set<string>();
   const invalidList: { line: number; raw: string; reason: string }[] = [];
   const normalizedValid: string[] = [];
+  const portedSet = new Set<string>();
   const seenInFile = new Set<string>();
   let totalRows = 0;
 
@@ -493,8 +501,7 @@ export async function parseMtnNumbersFile(
           continue;
         }
         if (!isMtnPhoneNumber(normalized)) {
-          invalidList.push({ line: lineNum, raw, reason: "Number is not an MTN number" });
-          continue;
+          portedSet.add(normalized);
         }
         if (seenInFile.has(normalized)) {
           duplicateSet.add(normalized);
@@ -537,13 +544,13 @@ export async function parseMtnNumbersFile(
       totalRows++;
       const normalized = normalizeGhanaPhoneNumber(raw);
 
-      if (!MTN_PHONE_REGEX.test(normalized)) {
-        if (!isValidGhanaPhoneNumber(normalized)) {
-          invalidList.push({ line: lineNum, raw, reason: "Invalid Ghanaian phone number format" });
-        } else {
-          invalidList.push({ line: lineNum, raw, reason: "Number is not an MTN number" });
-        }
+      if (!isValidGhanaPhoneNumber(normalized)) {
+        invalidList.push({ line: lineNum, raw, reason: "Invalid Ghanaian phone number format" });
         continue;
+      }
+
+      if (!isMtnPhoneNumber(normalized)) {
+        portedSet.add(normalized);
       }
 
       if (seenInFile.has(normalized)) {
@@ -581,13 +588,20 @@ export async function parseMtnNumbersFile(
     }
   }
 
-
   const validNumbersToImport = normalizedValid.filter((n) => !alreadyAcceptedSet.has(n));
   const alreadyAcceptedList = normalizedValid.filter((n) => alreadyAcceptedSet.has(n));
+  const portedNumbersList = validNumbersToImport.filter((n) => portedSet.has(n));
+  const samplePorted = portedNumbersList.slice(0, 10).map((num) => ({
+    number: num,
+    network: detectNetworkNameByPrefix(num),
+  }));
 
   return {
     totalRows,
     validNumbers: validNumbersToImport,
+    portedCount: portedNumbersList.length,
+    portedNumbers: portedNumbersList,
+    samplePorted,
     duplicateCount: duplicateSet.size,
     duplicates: Array.from(duplicateSet),
     alreadyAcceptedCount: alreadyAcceptedList.length,
@@ -614,7 +628,7 @@ export async function bulkImportAcceptedMtnNumbers({
   source: string;
   actorLabel: string;
   batchId?: string | null;
-}): Promise<{ imported: number; batchId?: string | null; batchReference?: string }> {
+}): Promise<{ imported: number; portedCount: number; batchId?: string | null; batchReference?: string }> {
   let numbersToImport: string[] = [];
 
   if (sessionId) {
@@ -628,8 +642,10 @@ export async function bulkImportAcceptedMtnNumbers({
   }
 
   if (numbersToImport.length === 0) {
-    return { imported: 0, batchId: batchId ?? null };
+    return { imported: 0, portedCount: 0, batchId: batchId ?? null };
   }
+
+  const portedCount = numbersToImport.filter((n) => !isMtnPhoneNumber(n)).length;
 
   let totalImported = 0;
   const now = new Date();
@@ -639,6 +655,9 @@ export async function bulkImportAcceptedMtnNumbers({
   // Every imported group should have a batch/import record (§5)
   if (!effectiveBatchId && numbersToImport.length > 0) {
     batchRef = await generateBatchReference();
+    const notes = portedCount > 0
+      ? `Imported from ${source} (${portedCount.toLocaleString()} ported numbers accepted)`
+      : `Imported from ${source}`;
     const batch = await prisma.mtnVerificationBatch.create({
       data: {
         batchReference: batchRef,
@@ -646,7 +665,7 @@ export async function bulkImportAcceptedMtnNumbers({
         createdBy: actorLabel,
         totalNumbers: numbersToImport.length,
         verifiedCount: numbersToImport.length,
-        notes: `Imported from ${source}`,
+        notes,
         completedAt: now,
       },
     });
@@ -721,10 +740,10 @@ export async function bulkImportAcceptedMtnNumbers({
     actorLabel,
     action: "ADMIN_IMPORTED_MTN_NUMBERS",
     target: `accepted_mtn_import:${source}`,
-    newValue: JSON.stringify({ count: totalImported, source, batchId: effectiveBatchId, batchReference: batchRef }),
+    newValue: JSON.stringify({ count: totalImported, portedCount, source, batchId: effectiveBatchId, batchReference: batchRef }),
   });
 
-  return { imported: totalImported, batchId: effectiveBatchId ?? null, batchReference: batchRef };
+  return { imported: totalImported, portedCount, batchId: effectiveBatchId ?? null, batchReference: batchRef };
 }
 
 

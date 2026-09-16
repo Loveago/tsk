@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       imported: result.imported,
+      portedCount: result.portedCount,
       batchId: result.batchId,
       batchReference: result.batchReference,
       elapsedMs,

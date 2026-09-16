@@ -35,6 +35,7 @@ import { CreateBatchModal } from "@/components/admin/mtn-verification/create-bat
 import { VerifyBatchModal } from "@/components/admin/mtn-verification/verify-batch-modal";
 import { AddNumberModal } from "@/components/admin/mtn-verification/add-number-modal";
 import { NumberDetailsModal } from "@/components/admin/mtn-verification/number-details-modal";
+import { isMtnPhoneNumber, detectNetworkNameByPrefix } from "@/lib/phone-utils";
 
 export default function AdminMtnVerificationPage() {
   const router = useRouter();
@@ -674,13 +675,20 @@ export default function AdminMtnVerificationPage() {
                             </button>
                           </td>
                           <td className="px-3 py-2.5 font-mono font-semibold">
-                            <button
-                              type="button"
-                              className="text-left font-mono font-semibold text-brand-600 hover:underline dark:text-brand-400"
-                              onClick={() => openNumberDetails(r.number)}
-                            >
-                              {r.number}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="text-left font-mono font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                                onClick={() => openNumberDetails(r.number)}
+                              >
+                                {r.number}
+                              </button>
+                              {!isMtnPhoneNumber(r.number) && (
+                                <span className="inline-flex items-center rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-600/20 dark:bg-indigo-950/60 dark:text-indigo-300">
+                                  Ported: {detectNetworkNameByPrefix(r.number)}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2.5">
                             <div className="font-medium text-slate-800 dark:text-slate-200">
@@ -915,13 +923,20 @@ export default function AdminMtnVerificationPage() {
                             </button>
                           </td>
                           <td className="px-3 py-2.5 font-mono font-semibold">
-                            <button
-                              type="button"
-                              className="text-left font-mono font-semibold text-brand-600 hover:underline dark:text-brand-400"
-                              onClick={() => openNumberDetails(a.number)}
-                            >
-                              {a.number}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="text-left font-mono font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                                onClick={() => openNumberDetails(a.number)}
+                              >
+                                {a.number}
+                              </button>
+                              {(!isMtnPhoneNumber(a.number) || a.isPorted) && (
+                                <span className="inline-flex items-center rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-600/20 dark:bg-indigo-950/60 dark:text-indigo-300">
+                                  Ported: {a.originalNetwork || detectNetworkNameByPrefix(a.number)}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2.5">
                             <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
