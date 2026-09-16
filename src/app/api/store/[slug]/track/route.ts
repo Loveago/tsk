@@ -47,7 +47,9 @@ export async function POST(
       take: 6,
       include: {
         product: { include: { dataPackage: true } },
-        underlyingOrder: { select: { status: true } },
+        underlyingOrder: {
+          select: { id: true, status: true, providerReference: true, updatedAt: true },
+        },
       },
     });
 
@@ -64,6 +66,21 @@ export async function POST(
             hasUnderlying = true;
           }
         } else if (o.underlyingOrder) {
+          if (
+            (o.underlyingOrder.status === "PENDING" || o.underlyingOrder.status === "PROCESSING") &&
+            o.underlyingOrder.providerReference?.startsWith("CLICKYFIED:") &&
+            Date.now() - new Date(o.underlyingOrder.updatedAt).getTime() > 15000
+          ) {
+            try {
+              const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+              const syncRes = await syncClickyfiedOrder(o.underlyingOrder, "Storefront Track Sync");
+              if (syncRes.changed && syncRes.newStatus) {
+                o.underlyingOrder.status = syncRes.newStatus;
+              }
+            } catch (syncErr) {
+              console.error("Storefront track sync error:", syncErr);
+            }
+          }
           displayStatus =
             o.underlyingOrder.status === "SUCCESS" ? "COMPLETED" : o.underlyingOrder.status;
         }

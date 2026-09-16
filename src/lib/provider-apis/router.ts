@@ -357,6 +357,11 @@ export async function dispatchOrder(
       const orderId = submitRes.orderId || externalReference;
       const providerRef = `CLICKYFIED:${orderId}`;
 
+      const rawAny = submitRes.raw as any;
+      const summary = rawAny?.order?.entrySummary || rawAny?.entrySummary;
+      const rawStatus = rawAny?.order?.status || submitRes.status || rawAny?.status;
+      const mappedStatus = mapClickyfiedStatus(rawStatus, summary);
+
       await prisma.order.update({
         where: { id: order.id },
         data: {
@@ -366,19 +371,32 @@ export async function dispatchOrder(
         },
       });
 
-      await changeOrderStatus(
-        order.id,
-        "PROCESSING",
-        `Dispatched via Clickyfied API (Order: ${orderId})`,
-        { id: "system", label: "Clickyfied API" },
-        { force: true }
-      );
+      // Maintain identical status between Clickify and Tskconnect
+      if (mappedStatus !== order.status) {
+        await changeOrderStatus(
+          order.id,
+          mappedStatus,
+          `Dispatched via Clickyfied API (Order: ${orderId}, Provider Status: ${rawStatus || mappedStatus})`,
+          { id: "system", label: "Clickyfied API" },
+          { force: true }
+        );
+      } else {
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: order.status,
+            previousStatus: order.status,
+            note: `Dispatched via Clickyfied API (Order: ${orderId}, Provider Status: ${rawStatus || mappedStatus})`,
+            changedBy: "Clickyfied API",
+          },
+        });
+      }
 
       return {
         success: true,
         provider: "CLICKYFIED",
         providerReference: providerRef,
-        status: "PROCESSING",
+        status: mappedStatus,
         raw: submitRes,
       };
     } catch (err: any) {
@@ -401,6 +419,139 @@ export async function dispatchOrder(
   }
 
   return { success: false, provider: "MANUAL", error: `Unknown provider: ${provider}` };
+}
+
+/**
+ * Maps Clickyfied statuses and entry summaries to Tskconnect internal order statuses:
+ * - Clickify pending / accepted / submitted / queued -> "PENDING"
+ * - Clickify processing / in_progress / sending -> "PROCESSING"
+ * - Clickify completed / delivered / sent / processed / success -> "SUCCESS"
+ * - Clickify failed / rejected / error / unsuccessful -> "FAILED"
+ * - Clickify cancelled / canceled -> "CANCELLED"
+ */
+export function mapClickyfiedStatus(
+  rawStatus: string | null | undefined,
+  entrySummary?: {
+    total?: number;
+    pending?: number;
+    processing?: number;
+    sent?: number;
+    error?: number;
+  } | null
+): "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" {
+  if (entrySummary && typeof entrySummary.total === "number" && entrySummary.total > 0) {
+    const total = entrySummary.total;
+    const sent = entrySummary.sent ?? 0;
+    const error = entrySummary.error ?? 0;
+    const processing = entrySummary.processing ?? 0;
+    const pending = entrySummary.pending ?? 0;
+
+    if (sent >= total) return "SUCCESS";
+    if (error >= total) return "FAILED";
+    if (processing > 0) return "PROCESSING";
+    if (pending >= total) return "PENDING";
+  }
+
+  const s = (rawStatus || "").trim().toLowerCase();
+  if (["completed", "delivered", "sent", "processed", "success"].includes(s)) {
+    return "SUCCESS";
+  }
+  if (["processing", "in_progress", "sending", "in-progress"].includes(s)) {
+    return "PROCESSING";
+  }
+  if (["failed", "rejected", "error", "unsuccessful"].includes(s)) {
+    return "FAILED";
+  }
+  if (["cancelled", "canceled"].includes(s)) {
+    return "CANCELLED";
+  }
+  if (["pending", "accepted", "submitted", "queued", "created"].includes(s)) {
+    return "PENDING";
+  }
+
+  return "PENDING";
+}
+
+// In-memory set to prevent concurrent requests to the same order
+const syncingOrders = new Set<number>();
+// Cache of last checked timestamp per order to respect rate limit (15s)
+const lastCheckedOrders = new Map<number, number>();
+
+/**
+ * Synchronizes an order's status with Clickyfied provider API.
+ * Updates the database order if the status has changed.
+ */
+export async function syncClickyfiedOrder(
+  orderIdOrRecord: number | {
+    id: number;
+    status: string;
+    providerReference: string | null;
+    updatedAt: Date;
+  },
+  actorLabel = "Clickyfied Sync",
+  options: { forceCheck?: boolean } = {}
+): Promise<{ changed: boolean; previousStatus?: string; newStatus?: string; error?: string }> {
+  const orderId = typeof orderIdOrRecord === "number" ? orderIdOrRecord : orderIdOrRecord.id;
+
+  if (syncingOrders.has(orderId)) {
+    return { changed: false };
+  }
+
+  const now = Date.now();
+  const lastChecked = lastCheckedOrders.get(orderId) || 0;
+  if (!options.forceCheck && now - lastChecked < 15000) {
+    return { changed: false };
+  }
+
+  syncingOrders.add(orderId);
+  try {
+    const order = typeof orderIdOrRecord === "number"
+      ? await prisma.order.findUnique({ where: { id: orderId } })
+      : orderIdOrRecord;
+
+    if (!order) return { changed: false, error: "Order not found" };
+
+    // Terminal statuses do not need further polling
+    if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(order.status)) {
+      return { changed: false, newStatus: order.status };
+    }
+
+    if (!order.providerReference || !order.providerReference.startsWith("CLICKYFIED:")) {
+      return { changed: false };
+    }
+
+    const providerId = order.providerReference.replace("CLICKYFIED:", "").trim();
+    if (!providerId) return { changed: false };
+
+    lastCheckedOrders.set(orderId, now);
+
+    const config = await getProviderRoutingConfig();
+    const client = new ClickyfiedClient(config.clickyfied);
+
+    const res = await client.getOrderStatus(providerId);
+    const rawAny = res.raw as any;
+    const summary = rawAny?.order?.entrySummary || rawAny?.entrySummary;
+    const rawStatus = rawAny?.order?.status || res.status || rawAny?.status;
+
+    const targetStatus = mapClickyfiedStatus(rawStatus, summary);
+
+    if (targetStatus && targetStatus !== order.status) {
+      await changeOrderStatus(
+        order.id,
+        targetStatus,
+        `Synced with Clickyfied (${rawStatus || targetStatus})`,
+        { id: "system", label: actorLabel },
+        { force: true }
+      );
+      return { changed: true, previousStatus: order.status, newStatus: targetStatus };
+    }
+
+    return { changed: false, newStatus: order.status };
+  } catch (err: any) {
+    return { changed: false, error: err?.message || "Sync failed" };
+  } finally {
+    syncingOrders.delete(orderId);
+  }
 }
 
 /**

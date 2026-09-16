@@ -1,23 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { changeOrderStatus } from "@/lib/orders";
-import { ClickyfiedClient } from "@/lib/provider-apis/clickyfied";
-import { getProviderRoutingConfig } from "@/lib/provider-apis/router";
+import { syncClickyfiedOrder } from "@/lib/provider-apis/router";
 
 export async function GET(request: NextRequest) {
   try {
-    const config = await getProviderRoutingConfig();
-    const client = new ClickyfiedClient(config.clickyfied);
-
-    // Look for in-progress Clickyfied orders updated more than 30s ago (respect 30s rate limit)
-    const thirtySecsAgo = new Date(Date.now() - 30 * 1000);
+    // Look for in-flight Clickyfied orders (both PENDING and PROCESSING) updated more than 15s ago
+    const fifteenSecsAgo = new Date(Date.now() - 15 * 1000);
     const inFlightOrders = await prisma.order.findMany({
       where: {
-        status: "PROCESSING",
+        status: { in: ["PENDING", "PROCESSING"] },
         providerReference: { startsWith: "CLICKYFIED:" },
-        updatedAt: { lte: thirtySecsAgo },
+        updatedAt: { lte: fifteenSecsAgo },
       },
-      take: 25,
+      take: 30,
       orderBy: { updatedAt: "asc" },
     });
 
@@ -27,35 +22,11 @@ export async function GET(request: NextRequest) {
 
     for (const order of inFlightOrders) {
       checked++;
-      const providerId = order.providerReference?.replace("CLICKYFIED:", "");
-      if (!providerId) continue;
-
-      try {
-        const res = await client.getOrderStatus(providerId);
-        const st = (res.status || "").toUpperCase();
-
-        let targetStatus: string | null = null;
-        if (["COMPLETED", "DELIVERED", "SUCCESS"].includes(st)) {
-          targetStatus = "SUCCESS";
-        } else if (["FAILED", "REJECTED"].includes(st)) {
-          targetStatus = "FAILED";
-        } else if (["CANCELLED", "CANCELED"].includes(st)) {
-          targetStatus = "CANCELLED";
-        }
-
-        if (targetStatus && targetStatus !== order.status) {
-          await changeOrderStatus(
-            order.id,
-            targetStatus,
-            `Automated sync from Clickyfied: ${st}`,
-            { id: "system", label: "Provider Sync Cron" },
-            { force: true }
-          );
-          updated++;
-        }
-      } catch (err: any) {
-        // If 429 rate limit or network error, log and continue
-        errors.push(`Order #${order.id}: ${err?.message || "Sync failed"}`);
+      const res = await syncClickyfiedOrder(order, "Provider Sync Cron");
+      if (res.changed) {
+        updated++;
+      } else if (res.error) {
+        errors.push(`Order #${order.id}: ${res.error}`);
       }
     }
 

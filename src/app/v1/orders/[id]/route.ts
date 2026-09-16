@@ -69,6 +69,21 @@ export async function GET(
       throw new ApiError("ORDER_NOT_FOUND", `Order ${id} not found`, 404);
     }
 
+    if (
+      (order.status === "PENDING" || order.status === "PROCESSING") &&
+      order.providerReference?.startsWith("CLICKYFIED:")
+    ) {
+      try {
+        const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+        const syncRes = await syncClickyfiedOrder(order, "Developer API Query");
+        if (syncRes.changed && syncRes.newStatus) {
+          order.status = syncRes.newStatus;
+        }
+      } catch (syncErr) {
+        console.error("Developer API order sync error:", syncErr);
+      }
+    }
+
     const displayStatus = order.isSandbox
       ? (order.status === "SUCCESS" ? "TEST_COMPLETED" : order.status)
       : (order.status === "SUCCESS" ? "COMPLETED" : order.status);

@@ -70,6 +70,28 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const inFlightClickyfied = orders.filter(
+      (o) =>
+        (o.status === "PENDING" || o.status === "PROCESSING") &&
+        o.providerReference?.startsWith("CLICKYFIED:")
+    );
+
+    if (inFlightClickyfied.length > 0) {
+      try {
+        const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+        await Promise.allSettled(
+          inFlightClickyfied.slice(0, 10).map(async (o) => {
+            const syncRes = await syncClickyfiedOrder(o, "Developer API Bulk Status Query");
+            if (syncRes.changed && syncRes.newStatus) {
+              o.status = syncRes.newStatus;
+            }
+          })
+        );
+      } catch (syncErr) {
+        console.error("Developer API bulk status sync error:", syncErr);
+      }
+    }
+
     const orderMap = new Map<number, any>();
     for (const o of orders) {
       orderMap.set(o.id, o);

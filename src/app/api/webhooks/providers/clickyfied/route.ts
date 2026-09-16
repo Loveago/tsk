@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { changeOrderStatus } from "@/lib/orders";
 import { recordAudit } from "@/lib/audit";
+import { mapClickyfiedStatus } from "@/lib/provider-apis/router";
 
 export async function POST(request: NextRequest) {
   try {
@@ -93,28 +94,19 @@ export async function POST(request: NextRequest) {
     // Handle Order Status Changed Events
     // -----------------------------------------------------------------------
     if (order) {
-      const incomingStatus = (
-        payload?.status ||
+      const summary = payload?.order?.entrySummary || payload?.entrySummary;
+      const rawStatus =
         payload?.order?.status ||
-        (event === "order.accepted" ? "PROCESSING" : "")
-      ).toUpperCase();
+        payload?.status ||
+        (event === "order.accepted" ? "pending" : "");
 
-      let targetStatus: string | null = null;
-      if (["COMPLETED", "DELIVERED", "SUCCESS"].includes(incomingStatus)) {
-        targetStatus = "SUCCESS";
-      } else if (["FAILED", "REJECTED", "ERROR"].includes(incomingStatus)) {
-        targetStatus = "FAILED";
-      } else if (["CANCELLED", "CANCELED"].includes(incomingStatus)) {
-        targetStatus = "CANCELLED";
-      } else if (["PROCESSING", "ACCEPTED", "PENDING"].includes(incomingStatus)) {
-        targetStatus = "PROCESSING";
-      }
+      const targetStatus = mapClickyfiedStatus(rawStatus, summary);
 
       if (targetStatus && targetStatus !== order.status) {
         await changeOrderStatus(
           order.id,
           targetStatus,
-          payload?.failureReason || payload?.notes || "Updated via Clickyfied Callback",
+          payload?.failureReason || payload?.notes || `Updated via Clickyfied Callback: ${rawStatus || targetStatus}`,
           { id: "system", label: "Clickyfied Callback" },
           { force: true }
         );

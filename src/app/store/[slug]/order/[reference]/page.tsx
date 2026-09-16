@@ -91,7 +91,9 @@ export default async function StorefrontOrderPage({
     include: {
       storefront: { select: { slug: true, name: true, logoUrl: true } },
       product: { include: { dataPackage: true } },
-      underlyingOrder: { select: { status: true } },
+      underlyingOrder: {
+        select: { id: true, status: true, providerReference: true, updatedAt: true },
+      },
     },
   });
 
@@ -108,10 +110,30 @@ export default async function StorefrontOrderPage({
         include: {
           storefront: { select: { slug: true, name: true, logoUrl: true } },
           product: { include: { dataPackage: true } },
-          underlyingOrder: { select: { status: true } },
+          underlyingOrder: {
+            select: { id: true, status: true, providerReference: true, updatedAt: true },
+          },
         },
       });
       if (refreshed) order = refreshed;
+    }
+  }
+
+  // On-demand sync for in-flight Clickyfied underlying order
+  if (
+    order.underlyingOrder &&
+    (order.underlyingOrder.status === "PENDING" || order.underlyingOrder.status === "PROCESSING") &&
+    order.underlyingOrder.providerReference?.startsWith("CLICKYFIED:") &&
+    Date.now() - new Date(order.underlyingOrder.updatedAt).getTime() > 15000
+  ) {
+    try {
+      const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+      const syncRes = await syncClickyfiedOrder(order.underlyingOrder, "Storefront Order Page Sync");
+      if (syncRes.changed && syncRes.newStatus) {
+        order.underlyingOrder.status = syncRes.newStatus;
+      }
+    } catch (syncErr) {
+      console.error("Storefront order sync error:", syncErr);
     }
   }
 
