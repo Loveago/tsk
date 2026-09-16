@@ -9,7 +9,11 @@ export function StatusBadge({
   status: OrderStatus | string;
   className?: string;
 }) {
-  const meta = STATUS_META[status as OrderStatus];
+  const upper = typeof status === "string" ? status.toUpperCase() : status;
+  const meta =
+    STATUS_META[status as string] ||
+    STATUS_META[upper as string] ||
+    (typeof status === "string" ? STATUS_META[status === "COMPLETED" ? "SUCCESS" : status] : undefined);
   if (!meta) {
     return (
       <Badge variant="muted" className={className}>

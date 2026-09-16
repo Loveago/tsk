@@ -5,6 +5,7 @@ import { changeOrderStatus, bulkChangeOrderStatus } from "@/lib/orders";
 import { orderStatusChangeSchema, bulkStatusSchema } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { normalizeOrderStatus } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     const source = searchParams.get("source"); // WEB | API | STOREFRONT
 
     const where: Record<string, unknown> = {};
-    if (status) where.status = status;
+    if (status) where.status = normalizeOrderStatus(status);
     if (network) where.network = network;
     if (source) where.source = source;
     if (q) {

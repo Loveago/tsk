@@ -169,10 +169,10 @@ export function SingleOrdersTable({
                         className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-800 outline-none transition hover:border-brand-500 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-[#0d1526] dark:[&>option]:text-slate-100 cursor-pointer"
                       >
                         <option value="" disabled>Change Status ▾</option>
-                        <option value="PENDING">Pending</option>
-                        <option value="PROCESSING">Processing</option>
-                        <option value="SUCCESS">Processed</option>
-                        <option value="REFUNDED">Refund</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Processing">Processing</option>
+                        <option value="Processed">Processed</option>
+                        <option value="Refund">Refund</option>
                       </select>
                     </td>
                   )}

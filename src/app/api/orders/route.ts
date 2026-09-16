@@ -12,6 +12,7 @@ import {
 import { nextBatchCode } from "@/lib/batches";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { normalizeOrderStatus } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -336,7 +337,7 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get("to");
 
     const where: Record<string, unknown> = { userId: user.id };
-    if (status) where.status = status;
+    if (status) where.status = normalizeOrderStatus(status);
     if (network) where.network = network;
     if (q) where.phoneNumber = { contains: q };
     if (from || to) {

@@ -122,13 +122,18 @@ export const ALLOWED_ORDER_TRANSITIONS: Record<OrderStatus, Partial<Record<Order
 
 /** Normalize a status coming from the UI/API — COMPLETED/PROCESSED is stored as SUCCESS, REFUND as REFUNDED. */
 export function normalizeOrderStatus(status: string): OrderStatus {
-  if (status === "COMPLETED" || status === "PROCESSED") return "SUCCESS";
-  if (status === "REFUND") return "REFUNDED";
+  const upper = (status || "").toUpperCase().trim();
+  if (upper === "COMPLETED" || upper === "PROCESSED" || upper === "SUCCESS") return "SUCCESS";
+  if (upper === "REFUND" || upper === "REFUNDED") return "REFUNDED";
+  if (upper === "PENDING") return "PENDING";
+  if (upper === "PROCESSING") return "PROCESSING";
+  if (upper === "FAILED") return "FAILED";
+  if (upper === "CANCELLED" || upper === "CANCELED") return "CANCELLED";
   return status as OrderStatus;
 }
 
 export function canTransition(from: string, to: string): { allowed: boolean; override: boolean } {
-  const map = ALLOWED_ORDER_TRANSITIONS[from as OrderStatus];
+  const map = ALLOWED_ORDER_TRANSITIONS[normalizeOrderStatus(from)];
   if (!map) return { allowed: false, override: false };
   const entry = map[normalizeOrderStatus(to)];
   if (entry === true) return { allowed: true, override: false };
@@ -179,52 +184,72 @@ export const STATUS_META: Record<
   { label: string; className: string; dot: string }
 > = {
   AWAITING_PAYMENT: {
-    label: "AWAITING PAYMENT",
+    label: "Awaiting Payment",
     className: "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700",
     dot: "bg-slate-400",
   },
   PENDING: {
-    label: "PENDING",
+    label: "Pending",
+    className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+    dot: "bg-amber-500",
+  },
+  Pending: {
+    label: "Pending",
     className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
     dot: "bg-amber-500",
   },
   PROCESSING: {
-    label: "PROCESSING",
+    label: "Processing",
+    className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
+    dot: "bg-blue-500",
+  },
+  Processing: {
+    label: "Processing",
     className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
     dot: "bg-blue-500",
   },
   SUCCESS: {
-    label: "PROCESSED",
+    label: "Processed",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
     dot: "bg-emerald-500",
   },
   COMPLETED: {
-    label: "PROCESSED",
+    label: "Processed",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
     dot: "bg-emerald-500",
   },
   PROCESSED: {
-    label: "PROCESSED",
+    label: "Processed",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+    dot: "bg-emerald-500",
+  },
+  Processed: {
+    label: "Processed",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
     dot: "bg-emerald-500",
   },
   FAILED: {
-    label: "FAILED",
+    label: "Failed",
     className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
     dot: "bg-red-500",
   },
   CANCELLED: {
-    label: "CANCELLED",
+    label: "Cancelled",
     className: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20",
     dot: "bg-slate-400",
   },
   REFUNDED: {
-    label: "REFUNDED",
+    label: "Refund",
     className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
     dot: "bg-violet-500",
   },
   REFUND: {
-    label: "REFUND",
+    label: "Refund",
+    className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
+    dot: "bg-violet-500",
+  },
+  Refund: {
+    label: "Refund",
     className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
     dot: "bg-violet-500",
   },

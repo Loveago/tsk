@@ -22,9 +22,10 @@ export function OrdersFilterBar({
         <Label>Status</Label>
         <Select value={status} onChange={(e) => onChange({ status: e.target.value })}>
           <option value="">All</option>
-          {Object.keys(STATUS_META).map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
+          <option value="Pending">Pending</option>
+          <option value="Processing">Processing</option>
+          <option value="Processed">Processed</option>
+          <option value="Refund">Refund</option>
         </Select>
       </div>
       <div className="space-y-1.5">

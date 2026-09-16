@@ -382,10 +382,10 @@ export default function AdminOrdersPage() {
             <option value="">All statuses</option>
             {viewMode === "single"
               ? [
-                  { value: "PENDING", label: "Pending" },
-                  { value: "PROCESSING", label: "Processing" },
-                  { value: "SUCCESS", label: "Processed" },
-                  { value: "REFUNDED", label: "Refund" },
+                  { value: "Pending", label: "Pending" },
+                  { value: "Processing", label: "Processing" },
+                  { value: "Processed", label: "Processed" },
+                  { value: "Refund", label: "Refund" },
                 ].map((s) => (
                   <option key={s.value} value={s.value}>
                     {s.label}
@@ -462,16 +462,16 @@ export default function AdminOrdersPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200">
           <span>{selectedOrderIds.size} order(s) selected</span>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("PENDING")}>
+            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Pending")}>
               Pending
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("PROCESSING")}>
+            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Processing")}>
               Processing
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("SUCCESS")}>
+            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Processed")}>
               Processed
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("REFUNDED")}>
+            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Refund")}>
               Refund
             </Button>
             <Button
