@@ -474,11 +474,11 @@ export async function verifyAndSettleStorefrontOrder(reference: string): Promise
         select: { underlyingOrderId: true },
       });
       if (updated?.underlyingOrderId) {
-        // Automatically dispatch storefront order to assigned API provider
+        // Automatically dispatch storefront order to assigned API provider (or Clickify sandbox)
         try {
-          const { getProviderRoutingConfig, dispatchOrder } = await import("./provider-apis/router");
+          const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("./provider-apis/router");
           const config = await getProviderRoutingConfig();
-          if (config.enabled && config.autoDispatch) {
+          if (shouldAutoDispatch(config)) {
             dispatchOrder(updated.underlyingOrderId).catch((err) => {
               console.error(`Auto-dispatch failed for storefront order #${updated.underlyingOrderId}:`, err);
             });

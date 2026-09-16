@@ -2,7 +2,7 @@ import { prisma } from "../prisma";
 import { changeOrderStatus } from "../orders";
 import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_URL } from "./bigwindata";
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
-import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult } from "./types";
+import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig } from "./types";
 
 /**
  * Standard Ghanaian network keys supported in routing
@@ -65,6 +65,48 @@ export async function getProviderRoutingConfig(): Promise<ProviderRoutingConfig>
 }
 
 /**
+ * Check if Clickyfied integration is configured with an active API key
+ */
+export function isClickyfiedActive(clickyfied: ClickyfiedConfig): boolean {
+  return clickyfied.enabled && Boolean(clickyfied.apiKey);
+}
+
+/**
+ * Check if Clickyfied is operating in Sandbox (Testing) mode
+ */
+export function isClickyfiedSandbox(clickyfied: ClickyfiedConfig): boolean {
+  const url = (clickyfied.baseUrl || "").toLowerCase().trim();
+  if (!url) return true; // default baseUrl DEFAULT_CLICKYFIED_SANDBOX_URL is sandbox
+  return (
+    url.includes("sandbox") ||
+    url === DEFAULT_CLICKYFIED_SANDBOX_URL.toLowerCase() ||
+    url.startsWith("http://sandbox") ||
+    url.startsWith("https://sandbox")
+  );
+}
+
+/**
+ * Determines whether auto-dispatch should trigger on order creation.
+ * When Clickyfied Sandbox is active, auto-dispatch is unconditionally enabled
+ * so end-to-end sandbox testing works seamlessly across all ordering surfaces.
+ */
+export function shouldAutoDispatch(config: ProviderRoutingConfig): boolean {
+  // If Clickyfied is enabled in Sandbox mode, all orders must auto-dispatch to sandbox
+  if (config.clickyfied.enabled && isClickyfiedSandbox(config.clickyfied)) {
+    return true;
+  }
+  // Standard routing autoDispatch check
+  if (config.enabled && config.autoDispatch) {
+    return true;
+  }
+  // If Clickyfied is enabled in production and is the sole active integration
+  if (config.clickyfied.enabled && !config.bigwindata.enabled && config.autoDispatch) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Determine which provider serves a given network
  */
 export async function getProviderForNetwork(
@@ -72,7 +114,18 @@ export async function getProviderForNetwork(
   packageNameOrType?: string | null
 ): Promise<ProviderType> {
   const config = await getProviderRoutingConfig();
+
+  // 1. If Clickyfied Sandbox is active and enabled, route ALL orders to Clickyfied sandbox
+  if (config.clickyfied.enabled && isClickyfiedSandbox(config.clickyfied)) {
+    return "CLICKYFIED";
+  }
+
+  // 2. If general provider routing is disabled:
   if (!config.enabled) {
+    // If Clickyfied is enabled with production credentials and Bigwindata is disabled, route to Clickyfied
+    if (config.clickyfied.enabled && !config.bigwindata.enabled) {
+      return "CLICKYFIED";
+    }
     return "MANUAL";
   }
 
@@ -118,7 +171,17 @@ export async function getProviderForNetwork(
     }
   }
 
-  return config.defaultProvider || "MANUAL";
+  // 4. Configured default provider fallback
+  if (config.defaultProvider && config.defaultProvider !== "MANUAL") {
+    return config.defaultProvider;
+  }
+
+  // 5. If Clickyfied is enabled in production and Bigwindata is disabled
+  if (config.clickyfied.enabled && !config.bigwindata.enabled) {
+    return "CLICKYFIED";
+  }
+
+  return "MANUAL";
 }
 
 /**
@@ -156,7 +219,10 @@ export async function dispatchOrder(
   }
 
   const config = await getProviderRoutingConfig();
-  if (!config.enabled) {
+  const isSandboxMode = config.clickyfied.enabled && isClickyfiedSandbox(config.clickyfied);
+
+  // If general routing is disabled, but Clickyfied sandbox (or sole active production provider) is enabled, proceed!
+  if (!config.enabled && !isSandboxMode && !(config.clickyfied.enabled && !config.bigwindata.enabled)) {
     return {
       success: true,
       provider: "MANUAL",
@@ -264,7 +330,17 @@ export async function dispatchOrder(
 
     const client = new ClickyfiedClient(config.clickyfied);
     try {
-      const callbackUrl = `${appBaseUrl}/api/webhooks/providers/clickyfied`;
+      // Use public https callbackUrl only if appBaseUrl is a valid external URL
+      const isPublicUrl =
+        appBaseUrl &&
+        appBaseUrl.startsWith("https://") &&
+        !appBaseUrl.includes("localhost") &&
+        !appBaseUrl.includes("127.0.0.1");
+
+      const callbackUrl = isPublicUrl
+        ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
+        : undefined;
+
       // Use user-requested pattern: order-1788XXXXXXXXX
       const externalReference = generateClickyfiedReference(order.id);
 
@@ -272,7 +348,7 @@ export async function dispatchOrder(
         externalReference,
         entries: [{ number: order.phoneNumber, allocationGB: order.gbAmount }],
         callbackUrl,
-        callbackSigningSecret: config.clickyfied.callbackSigningSecret,
+        callbackSigningSecret: config.clickyfied.callbackSigningSecret || undefined,
         idempotencyKey: externalReference,
       });
 

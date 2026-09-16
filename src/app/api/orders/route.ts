@@ -298,14 +298,12 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    // If automated provider routing is enabled, dispatch to assigned APIs
+    // If automated provider routing is enabled (or Clickify sandbox is active), dispatch to assigned APIs
     try {
-      const routingEnabled = await prisma.systemSetting.findUnique({
-        where: { key: "provider_routing_enabled" },
-      });
-      if (routingEnabled?.value === "true") {
-        const { dispatchOrdersBatch } = await import("@/lib/provider-apis/router");
-        // Trigger dispatch
+      const { getProviderRoutingConfig, dispatchOrdersBatch, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
+      const config = await getProviderRoutingConfig();
+      if (shouldAutoDispatch(config)) {
+        // Trigger batch dispatch
         dispatchOrdersBatch(created.map((o) => o.id)).catch((err) => {
           console.error("Auto dispatch error:", err);
         });

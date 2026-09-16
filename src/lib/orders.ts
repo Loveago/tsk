@@ -177,19 +177,17 @@ export async function createOrder(input: CreateOrderInput) {
     },
   });
 
-  // If provider API routing is enabled, automatically dispatch the new order
-  if (!input.isSandbox) {
-    try {
-      const { getProviderRoutingConfig, dispatchOrder } = await import("./provider-apis/router");
-      const config = await getProviderRoutingConfig();
-      if (config.enabled && config.autoDispatch) {
-        dispatchOrder(order.id).catch((err) => {
-          console.error(`Auto-dispatch failed for order #${order.id}:`, err);
-        });
-      }
-    } catch (err) {
-      console.error(`Provider routing check failed for order #${order.id}:`, err);
+  // If provider API routing is enabled (or Clickify sandbox is active), auto-dispatch the new order
+  try {
+    const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("./provider-apis/router");
+    const config = await getProviderRoutingConfig();
+    if (shouldAutoDispatch(config)) {
+      dispatchOrder(order.id).catch((err) => {
+        console.error(`Auto-dispatch failed for order #${order.id}:`, err);
+      });
     }
+  } catch (err) {
+    console.error(`Provider routing check failed for order #${order.id}:`, err);
   }
 
   return order;

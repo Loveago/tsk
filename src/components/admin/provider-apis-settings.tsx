@@ -77,11 +77,29 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
       provider_route_AIRTELTIGO_BIGTIME: "CLICKYFIED",
       bigwindata_enabled: "true",
       clickyfied_enabled: "true",
-      clickyfied_client_id: DEFAULT_CLICKYFIED_CLIENT_ID,
+      clickyfied_client_id: s.clickyfied_client_id || DEFAULT_CLICKYFIED_CLIENT_ID,
       clickyfied_mtn_verification_enabled: "true",
       clickyfied_not_received_enabled: "true",
     }));
     toast("Preset applied: MTN → Bigwindata | Telecel & AirtelTigo → Clickyfied", "success");
+  };
+
+  const applyClickyfiedAllPreset = () => {
+    setSettings((s) => ({
+      ...s,
+      provider_routing_enabled: "true",
+      provider_routing_default: "CLICKYFIED",
+      provider_route_MTN: "CLICKYFIED",
+      provider_route_MTN_XPRESS: "CLICKYFIED",
+      provider_route_TELECEL: "CLICKYFIED",
+      provider_route_AIRTELTIGO_ISHARE: "CLICKYFIED",
+      provider_route_AIRTELTIGO_BIGTIME: "CLICKYFIED",
+      clickyfied_enabled: "true",
+      clickyfied_client_id: s.clickyfied_client_id || DEFAULT_CLICKYFIED_CLIENT_ID,
+      clickyfied_mtn_verification_enabled: "true",
+      clickyfied_not_received_enabled: "true",
+    }));
+    toast("Preset applied: All Networks → Clickyfied (Sandbox/Live)", "success");
   };
 
   const syncInFlight = async () => {
@@ -284,7 +302,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
           </div>
 
           <div className="flex flex-col justify-end gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -292,7 +310,16 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 onClick={applyPreset}
                 className="text-xs text-brand-600 dark:text-brand-400 border-brand-200 dark:border-brand-800 hover:bg-brand-50"
               >
-                <Zap className="h-3.5 w-3.5 mr-1 text-brand-600" /> Apply User Preset
+                <Zap className="h-3.5 w-3.5 mr-1 text-brand-600" /> Apply Split Preset
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={applyClickyfiedAllPreset}
+                className="text-xs text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50"
+              >
+                <Zap className="h-3.5 w-3.5 mr-1 text-indigo-600" /> Route All → Clickyfied
               </Button>
               <Button
                 type="button"
@@ -306,7 +333,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
               </Button>
             </div>
             <p className="text-[11px] text-slate-400">
-              Preset configures: MTN → Bigwindata | Telecel & AirtelTigo → Clickyfied.
+              Presets: <strong>Split</strong> (MTN → Bigwin, Telecel/AirtelTigo → Clickyfied) or <strong>Route All</strong> (All networks → Clickyfied).
             </p>
           </div>
         </div>
@@ -642,6 +669,22 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                   <span className="text-slate-600 font-medium">Production (Live)</span>
                 </label>
               </div>
+
+              {(settings.clickyfied_base_url || DEFAULT_CLICKYFIED_SANDBOX_URL).toLowerCase().includes("sandbox") ? (
+                <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-950/30 p-2.5 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 mt-1 shrink-0 animate-pulse" />
+                  <span>
+                    <strong>Sandbox Mode Active:</strong> All orders placed on Dashboard (Send Orders), Storefront, and Developer API automatically route to Clickyfied Sandbox for testing without touching live funds.
+                  </span>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-blue-200/80 bg-blue-50/70 dark:border-blue-900/60 dark:bg-blue-950/30 p-2.5 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                  <span className="inline-block h-2 w-2 rounded-full bg-blue-500 mt-1 shrink-0" />
+                  <span>
+                    <strong>Production Mode Active:</strong> Orders will route through Clickyfied Live API using your live production credentials.
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

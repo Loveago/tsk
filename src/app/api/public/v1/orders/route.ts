@@ -161,11 +161,11 @@ export async function POST(request: NextRequest) {
           .catch(() => undefined);
       }
 
-      // Automatically dispatch to configured provider API
+      // Automatically dispatch to configured provider API (or Clickify sandbox)
       try {
-        const { getProviderRoutingConfig, dispatchOrder } = await import("@/lib/provider-apis/router");
+        const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
         const config = await getProviderRoutingConfig();
-        if (config.enabled && config.autoDispatch) {
+        if (shouldAutoDispatch(config)) {
           dispatchOrder(order.id, { force: true }).catch((err) => {
             console.error(`Auto-dispatch failed for public v1 order #${order.id}:`, err);
           });

@@ -490,20 +490,20 @@ export async function POST(request: NextRequest) {
             packageId: pkg!.id,
             gbAmount: pkg!.gbAmount,
             amount: price,
-            status: authContext.isSandbox ? "SUCCESS" : "PENDING",
+            status: "PENDING",
             source: "API",
             externalReference: reference,
             apiCredentialId: authContext.credentialId,
             isSandbox: authContext.isSandbox,
-            completedAt: authContext.isSandbox ? new Date() : null,
+            completedAt: null,
           },
         });
 
         await tx.orderStatusHistory.create({
           data: {
             orderId: order.id,
-            status: authContext.isSandbox ? "SUCCESS" : "PENDING",
-            note: authContext.isSandbox ? "Sandbox test order" : "Order accepted via API",
+            status: "PENDING",
+            note: authContext.isSandbox ? "Sandbox test order accepted via API" : "Order accepted via API",
             changedBy: authContext.credentialId ? `api_key:${authContext.credentialId}` : "api",
           },
         });
@@ -554,7 +554,7 @@ export async function POST(request: NextRequest) {
       throw new ApiError("SERVER_ERROR", "Failed to record order in database.", 500);
     }
 
-    const responseStatus = authContext.isSandbox ? "TEST_COMPLETED" : "PENDING";
+    const responseStatus = "PENDING";
 
     // Dispatch order.created webhook event
     dispatchWebhookEvent(
@@ -568,7 +568,7 @@ export async function POST(request: NextRequest) {
         gbAmount: createdOrder.gbAmount,
         amount: createdOrder.amount,
         phoneNumber: createdOrder.phoneNumber,
-        status: responseStatus === "TEST_COMPLETED" ? "TEST_COMPLETED" : "PENDING",
+        status: responseStatus,
         isSandbox: createdOrder.isSandbox,
         createdAt: createdOrder.createdAt,
         completedAt: createdOrder.completedAt,
@@ -576,19 +576,17 @@ export async function POST(request: NextRequest) {
       createdOrder.id
     ).catch(() => undefined);
 
-    // If provider API routing is enabled and not a sandbox simulation, auto-dispatch to provider
-    if (authContext.environment === "LIVE") {
-      try {
-        const { getProviderRoutingConfig, dispatchOrder } = await import("@/lib/provider-apis/router");
-        const config = await getProviderRoutingConfig();
-        if (config.enabled && config.autoDispatch) {
-          dispatchOrder(createdOrder.id, { force: true }).catch((err) => {
-            console.error(`Auto-dispatch failed for dev v1 order #${createdOrder.id}:`, err);
-          });
-        }
-      } catch (err) {
-        console.error("Developer v1 auto-dispatch check error:", err);
+    // If provider API routing is enabled (or Clickify sandbox is active), auto-dispatch to provider
+    try {
+      const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
+      const config = await getProviderRoutingConfig();
+      if (shouldAutoDispatch(config)) {
+        dispatchOrder(createdOrder.id, { force: true }).catch((err) => {
+          console.error(`Auto-dispatch failed for dev v1 order #${createdOrder.id}:`, err);
+        });
       }
+    } catch (err) {
+      console.error("Developer v1 auto-dispatch check error:", err);
     }
 
     await logApiRequestEntry({
