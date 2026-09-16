@@ -740,6 +740,22 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
               </Button>
             </div>
           </div>
+
+          <div className="space-y-1.5">
+            <Label>Callback Signing Secret</Label>
+            <Input
+              type="text"
+              placeholder="e.g. secret_key_123456 (required by Clickify to enable instant callbacks)"
+              value={settings.clickyfied_callback_signing_secret ?? ""}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, clickyfied_callback_signing_secret: e.target.value }))
+              }
+              className="font-mono text-xs"
+            />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Clickify strictly requires a signing secret to activate real-time callbacks. When set, orders automatically include your callback endpoint.
+            </p>
+          </div>
         </div>
 
         {/* Feature Switches specific to Clickyfied Context */}
