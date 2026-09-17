@@ -54,19 +54,20 @@ export default function StorefrontIndexPage() {
         {/* Playful Inquisitive Badge */}
         <div className="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 py-1.5 text-xs font-medium text-violet-300">
           <Compass className="h-3.5 w-3.5 animate-spin text-violet-400" />
-          Independent Telecom Reseller Network
+          Well, look who&apos;s inquisitive! 👀
         </div>
 
         <div className="space-y-4">
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight">
-            Direct Telecom Bundles, <br />
+            Looking for something specific, <br />
             <span className="bg-gradient-to-r from-violet-400 via-fuchsia-300 to-pink-400 bg-clip-text text-transparent">
-              instantly delivered.
+              or just exploring?
             </span>
           </h1>
           <p className="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto">
-            Find an independent store below to browse discounted MTN, Telecel, and AirtelTigo
-            data bundles with secure Mobile Money checkout.
+            You weren&apos;t really supposed to find the engine room without a store link... but since you&apos;re here! 👀
+            Every store on <span className="text-violet-300 font-semibold">tskstore.net</span> is independently operated.
+            Type the vendor or store name you were looking for below to jump straight to their packages.
           </p>
         </div>
 
