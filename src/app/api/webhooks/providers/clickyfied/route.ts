@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
           });
           if (matchedByNote?.order) {
             targetOrder = matchedByNote.order;
-          } else {
-            const apiLog = await prisma.orderApiLog.findFirst({
+          } else if ((prisma as any).orderApiLog) {
+            const apiLog = await (prisma as any).orderApiLog.findFirst({
               where: {
                 orderId: { in: orders.map((o) => o.id) },
                 provider: "CLICKYFIED",
