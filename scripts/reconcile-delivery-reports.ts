@@ -2,16 +2,32 @@ import { prisma } from "../src/lib/prisma";
 import { syncClickyfiedDeliveryReport } from "../src/lib/provider-apis/router";
 import { changeOrderStatus } from "../src/lib/orders";
 
+/**
+ * Reconciles the batch order-1789667313720 reports with Clickyfied's true resolutions:
+ * 1. 0531955626 (3.00 GB) -> Refunded (GHS 11.25)
+ * 2. 0599305133 (2.00 GB) -> Confirmed Sent
+ * 3. 0541133597 (5.00 GB) -> Refunded (GHS 18.75)
+ * 4. 0547682963 (1.00 GB) -> Confirmed Sent
+ * 5. 0240264590 (2.00 GB) -> Refunded
+ */
 async function main() {
-  console.log("=== Reconciling Delivery Reports NR-00049, NR-00050, NR-00051 ===");
+  console.log("=== Reconciling Delivery Reports for Batch order-1789667313720 ===");
+
+  const targetPhones = [
+    "0531955626", // 3 GB -> Refunded
+    "0599305133", // 2 GB -> Confirmed Sent
+    "0541133597", // 5 GB -> Refunded
+    "0547682963", // 1 GB -> Confirmed Sent
+    "0240264590", // 2 GB -> Refunded
+  ];
 
   const reports = await prisma.deliveryReport.findMany({
     where: {
       OR: [
-        { seq: { in: [49, 50, 51] } },
+        { seq: { in: [49, 50, 51, 52, 53] } },
         {
           order: {
-            phoneNumber: { in: ["0541133597", "0547682963", "0240264590"] },
+            phoneNumber: { in: targetPhones },
           },
         },
       ],
@@ -27,43 +43,100 @@ async function main() {
     const gb = rep.order?.gbAmount;
     console.log(`\nProcessing NR-000${rep.seq} (Order #${rep.orderId}, Phone: ${phone}, ${gb} GB, current: ${rep.status})...`);
 
-    // Run syncClickyfiedDeliveryReport
-    await syncClickyfiedDeliveryReport(rep.id, "Reconcile Script");
+    if (phone === "0599305133" || phone === "0547682963" || rep.seq === 52 || rep.seq === 50) {
+      // These are CONFIRMED SENT on Clickyfied
+      console.log(`-> Setting NR-000${rep.seq} (${phone}, ${gb} GB) to DELIVERED (Confirmed Sent)...`);
+      await prisma.deliveryReport.update({
+        where: { id: rep.id },
+        data: {
+          status: "DELIVERED",
+          adminResponse: "Confirmed Sent",
+          resolvedAt: new Date(),
+          resolvedBy: "Clickyfied API",
+        },
+      });
 
-    // Re-fetch report
-    const updated = await prisma.deliveryReport.findUnique({
-      where: { id: rep.id },
-      include: { order: true },
-    });
+      if (rep.order?.id && rep.order.status === "FAILED") {
+        await changeOrderStatus(
+          rep.order.id,
+          "SUCCESS",
+          "Confirmed sent by Clickyfied provider",
+          { id: "system", label: "Reconcile Script" },
+          { force: true }
+        );
+      }
+    } else if (phone === "0531955626" || rep.seq === 53) {
+      // 3 GB -> Refunded GHS 11.25
+      console.log(`-> Setting NR-000${rep.seq} (3 GB) to REFUNDED (Refunded GHS 11.25)...`);
+      await prisma.deliveryReport.update({
+        where: { id: rep.id },
+        data: {
+          status: "REFUNDED",
+          proofImage: null,
+          proofImageMime: null,
+          adminResponse: "Refunded GHS 11.25",
+          resolvedAt: new Date(),
+          resolvedBy: "Clickyfied API",
+        },
+      });
 
-    // Ensure NR-00051 (5 GB) and NR-00050 (1 GB) reflect Clickyfied admin refund:
-    if (phone === "0541133597" || phone === "0547682963" || rep.seq === 51 || rep.seq === 50) {
-      if (updated?.status !== "REFUNDED") {
-        console.log(`-> Setting NR-000${rep.seq} to REFUNDED as resolved by Clickyfied admin...`);
-        await prisma.deliveryReport.update({
-          where: { id: rep.id },
-          data: {
-            status: "REFUNDED",
-            proofImage: null,
-            proofImageMime: null,
-            adminResponse: "Refunded by Clickyfied provider",
-            resolvedAt: new Date(),
-            resolvedBy: "Clickyfied API",
-          },
-        });
+      if (rep.order?.id && rep.order.status !== "FAILED") {
+        await changeOrderStatus(
+          rep.order.id,
+          "FAILED",
+          "Refunded GHS 11.25 on Clickyfied",
+          { id: "system", label: "Reconcile Script" },
+          { force: true }
+        );
+      }
+    } else if (phone === "0541133597" || rep.seq === 51) {
+      // 5 GB -> Refunded GHS 18.75
+      console.log(`-> Setting NR-000${rep.seq} (5 GB) to REFUNDED (Refunded GHS 18.75)...`);
+      await prisma.deliveryReport.update({
+        where: { id: rep.id },
+        data: {
+          status: "REFUNDED",
+          proofImage: null,
+          proofImageMime: null,
+          adminResponse: "Refunded GHS 18.75",
+          resolvedAt: new Date(),
+          resolvedBy: "Clickyfied API",
+        },
+      });
 
-        if (rep.order?.id && rep.order.status !== "FAILED") {
-          await changeOrderStatus(
-            rep.order.id,
-            "FAILED",
-            "Refunded on Clickyfied provider",
-            { id: "system", label: "Clickyfied Sync" },
-            { force: true }
-          );
-        }
+      if (rep.order?.id && rep.order.status !== "FAILED") {
+        await changeOrderStatus(
+          rep.order.id,
+          "FAILED",
+          "Refunded GHS 18.75 on Clickyfied",
+          { id: "system", label: "Reconcile Script" },
+          { force: true }
+        );
       }
     } else if (phone === "0240264590" || rep.seq === 49) {
-      console.log(`-> NR-000${rep.seq} (2 GB) is CONFIRMED SENT with proof.`);
+      // 2 GB -> Refunded
+      console.log(`-> Setting NR-000${rep.seq} (2 GB) to REFUNDED...`);
+      await prisma.deliveryReport.update({
+        where: { id: rep.id },
+        data: {
+          status: "REFUNDED",
+          proofImage: null,
+          proofImageMime: null,
+          adminResponse: "Refunded by Clickyfied provider",
+          resolvedAt: new Date(),
+          resolvedBy: "Clickyfied API",
+        },
+      });
+
+      if (rep.order?.id && rep.order.status !== "FAILED") {
+        await changeOrderStatus(
+          rep.order.id,
+          "FAILED",
+          "Refunded on Clickyfied provider",
+          { id: "system", label: "Reconcile Script" },
+          { force: true }
+        );
+      }
     }
 
     const finalRep = await prisma.deliveryReport.findUnique({
@@ -71,7 +144,7 @@ async function main() {
       include: { order: true },
     });
 
-    console.log(`Result: NR-000${finalRep?.seq} -> Status: ${finalRep?.status}, Order Status: ${finalRep?.order?.status}, Has Proof: ${Boolean(finalRep?.proofImage)}`);
+    console.log(`Result: NR-000${finalRep?.seq} -> Status: ${finalRep?.status}, Order Status: ${finalRep?.order?.status}, Response: ${finalRep?.adminResponse}`);
   }
 
   console.log("\nReconciliation complete!");

@@ -478,6 +478,20 @@ export async function POST(request: NextRequest) {
         };
 
         const repRes = await client.reportNotReceived(reportPayload);
+        const repId = (repRes as any)?.report?.reportId ?? (repRes as any)?.reportId ?? (repRes as any)?.id;
+
+        if (repId) {
+          await prisma.deliveryReport
+            .update({
+              where: { id: report.id },
+              data: {
+                adminNote: report.adminNote
+                  ? `${report.adminNote} [PROVIDER_REPORT_ID:${repId}]`
+                  : `[PROVIDER_REPORT_ID:${repId}]`,
+              },
+            })
+            .catch(() => {});
+        }
 
         if (orderEntryId) {
           await prisma.order
@@ -505,7 +519,7 @@ export async function POST(request: NextRequest) {
           data: {
             reportId: report.id,
             type: "INVESTIGATION_STARTED",
-            message: `Report forwarded to Clickyfied API (Order #${clickyfiedOrderId}${orderEntryId ? `, Entry #${orderEntryId}` : ""})`,
+            message: `Report forwarded to Clickyfied API (Order #${clickyfiedOrderId}${orderEntryId ? `, Entry #${orderEntryId}` : ""}${repId ? `, Provider Report #${repId}` : ""})`,
             actorLabel: "Clickyfied API",
           },
         });

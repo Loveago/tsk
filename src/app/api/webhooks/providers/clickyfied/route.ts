@@ -59,8 +59,37 @@ export async function POST(request: NextRequest) {
         // Find the specific target order in this batch:
         let targetOrder: any = null;
 
+        // 0. Match by provider reportId from deliveryReport.adminNote or OrderApiLog
+        if (repData?.reportId) {
+          const matchedByNote = await prisma.deliveryReport.findFirst({
+            where: {
+              orderId: { in: orders.map((o) => o.id) },
+              adminNote: {
+                contains: `[PROVIDER_REPORT_ID:${repData.reportId}]`,
+              },
+            },
+            include: { order: true },
+          });
+          if (matchedByNote?.order) {
+            targetOrder = matchedByNote.order;
+          } else {
+            const apiLog = await prisma.orderApiLog.findFirst({
+              where: {
+                orderId: { in: orders.map((o) => o.id) },
+                provider: "CLICKYFIED",
+                action: "NOT_RECEIVED",
+                responsePayload: { contains: `"reportId":${repData.reportId}` },
+              },
+              orderBy: { createdAt: "desc" },
+            });
+            if (apiLog?.orderId) {
+              targetOrder = orders.find((o) => o.id === apiLog.orderId);
+            }
+          }
+        }
+
         // 1. Match by orderEntryId (e.g. providerReference ends with :<repEntryId>)
-        if (repEntryId !== undefined && repEntryId !== null) {
+        if (!targetOrder && repEntryId !== undefined && repEntryId !== null) {
           targetOrder = orders.find((o) => {
             if (!o.providerReference) return false;
             const parts = o.providerReference.replace("CLICKYFIED:", "").split(":");
@@ -74,7 +103,21 @@ export async function POST(request: NextRequest) {
           targetOrder = orders.find((o) => normalizePhoneLast9(o.phoneNumber) === normRep);
         }
 
-        // 3. In single-order cases, match the order with an active delivery report or the single order
+        // 3. Match by refund amount in adminNotes against order.gbAmount
+        if (!targetOrder && repData?.adminNotes) {
+          const ghsMatch = String(repData.adminNotes).match(/Refund(?:ed)?\s+(?:GHS|GH₵)?\s*([0-9]+(?:\.[0-9]+)?)/i);
+          const gbMatch = String(repData.adminNotes).match(/Refund(?:ed)?\s+([0-9]+(?:\.[0-9]+)?)\s*GB/i);
+          if (ghsMatch) {
+            const refundedGhs = parseFloat(ghsMatch[1]);
+            const targetGb = refundedGhs / 3.75;
+            targetOrder = orders.find((o) => Math.abs(o.gbAmount - targetGb) <= 0.1);
+          } else if (gbMatch) {
+            const refundedGb = parseFloat(gbMatch[1]);
+            targetOrder = orders.find((o) => Math.abs(o.gbAmount - refundedGb) <= 0.1);
+          }
+        }
+
+        // 4. In single-order cases, match the order with an active delivery report or the single order
         if (!targetOrder && orders.length === 1) {
           targetOrder = orders[0];
         } else if (!targetOrder && orders.length > 1) {
@@ -199,6 +242,21 @@ export async function POST(request: NextRequest) {
               );
             } catch (err) {
               console.error("Failed to update order status during webhook refund:", err);
+            }
+          }
+
+          // If confirmed delivered on Clickyfied, restore order status to SUCCESS if it was previously marked FAILED
+          if (newStatus === "DELIVERED" && targetOrder && targetOrder.status === "FAILED") {
+            try {
+              await changeOrderStatus(
+                targetOrder.id,
+                "SUCCESS",
+                adminNotes || "Order confirmed sent by Clickyfied provider",
+                { id: "system", label: "Clickyfied Callback" },
+                { force: true }
+              );
+            } catch (err) {
+              console.error("Failed to restore order status during webhook delivery confirmation:", err);
             }
           }
 

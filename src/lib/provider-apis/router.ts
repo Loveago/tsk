@@ -863,6 +863,8 @@ export async function syncClickyfiedDeliveryReport(
             externalReference: true,
             network: true,
             phoneNumber: true,
+            gbAmount: true,
+            status: true,
           },
         },
       },
@@ -976,6 +978,7 @@ export async function syncClickyfiedDeliveryReport(
       : [];
 
     let repData: any = null;
+    let reportBelongsToOrder = false;
     const orderPhone9 = report.order.phoneNumber
       ? normalizePhoneLast9(report.order.phoneNumber)
       : null;
@@ -989,18 +992,63 @@ export async function syncClickyfiedDeliveryReport(
         if (orderPhone9 && rPhone && normalizePhoneLast9(rPhone) === orderPhone9) {
           return true;
         }
+        if (r.reportId && report.adminNote && (report.adminNote.includes(`[PROVIDER_REPORT_ID:${r.reportId}]`) || report.adminNote.includes(`CLICKYFIED_REPORT_ID:${r.reportId}`))) {
+          return true;
+        }
         return false;
       });
 
-      // If reportsList has only 1 report (or res.report was returned for this orderId),
-      // that report represents this delivery report!
-      if (!repData && reportsList.length === 1) {
-        repData = reportsList[0];
+      if (repData) {
+        reportBelongsToOrder = true;
+      } else if (reportsList.length === 1) {
+        const cand = reportsList[0];
+        if (!isMultiEntryBatch) {
+          repData = cand;
+          reportBelongsToOrder = true;
+        } else {
+          // In a multi-entry batch, candidate is ONLY for this order if:
+          // 1. Cand entryId matches providerEntryId
+          // 2. Cand phone matches orderPhone9
+          // 3. Cand reportId matches this report's stored reportId
+          // 4. Cand notes specify a refund that matches this order's exact gbAmount (at ~3.75 GHS/GB)
+          const candEntryId = cand.orderEntryId || cand.entryId || cand.id;
+          const candPhone = cand.number || cand.phoneNumber || cand.phone || cand.recipient;
+          const candNotes = cand.adminNotes || cand.adminNote || cand.notes || cand.resolutionNote || "";
+
+          if (candEntryId && providerEntryId && String(candEntryId) === String(providerEntryId)) {
+            repData = cand;
+            reportBelongsToOrder = true;
+          } else if (candPhone && orderPhone9 && normalizePhoneLast9(candPhone) === orderPhone9) {
+            repData = cand;
+            reportBelongsToOrder = true;
+          } else if (cand.reportId && report.adminNote && (report.adminNote.includes(`[PROVIDER_REPORT_ID:${cand.reportId}]`) || report.adminNote.includes(`CLICKYFIED_REPORT_ID:${cand.reportId}`))) {
+            repData = cand;
+            reportBelongsToOrder = true;
+          } else if (!candEntryId && !candPhone) {
+            const ghsMatch = String(candNotes).match(/Refund(?:ed)?\s+(?:GHS|GH₵)?\s*([0-9]+(?:\.[0-9]+)?)/i);
+            const gbMatch = String(candNotes).match(/Refund(?:ed)?\s+([0-9]+(?:\.[0-9]+)?)\s*GB/i);
+            if (ghsMatch) {
+              const refundedGhs = parseFloat(ghsMatch[1]);
+              const expectedGhs = (report.order.gbAmount || 0) * 3.75;
+              if (Math.abs(refundedGhs - expectedGhs) <= 0.1) {
+                repData = cand;
+                reportBelongsToOrder = true;
+              }
+            } else if (gbMatch) {
+              const refundedGb = parseFloat(gbMatch[1]);
+              if (Math.abs(refundedGb - (report.order.gbAmount || 0)) <= 0.1) {
+                repData = cand;
+                reportBelongsToOrder = true;
+              }
+            }
+          }
+        }
       }
     }
 
-    if (!repData) {
+    if (!repData && !isMultiEntryBatch) {
       repData = res?.report || res?.data?.report || res?.data || res || {};
+      reportBelongsToOrder = true;
     }
 
     const rawStatus = String(repData?.status || repData?.currentStatus || repData?.reportStatus || "").toLowerCase();
@@ -1061,6 +1109,7 @@ export async function syncClickyfiedDeliveryReport(
     // Determine if the report was refunded or rejected by Clickyfied
     const isReportRefunded =
       Boolean(repData) &&
+      reportBelongsToOrder &&
       (["failed", "refund", "refunded", "fail", "failure", "unsuccessful", "cancelled", "canceled", "rejected"].includes(rawStatus) ||
         resolutionStr.includes("refund") ||
         resolutionStr.includes("fail") ||
@@ -1075,6 +1124,7 @@ export async function syncClickyfiedDeliveryReport(
 
     const isReportDelivered =
       Boolean(repData) &&
+      reportBelongsToOrder &&
       !isReportRefunded &&
       (["confirmed_sent", "delivered"].includes(rawStatus) ||
         resolutionStr === "confirmed_sent" ||
@@ -1091,15 +1141,18 @@ export async function syncClickyfiedDeliveryReport(
       ));
 
     let newStatus = report.status;
-    if (isFailedOrRefunded) {
+    // An already DELIVERED report should never be downgraded to REFUNDED from an unmatched report
+    if (report.status === "DELIVERED" && !reportBelongsToOrder) {
+      newStatus = "DELIVERED";
+    } else if (isFailedOrRefunded) {
       newStatus = "REFUNDED";
     } else if (isReportDelivered || (phoneEntryDelivered && !isReportRefunded)) {
       newStatus = "DELIVERED";
-    } else if (["resolved", "completed"].includes(rawStatus)) {
+    } else if (["resolved", "completed"].includes(rawStatus) && reportBelongsToOrder) {
       newStatus = isReportRefunded ? "REFUNDED" : "RESOLVED";
-    } else if (["closed"].includes(rawStatus)) {
+    } else if (["closed"].includes(rawStatus) && reportBelongsToOrder) {
       newStatus = isReportRefunded ? "REFUNDED" : isReportDelivered ? "DELIVERED" : "RESOLVED";
-    } else if (["pending_resolution", "pending", "investigating"].includes(rawStatus)) {
+    } else if (["pending_resolution", "pending", "investigating"].includes(rawStatus) && reportBelongsToOrder) {
       newStatus = "INVESTIGATING";
     }
 
@@ -1138,7 +1191,7 @@ export async function syncClickyfiedDeliveryReport(
     }
 
     const statusChanged = newStatus !== report.status;
-    const notesChanged = Boolean(adminNotes && adminNotes !== report.adminResponse);
+    const notesChanged = Boolean(reportBelongsToOrder && adminNotes && adminNotes !== report.adminResponse);
 
     if (statusChanged || notesChanged || newProofAttached) {
       const resolutionDate = repData?.resolutionDate ? new Date(repData.resolutionDate) : undefined;
@@ -1146,7 +1199,7 @@ export async function syncClickyfiedDeliveryReport(
         where: { id: report.id },
         data: {
           status: newStatus,
-          adminResponse: adminNotes || report.adminResponse,
+          ...(reportBelongsToOrder && adminNotes ? { adminResponse: adminNotes } : {}),
           respondedAt: resolutionDate || report.respondedAt || new Date(),
           ...(newProofAttached
             ? {
@@ -1177,6 +1230,21 @@ export async function syncClickyfiedDeliveryReport(
           );
         } catch (orderErr) {
           console.error("Failed to update order status during delivery report refund:", orderErr);
+        }
+      }
+
+      // If report is DELIVERED and order was erroneously marked FAILED, restore order to SUCCESS
+      if (newStatus === "DELIVERED" && report.order.id && report.order.status === "FAILED") {
+        try {
+          await changeOrderStatus(
+            report.order.id,
+            "SUCCESS",
+            adminNotes || "Delivery confirmed sent by provider",
+            { id: "system", label: actorLabel },
+            { force: true }
+          );
+        } catch (orderErr) {
+          console.error("Failed to restore order status during delivery confirmation:", orderErr);
         }
       }
 
