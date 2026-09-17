@@ -950,11 +950,17 @@ export async function syncClickyfiedDeliveryReport(
     });
     const isMultiEntryBatch = returnedEntries.length > 1 || linkedCount > 1;
 
-    // Action 6: Find the matching report for this specific entry in res.reports
+    // Action 6: Extract reports from res (handling all Clickyfied response formats)
     const reportsList: any[] = Array.isArray(res?.reports)
       ? res.reports
       : res?.report
       ? [res.report]
+      : Array.isArray(res?.data?.reports)
+      ? res.data.reports
+      : res?.data?.report
+      ? [res.data.report]
+      : Array.isArray(res?.data)
+      ? res.data
       : [];
 
     let repData: any = null;
@@ -964,36 +970,38 @@ export async function syncClickyfiedDeliveryReport(
 
     if (reportsList.length > 0) {
       repData = reportsList.find((r: any) => {
-        if (providerEntryId && (r.orderEntryId || r.id) && String(r.orderEntryId || r.id) === String(providerEntryId)) {
+        if (providerEntryId && (r.orderEntryId || r.entryId || r.id) && String(r.orderEntryId || r.entryId || r.id) === String(providerEntryId)) {
           return true;
         }
-        if (orderPhone9 && r.number && normalizePhoneLast9(r.number) === orderPhone9) {
+        const rPhone = r.number || r.phoneNumber || r.phone || r.recipient;
+        if (orderPhone9 && rPhone && normalizePhoneLast9(rPhone) === orderPhone9) {
           return true;
         }
         return false;
       });
 
-      // Only fall back to the first report if this is strictly a single-entry order
-      if (!repData && !isMultiEntryBatch && reportsList.length === 1) {
+      // If reportsList has only 1 report (or res.report was returned for this orderId),
+      // that report represents this delivery report!
+      if (!repData && reportsList.length === 1) {
         repData = reportsList[0];
       }
     }
 
-    // Never fall back to generic res.report in a multi-entry batch if this entry did not match
-    if (!repData && !isMultiEntryBatch) {
-      repData = res?.report || res?.data || res || {};
+    if (!repData) {
+      repData = res?.report || res?.data?.report || res?.data || res || {};
     }
 
-    const rawStatus = String(repData?.status || "").toLowerCase();
+    const rawStatus = String(repData?.status || repData?.currentStatus || repData?.reportStatus || "").toLowerCase();
     const adminNotes =
       repData?.adminNotes ||
       repData?.adminNote ||
       repData?.notes ||
       repData?.resolutionNote ||
+      repData?.message ||
       null;
     const notesLower = String(adminNotes || "").toLowerCase();
     const resolutionStr = String(
-      repData?.resolution || repData?.resolutionType || repData?.action || ""
+      repData?.resolution || repData?.resolutionType || repData?.action || repData?.decision || ""
     ).toLowerCase();
 
     const rawOrderStatus = String(
@@ -1004,11 +1012,12 @@ export async function syncClickyfiedDeliveryReport(
 
     let phoneEntryFailed = false;
     let phoneEntryDelivered = false;
-    if (isMultiEntryBatch && report.order.phoneNumber) {
+    if (report.order.phoneNumber) {
       const matchedEntry = returnedEntries.find(
         (e) =>
           (providerEntryId && (e.id || e.orderEntryId || e.entryId) && String(e.id || e.orderEntryId || e.entryId) === String(providerEntryId)) ||
-          (e.number && normalizePhoneLast9(e.number) === orderPhone9)
+          ((e.number || (e as any).phoneNumber || (e as any).phone || (e as any).recipient) &&
+            normalizePhoneLast9((e.number || (e as any).phoneNumber || (e as any).phone || (e as any).recipient)!) === orderPhone9)
       );
       if (matchedEntry) {
         const entrySt = String(matchedEntry.currentStatus || matchedEntry.status || "").toLowerCase();
@@ -1027,47 +1036,59 @@ export async function syncClickyfiedDeliveryReport(
       }
     }
 
-    const isSingleEntryFailedOrRefunded =
-      ["failed", "refund", "refunded", "fail", "failure", "unsuccessful", "cancelled", "canceled", "rejected"].includes(rawStatus) ||
-      orderMappedStatus === "FAILED" ||
-      orderMappedStatus === "CANCELLED" ||
-      ["failed", "cancelled", "canceled", "rejected", "error", "unsuccessful", "refunded", "refund"].includes(rawOrderStatus) ||
-      notesLower.includes("refund") ||
-      notesLower.includes("failed") ||
-      notesLower.includes("cancel") ||
-      notesLower.includes("reverse") ||
-      notesLower.includes("credit back") ||
-      notesLower.includes("return") ||
-      resolutionStr.includes("refund") ||
-      resolutionStr.includes("fail") ||
-      resolutionStr.includes("cancel");
+    const evidenceUrl =
+      repData?.evidenceUrl ||
+      repData?.evidence_url ||
+      repData?.proofUrl ||
+      repData?.proof_url ||
+      repData?.imageUrl ||
+      repData?.image_url ||
+      repData?.evidence?.url ||
+      null;
 
-    // In a multi-entry batch, only refund if THIS specific recipient failed/refunded.
-    // In a single-entry order, follow the order/report status directly.
-    const isFailedOrRefunded = isMultiEntryBatch
-      ? phoneEntryFailed || (repData && ["failed", "refund", "refunded", "cancelled", "rejected"].includes(rawStatus))
-      : isSingleEntryFailedOrRefunded;
+    // Determine if the report was refunded or rejected by Clickyfied
+    const isReportRefunded =
+      Boolean(repData) &&
+      (["failed", "refund", "refunded", "fail", "failure", "unsuccessful", "cancelled", "canceled", "rejected"].includes(rawStatus) ||
+        resolutionStr.includes("refund") ||
+        resolutionStr.includes("fail") ||
+        resolutionStr.includes("cancel") ||
+        resolutionStr.includes("reject") ||
+        notesLower.includes("refund") ||
+        notesLower.includes("failed") ||
+        notesLower.includes("cancel") ||
+        notesLower.includes("reverse") ||
+        notesLower.includes("credit back") ||
+        notesLower.includes("return"));
+
+    const isReportDelivered =
+      Boolean(repData) &&
+      (["confirmed_sent", "sent", "delivered"].includes(rawStatus) ||
+        resolutionStr.includes("sent") ||
+        resolutionStr.includes("delivered") ||
+        Boolean(evidenceUrl));
+
+    const isFailedOrRefunded =
+      isReportRefunded ||
+      phoneEntryFailed ||
+      (!isMultiEntryBatch && (
+        orderMappedStatus === "FAILED" ||
+        orderMappedStatus === "CANCELLED" ||
+        ["failed", "cancelled", "canceled", "rejected", "error", "unsuccessful", "refunded", "refund"].includes(rawOrderStatus)
+      ));
 
     let newStatus = report.status;
     if (isFailedOrRefunded) {
       newStatus = "REFUNDED";
-    } else if (["confirmed_sent", "sent", "delivered"].includes(rawStatus) || phoneEntryDelivered) {
+    } else if (isReportDelivered || (phoneEntryDelivered && !isReportRefunded)) {
       newStatus = "DELIVERED";
     } else if (["resolved", "completed"].includes(rawStatus)) {
-      newStatus = "RESOLVED";
+      newStatus = isReportRefunded ? "REFUNDED" : "RESOLVED";
+    } else if (["closed"].includes(rawStatus)) {
+      newStatus = isReportRefunded ? "REFUNDED" : isReportDelivered ? "DELIVERED" : "RESOLVED";
     } else if (["pending_resolution", "pending", "investigating"].includes(rawStatus)) {
       newStatus = "INVESTIGATING";
     }
-
-    const evidenceUrl =
-      repData.evidenceUrl ||
-      repData.evidence_url ||
-      repData.proofUrl ||
-      repData.proof_url ||
-      repData.imageUrl ||
-      repData.image_url ||
-      repData.evidence?.url ||
-      null;
 
     let proofImage = report.proofImage;
     let proofImageMime = report.proofImageMime;
@@ -1101,11 +1122,13 @@ export async function syncClickyfiedDeliveryReport(
     const notesChanged = Boolean(adminNotes && adminNotes !== report.adminResponse);
 
     if (statusChanged || notesChanged || newProofAttached) {
+      const resolutionDate = repData?.resolutionDate ? new Date(repData.resolutionDate) : undefined;
       await prisma.deliveryReport.update({
         where: { id: report.id },
         data: {
           status: newStatus,
           adminResponse: adminNotes || report.adminResponse,
+          respondedAt: resolutionDate || report.respondedAt || new Date(),
           ...(newProofAttached
             ? {
                 proofImage,
@@ -1116,7 +1139,7 @@ export async function syncClickyfiedDeliveryReport(
             : {}),
           ...(newStatus === "RESOLVED" || newStatus === "DELIVERED" || newStatus === "REFUNDED"
             ? {
-                resolvedAt: report.resolvedAt || new Date(),
+                resolvedAt: resolutionDate || report.resolvedAt || new Date(),
                 resolvedBy: report.resolvedBy || "Clickyfied API",
               }
             : {}),

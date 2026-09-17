@@ -423,8 +423,14 @@ export class ClickyfiedClient {
    * Action 6: Get Not Received Status
    */
   async getNotReceivedStatus(orderId: string | number): Promise<any> {
+    let targetId = String(orderId).trim();
+    if (!targetId.startsWith("order-")) {
+      try {
+        targetId = await this.resolveCanonicalOrderId(targetId);
+      } catch {}
+    }
     return this.request<any>(
-      `/orders/${encodeURIComponent(String(orderId))}/not-received`
+      `/orders/${encodeURIComponent(targetId)}/not-received`
     );
   }
 
