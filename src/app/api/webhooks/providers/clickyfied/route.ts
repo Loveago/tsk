@@ -51,13 +51,19 @@ export async function POST(request: NextRequest) {
       payload?.report
     ) {
       const repData = payload?.report;
-      if (order) {
+      if (orders.length > 0) {
+        // Find the specific report for the matching order(s)
+        const orderIds = orders.map((o) => o.id);
         const report = await prisma.deliveryReport.findFirst({
-          where: { orderId: order.id },
+          where: { orderId: { in: orderIds } },
           orderBy: { createdAt: "desc" },
         });
 
-        if (report) {
+        const targetOrder = report
+          ? orders.find((o) => o.id === report.orderId) ?? orders[0]
+          : orders[0];
+
+        if (report && targetOrder) {
           const rawStatus = String(repData?.status || "").toLowerCase();
           const adminNotes =
             repData?.adminNotes ||
@@ -137,11 +143,11 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          // If failed/refunded on Clickyfied, update the order to FAILED (which refunds wallet or flags storefront)
-          if (newStatus === "REFUNDED" && order) {
+          // If failed/refunded on Clickyfied, update ONLY this specific reported order to FAILED
+          if (newStatus === "REFUNDED" && targetOrder) {
             try {
               await changeOrderStatus(
-                order.id,
+                targetOrder.id,
                 "FAILED",
                 adminNotes || "Order failed on Clickyfied and was refunded",
                 { id: "system", label: "Clickyfied Callback" },

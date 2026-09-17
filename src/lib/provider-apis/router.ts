@@ -781,6 +781,7 @@ export async function syncClickyfiedDeliveryReport(
             providerReference: true,
             externalReference: true,
             network: true,
+            phoneNumber: true,
           },
         },
       },
@@ -867,7 +868,26 @@ export async function syncClickyfiedDeliveryReport(
     const orderSummary = orderRes?.raw?.order?.entrySummary || orderRes?.raw?.entrySummary;
     const orderMappedStatus = rawOrderStatus ? mapClickyfiedStatus(rawOrderStatus, orderSummary) : null;
 
-    const isFailedOrRefunded =
+    // Check if the Clickyfied order was a multi-entry batch (legacy order)
+    const returnedEntries: Array<{ number?: string; status?: string; currentStatus?: string }> =
+      orderRes?.raw?.order?.entries || orderRes?.raw?.entries || [];
+    const isMultiEntryBatch = returnedEntries.length > 1;
+
+    let phoneEntryFailed = false;
+    let phoneEntryDelivered = false;
+    if (isMultiEntryBatch && report.order.phoneNumber) {
+      const orderPhone9 = normalizePhoneLast9(report.order.phoneNumber);
+      const matchedEntry = returnedEntries.find(
+        (e) => normalizePhoneLast9(e.number) === orderPhone9
+      );
+      if (matchedEntry) {
+        const entrySt = String(matchedEntry.currentStatus || matchedEntry.status || "").toLowerCase();
+        phoneEntryFailed = ["failed", "refund", "refunded", "cancelled", "rejected", "error"].includes(entrySt);
+        phoneEntryDelivered = ["processed", "delivered", "confirmed_sent", "sent", "success"].includes(entrySt);
+      }
+    }
+
+    const isSingleEntryFailedOrRefunded =
       ["failed", "refund", "refunded", "fail", "failure", "unsuccessful", "cancelled", "canceled", "rejected"].includes(rawStatus) ||
       orderMappedStatus === "FAILED" ||
       orderMappedStatus === "CANCELLED" ||
@@ -882,10 +902,16 @@ export async function syncClickyfiedDeliveryReport(
       resolutionStr.includes("fail") ||
       resolutionStr.includes("cancel");
 
+    // In a multi-entry batch, only refund if THIS specific recipient failed/refunded.
+    // In a single-entry order, follow the order/report status directly.
+    const isFailedOrRefunded = isMultiEntryBatch
+      ? phoneEntryFailed
+      : isSingleEntryFailedOrRefunded;
+
     let newStatus = report.status;
     if (isFailedOrRefunded) {
       newStatus = "REFUNDED";
-    } else if (["confirmed_sent", "sent", "delivered"].includes(rawStatus)) {
+    } else if (["confirmed_sent", "sent", "delivered"].includes(rawStatus) || phoneEntryDelivered) {
       newStatus = "DELIVERED";
     } else if (["resolved", "completed"].includes(rawStatus)) {
       newStatus = "RESOLVED";
