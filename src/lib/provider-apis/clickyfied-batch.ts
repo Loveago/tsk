@@ -124,6 +124,8 @@ export async function getPendingMtnClickyfiedOrders() {
     where: {
       status: "PENDING",
       network: "MTN",
+      providerReference: null,
+      exportBatchId: null,
     },
     orderBy: { createdAt: "asc" },
     select: {
@@ -134,6 +136,7 @@ export async function getPendingMtnClickyfiedOrders() {
       amount: true,
       userId: true,
       source: true,
+      batchId: true,
       externalReference: true,
       createdAt: true,
     },
@@ -369,6 +372,19 @@ export async function dispatchClickyfiedMtnBatch(
               changedBy: actorLabel,
             },
           });
+        }
+
+        // Recompute parent batch status for any batches containing these orders
+        const parentBatchIds = Array.from(
+          new Set(batch.orders.map((o) => o.batchId).filter(Boolean) as string[])
+        );
+        for (const bId of parentBatchIds) {
+          try {
+            const { recomputeBatchStatus } = await import("../orders");
+            await recomputeBatchStatus(bId);
+          } catch {
+            // ignore
+          }
         }
 
         totalDispatched += batch.orders.length;

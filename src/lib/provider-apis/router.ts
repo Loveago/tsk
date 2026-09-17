@@ -568,8 +568,7 @@ export function mapClickyfiedStatus(
 
     if (sent >= total) return "SUCCESS";
     if (error >= total) return "FAILED";
-    if (processing > 0) return "PROCESSING";
-    if (pending >= total) return "PENDING";
+    if (processing > 0 || pending > 0) return "PROCESSING";
   }
 
   const s = (rawStatus || "").trim().toLowerCase();
@@ -588,11 +587,13 @@ export function mapClickyfiedStatus(
   if (["cancelled", "canceled"].includes(s)) {
     return "CANCELLED";
   }
+  // When Clickyfied accepts an order into its queue (pending/accepted/submitted/created),
+  // on Tskconnect it has been dispatched to the provider and is in PROCESSING.
   if (["pending", "accepted", "submitted", "queued", "created"].includes(s)) {
-    return "PENDING";
+    return "PROCESSING";
   }
 
-  return "PENDING";
+  return "PROCESSING";
 }
 
 // In-memory set to prevent concurrent requests to the same order
