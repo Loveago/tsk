@@ -338,8 +338,8 @@ export async function POST(request: NextRequest) {
           } catch {}
         }
 
-        // If order does not have a canonical orderId or entryId, search Clickyfied by phone number
-        if (!clickyfiedOrderId.startsWith("order-") || orderEntryId === undefined) {
+        // If order does not have a canonical orderId, search Clickyfied by phone number as a last resort
+        if (!clickyfiedOrderId.startsWith("order-")) {
           try {
             const matched = await client.findOrderByPhone(order.phoneNumber);
             if (matched?.orderId) {

@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
 
           const newStatus = isFailedOrRefunded
             ? "REFUNDED"
-            : event === "report.not_received.confirmed_sent" || ["confirmed_sent", "sent", "delivered"].includes(rawStatus)
+            : event === "report.not_received.confirmed_sent" || ["confirmed_sent", "delivered"].includes(rawStatus)
             ? "DELIVERED"
             : rawStatus === "rejected" || rawStatus === "cancelled"
             ? "REJECTED"
@@ -139,6 +139,11 @@ export async function POST(request: NextRequest) {
           let proofImage = report.proofImage;
           let proofImageMime = report.proofImageMime;
           let newProofAttached = false;
+
+          if (newStatus === "REFUNDED") {
+            proofImage = null;
+            proofImageMime = null;
+          }
 
           if (evidenceUrl && (!report.proofImage || report.proofImage.startsWith("http"))) {
             try {

@@ -88,15 +88,19 @@ export async function GET(request: NextRequest) {
     const stats: Record<string, number> = {};
     for (const row of byStatus) stats[row.status] = row._count._all;
 
-    // On-demand sync for open reports in the admin queue
-    const openAdminReports = data.filter((r) => ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status));
-    if (openAdminReports.length > 0) {
+    // On-demand sync for open or delivered reports in the admin queue (so provider refunds update immediately)
+    const syncableReports = data.filter((r) =>
+      ["OPEN", "UNDER_REVIEW", "INVESTIGATING", "DELIVERED"].includes(r.status)
+    );
+    if (syncableReports.length > 0) {
       try {
         const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+        let anyChanged = false;
         await Promise.allSettled(
-          openAdminReports.slice(0, 5).map(async (rep: any) => {
+          syncableReports.slice(0, 10).map(async (rep: any) => {
             const res = await syncClickyfiedDeliveryReport(rep.id, "Admin Queue View Sync");
             if (res.changed) {
+              anyChanged = true;
               const refreshed = await prisma.deliveryReport.findUnique({
                 where: { id: rep.id },
                 select: {
@@ -124,6 +128,11 @@ export async function GET(request: NextRequest) {
             }
           })
         );
+        if (anyChanged) {
+          const freshByStatus = await prisma.deliveryReport.groupBy({ by: ["status"], _count: { _all: true } });
+          for (const k of Object.keys(stats)) delete stats[k];
+          for (const row of freshByStatus) stats[row.status] = row._count._all;
+        }
       } catch {}
     }
 

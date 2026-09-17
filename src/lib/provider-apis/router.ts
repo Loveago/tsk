@@ -870,13 +870,8 @@ export async function syncClickyfiedDeliveryReport(
 
     if (!report || !report.order) return { changed: false };
 
-    // If report is already closed AND has proof image attached (or is REFUNDED), no further sync needed
-    if (
-      report.status === "REFUNDED" ||
-      ((report.status === "RESOLVED" || report.status === "DELIVERED" || report.status === "REJECTED") &&
-        report.proofImageMime &&
-        report.proofImage)
-    ) {
+    // If report is already REFUNDED, no further sync needed
+    if (report.status === "REFUNDED") {
       return { changed: false };
     }
 
@@ -894,8 +889,29 @@ export async function syncClickyfiedDeliveryReport(
       if (eId) providerEntryId = eId;
     }
 
-    // Identify all possible Clickify order identifier candidates
+    const config = await getProviderRoutingConfig();
+    if (!config.clickyfied.enabled) return { changed: false };
+    const client = new ClickyfiedClient(config.clickyfied);
+
+    // If order was part of a batch (e.g. CF-BATCH-000011), resolve its true canonical batch order ID
+    let batchCanonicalOrderId: string | null = null;
+    if (report.order.externalReference?.startsWith("CF-BATCH-")) {
+      try {
+        const resolved = await client.resolveCanonicalOrderId(report.order.externalReference.trim());
+        if (resolved && resolved.startsWith("order-")) {
+          batchCanonicalOrderId = resolved;
+        }
+      } catch {}
+    }
+
+    // If order belongs to a batch, prioritize the true batch order ID over any hijacked providerOrderId
+    if (batchCanonicalOrderId && providerOrderId !== batchCanonicalOrderId) {
+      providerOrderId = batchCanonicalOrderId;
+    }
+
+    // Identify all possible Clickify order identifier candidates (batch canonical first)
     const idCandidates: string[] = [];
+    if (batchCanonicalOrderId) idCandidates.push(batchCanonicalOrderId);
     if (providerOrderId) idCandidates.push(providerOrderId);
     if (report.order.externalReference) {
       idCandidates.push(report.order.externalReference.trim());
@@ -905,10 +921,6 @@ export async function syncClickyfiedDeliveryReport(
 
     const uniqueIds = Array.from(new Set(idCandidates.filter(Boolean)));
     if (uniqueIds.length === 0) return { changed: false };
-
-    const config = await getProviderRoutingConfig();
-    if (!config.clickyfied.enabled) return { changed: false };
-    const client = new ClickyfiedClient(config.clickyfied);
 
     let res: any = null;
     let orderRes: any = null;
@@ -1022,10 +1034,10 @@ export async function syncClickyfiedDeliveryReport(
       if (matchedEntry) {
         const entrySt = String(matchedEntry.currentStatus || matchedEntry.status || "").toLowerCase();
         phoneEntryFailed = ["failed", "refund", "refunded", "cancelled", "rejected", "error"].includes(entrySt);
-        phoneEntryDelivered = ["processed", "delivered", "confirmed_sent", "sent", "success"].includes(entrySt);
+        phoneEntryDelivered = ["confirmed_sent", "delivered"].includes(entrySt);
 
         const foundEId = matchedEntry.orderEntryId ?? matchedEntry.entryId ?? matchedEntry.id;
-        if (foundEId && !providerEntryId && providerOrderId) {
+        if (foundEId && providerOrderId) {
           await prisma.order
             .update({
               where: { id: report.order.id },
@@ -1063,9 +1075,10 @@ export async function syncClickyfiedDeliveryReport(
 
     const isReportDelivered =
       Boolean(repData) &&
-      (["confirmed_sent", "sent", "delivered"].includes(rawStatus) ||
-        resolutionStr.includes("sent") ||
-        resolutionStr.includes("delivered") ||
+      !isReportRefunded &&
+      (["confirmed_sent", "delivered"].includes(rawStatus) ||
+        resolutionStr === "confirmed_sent" ||
+        resolutionStr === "delivered" ||
         Boolean(evidenceUrl));
 
     const isFailedOrRefunded =
@@ -1093,6 +1106,12 @@ export async function syncClickyfiedDeliveryReport(
     let proofImage = report.proofImage;
     let proofImageMime = report.proofImageMime;
     let newProofAttached = false;
+
+    // If report is resolved as REFUNDED, clear any previously attached delivery proof
+    if (newStatus === "REFUNDED") {
+      proofImage = null;
+      proofImageMime = null;
+    }
 
     if (evidenceUrl && (!report.proofImage || report.proofImage.startsWith("http"))) {
       try {
