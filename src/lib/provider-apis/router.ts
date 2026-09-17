@@ -624,6 +624,107 @@ export function mapClickyfiedStatus(
  */
 export async function splitMultiDispatchBatches(): Promise<void> {
   try {
+    // -------------------------------------------------------------------------
+    // 1. HEAL & CONSOLIDATE: Re-group any orders sharing the same Clickyfied batch code
+    // (e.g. CF-BATCH-XXXXXX) that were previously shattered into single-order batches!
+    // -------------------------------------------------------------------------
+    const allDispatchedOrders = await prisma.order.findMany({
+      where: {
+        externalReference: { startsWith: "CF-BATCH-" },
+      },
+      select: {
+        id: true,
+        batchId: true,
+        userId: true,
+        network: true,
+        externalReference: true,
+        gbAmount: true,
+        amount: true,
+        status: true,
+      },
+    });
+
+    if (allDispatchedOrders.length > 0) {
+      const batchCodeMap = new Map<string, typeof allDispatchedOrders>();
+      for (const ord of allDispatchedOrders) {
+        const code = ord.externalReference!;
+        const list = batchCodeMap.get(code) ?? [];
+        list.push(ord);
+        batchCodeMap.set(code, list);
+      }
+
+      for (const [batchCode, ords] of batchCodeMap) {
+        const distinctBatchIds = new Set(ords.map((o) => o.batchId).filter(Boolean) as string[]);
+
+        let canonicalBatch = await prisma.orderBatch.findUnique({
+          where: { batchCode },
+        });
+
+        if (!canonicalBatch) {
+          if (distinctBatchIds.size === 1) {
+            const onlyId = Array.from(distinctBatchIds)[0];
+            canonicalBatch = await prisma.orderBatch
+              .update({
+                where: { id: onlyId },
+                data: { batchCode },
+              })
+              .catch(() => null);
+          }
+          if (!canonicalBatch) {
+            canonicalBatch = await prisma.orderBatch.create({
+              data: {
+                batchCode,
+                userId: ords[0].userId,
+                network: ords[0].network,
+                totalRecipients: ords.length,
+                totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
+                totalAmount: ords.reduce((s, o) => s + o.amount, 0),
+                status: "PROCESSING",
+              },
+            });
+          }
+        }
+
+        // Move all orders belonging to this Clickyfied batch into the single canonical batch
+        const ordersToReassign = ords.filter((o) => o.batchId !== canonicalBatch!.id);
+        if (ordersToReassign.length > 0) {
+          await prisma.order.updateMany({
+            where: { id: { in: ordersToReassign.map((o) => o.id) } },
+            data: { batchId: canonicalBatch.id },
+          });
+        }
+
+        // Update canonical batch totals
+        await prisma.orderBatch.update({
+          where: { id: canonicalBatch.id },
+          data: {
+            totalRecipients: ords.length,
+            totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
+            totalAmount: ords.reduce((s, o) => s + o.amount, 0),
+          },
+        });
+
+        const { recomputeBatchStatus } = await import("../orders");
+        await recomputeBatchStatus(canonicalBatch.id);
+
+        // Delete any empty orphaned batch records left behind from the prior mangled split
+        for (const oldId of distinctBatchIds) {
+          if (oldId !== canonicalBatch.id) {
+            const remainingCount = await prisma.order.count({ where: { batchId: oldId } });
+            if (remainingCount === 0) {
+              await prisma.orderBatch.delete({ where: { id: oldId } }).catch(() => {});
+            } else {
+              await recomputeBatchStatus(oldId);
+            }
+          }
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. SPLIT: Separate any parent batch that has orders across different Clickyfied batches
+    // or mixed with pending orders, keeping each batch clean and distinct
+    // -------------------------------------------------------------------------
     const batches = await prisma.orderBatch.findMany({
       where: {
         orders: {
@@ -647,13 +748,11 @@ export async function splitMultiDispatchBatches(): Promise<void> {
     for (const b of batches) {
       const groups = new Map<string, typeof b.orders>();
       for (const ord of b.orders) {
-        // Group by the Clickyfied BATCH identifier, NOT individual entry IDs!
         let batchKey = "pending";
         if (ord.externalReference && ord.externalReference.startsWith("CF-BATCH-")) {
           batchKey = ord.externalReference;
         } else if (ord.providerReference?.startsWith("CLICKYFIED:")) {
           const parts = ord.providerReference.replace("CLICKYFIED:", "").split(":");
-          // parts[0] is the Clickyfied orderId or batch reference
           batchKey = `CLICKYFIED:${parts[0]}`;
         }
         const list = groups.get(batchKey) ?? [];
@@ -722,63 +821,6 @@ export async function splitMultiDispatchBatches(): Promise<void> {
             await recomputeBatchStatus(targetBatch.id);
           }
         }
-      }
-    }
-
-    // Attach any orphaned dispatched Clickyfied orders (batchId: null) into their respective OrderBatch
-    const orphanedOrders = await prisma.order.findMany({
-      where: {
-        batchId: null,
-        providerReference: { startsWith: "CLICKYFIED:" },
-        externalReference: { startsWith: "CF-BATCH-" },
-      },
-      select: {
-        id: true,
-        userId: true,
-        network: true,
-        providerReference: true,
-        externalReference: true,
-        gbAmount: true,
-        amount: true,
-        status: true,
-      },
-    });
-
-    if (orphanedOrders.length > 0) {
-      const orphanGroups = new Map<string, typeof orphanedOrders>();
-      for (const ord of orphanedOrders) {
-        const key = ord.externalReference!;
-        const list = orphanGroups.get(key) ?? [];
-        list.push(ord);
-        orphanGroups.set(key, list);
-      }
-
-      for (const [batchCode, ords] of orphanGroups) {
-        let existing = await prisma.orderBatch.findUnique({
-          where: { batchCode },
-        });
-
-        if (!existing) {
-          existing = await prisma.orderBatch.create({
-            data: {
-              batchCode,
-              userId: ords[0].userId,
-              network: ords[0].network,
-              totalRecipients: ords.length,
-              totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
-              totalAmount: ords.reduce((s, o) => s + o.amount, 0),
-              status: "PROCESSING",
-            },
-          });
-        }
-
-        await prisma.order.updateMany({
-          where: { id: { in: ords.map((o) => o.id) } },
-          data: { batchId: existing.id },
-        });
-
-        const { recomputeBatchStatus } = await import("../orders");
-        await recomputeBatchStatus(existing.id);
       }
     }
   } catch (err) {

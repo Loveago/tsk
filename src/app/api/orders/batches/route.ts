@@ -26,6 +26,12 @@ export async function GET(request: NextRequest) {
       to: searchParams.get("to"),
     });
 
+    // Consolidate & split any batches where orders were dispatched across Clickyfied batches
+    try {
+      const { splitMultiDispatchBatches } = await import("@/lib/provider-apis/router");
+      await splitMultiDispatchBatches();
+    } catch {}
+
     const [data, total] = await Promise.all([
       prisma.orderBatch.findMany({
         where,
