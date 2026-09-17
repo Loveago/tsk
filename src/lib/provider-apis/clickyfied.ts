@@ -263,7 +263,7 @@ export class ClickyfiedClient {
           : orderEntryId
         : undefined;
 
-    // Action 6: If we have orderEntryId and details, use the dedicated multi-entry / entry endpoint
+    // Action 6: If we have orderEntryId AND full entry details, use the new dedicated endpoint
     if (entryIdVal !== undefined && cleanNumber && allocationGb !== undefined) {
       const payload = {
         orderEntryId: entryIdVal,
@@ -305,41 +305,9 @@ export class ClickyfiedClient {
       }
     }
 
-    // Fallback for cases without entry ID: try /api/orders/report-not-received if number & allocationGb present
-    if (cleanNumber && allocationGb !== undefined) {
-      try {
-        const res = await this.request<any>("/api/orders/report-not-received", {
-          method: "POST",
-          body: JSON.stringify({
-            orderId: String(orderId),
-            number: cleanNumber,
-            allocationGb: Number(allocationGb),
-          }),
-        });
-        return {
-          success: true,
-          report: res?.report,
-          message: res?.message,
-          raw: res,
-        };
-      } catch (err: any) {
-        if (
-          err?.status === 400 &&
-          (err?.rawResponse?.code === "NOT_RECEIVED_ALREADY_EXISTS" ||
-            String(err?.message || "").toLowerCase().includes("already exists"))
-        ) {
-          return {
-            success: true,
-            alreadyExists: true,
-            report: err?.rawResponse?.details || err?.rawResponse?.report,
-            raw: err?.rawResponse || err,
-          };
-        }
-        // If that fails, continue to legacy endpoint below
-      }
-    }
-
-    // Fallback to legacy endpoint
+    // Fallback to legacy endpoint when orderEntryId is not known.
+    // Note: The new /api/orders/report-not-received endpoint REQUIRES orderEntryId;
+    // sending without it results in 400 "Missing required fields". Use the old path instead.
     const res = await this.request<any>(
       `/orders/${encodeURIComponent(String(orderId))}/not-received`,
       {

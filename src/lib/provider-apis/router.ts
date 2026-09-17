@@ -795,8 +795,10 @@ export async function syncClickyfiedOrder(
       const entryStatus = entryMap.get(ordNormPhone);
       const eId = entryIdMap.get(ordNormPhone);
 
-      // Cache entryId in providerReference if not already saved with colon
-      if (eId !== undefined && eId !== null && (!ord.providerReference || !ord.providerReference.includes(":"))) {
+      // Cache entryId in providerReference if not already saved (format is CLICKYFIED:orderId:entryId)
+      // The check must look for a SECOND colon after "CLICKYFIED:" prefix — not just any colon.
+      const hasEntryIdCached = (ord.providerReference || "").split(":").length >= 3;
+      if (eId !== undefined && eId !== null && !hasEntryIdCached) {
         await prisma.order
           .update({
             where: { id: ord.id },

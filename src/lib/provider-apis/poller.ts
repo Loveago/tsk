@@ -30,38 +30,10 @@ export function startProviderSyncPoller() {
         return;
       }
 
-      // Auto-remedy: Any Clickyfied orders that were previously marked as PENDING
-      // must be corrected to PROCESSING so they are not treated as un-dispatched ghost orders.
-      const stuckPending = await prisma.order.findMany({
-        where: {
-          status: "PENDING",
-          providerReference: { startsWith: "CLICKYFIED:" },
-        },
-        select: { id: true, batchId: true },
-        take: 100,
-      });
-
-      if (stuckPending.length > 0) {
-        await prisma.order.updateMany({
-          where: { id: { in: stuckPending.map((o) => o.id) } },
-          data: { status: "PROCESSING" },
-        });
-
-        const affectedBatchIds = Array.from(
-          new Set(stuckPending.map((o) => o.batchId).filter(Boolean) as string[])
-        );
-        for (const bId of affectedBatchIds) {
-          try {
-            const { recomputeBatchStatus } = await import("../orders");
-            await recomputeBatchStatus(bId);
-          } catch {
-            // ignore
-          }
-        }
-      }
-
       // Respect Clickify 30s rate limit (check orders last updated >= 32 seconds ago)
       const thirtyTwoSecsAgo = new Date(Date.now() - 32 * 1000);
+
+      // Sync ALL in-flight Clickyfied orders (PENDING or PROCESSING) so status mirrors Clickyfied exactly
       const inFlightOrders = await prisma.order.findMany({
         where: {
           status: { in: ["PENDING", "PROCESSING"] },

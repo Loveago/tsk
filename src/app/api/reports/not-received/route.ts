@@ -331,27 +331,44 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // If orderEntryId is not yet cached on order, fetch it from Clickyfied order details
-        if (orderEntryId === undefined && clickyfiedOrderId) {
-          try {
-            const ordStatus = await client.getOrderStatus(clickyfiedOrderId);
-            const raw = ordStatus.raw as any;
-            const entriesList: any[] = raw?.order?.entries || raw?.entries || [];
-            const phoneNorm = normalizePhoneLast9(order.phoneNumber);
-            const matched = entriesList.find(
-              (e: any) => e.number && normalizePhoneLast9(e.number) === phoneNorm
-            );
-            if (matched && matched.id !== undefined && matched.id !== null) {
-              orderEntryId = !isNaN(Number(matched.id)) ? Number(matched.id) : matched.id;
-              await prisma.order.update({
-                where: { id: order.id },
-                data: {
-                  providerReference: `CLICKYFIED:${clickyfiedOrderId}:${matched.id}`,
-                },
-              });
+        // If orderEntryId is not yet cached on order, fetch it from Clickyfied order details.
+        // We try with both the parsed Clickyfied orderId and the order's externalReference (batchCode).
+        if (orderEntryId === undefined) {
+          const lookupKeys = Array.from(
+            new Set([clickyfiedOrderId, order.externalReference].filter(Boolean) as string[])
+          );
+          for (const key of lookupKeys) {
+            try {
+              const ordStatus = await client.getOrderStatus(key);
+              const raw = ordStatus.raw as any;
+              const entriesList: any[] = raw?.order?.entries || raw?.entries || [];
+              const phoneNorm = normalizePhoneLast9(order.phoneNumber);
+              const matched = entriesList.find(
+                (e: any) => e.number && normalizePhoneLast9(e.number) === phoneNorm
+              );
+              if (matched && matched.id !== undefined && matched.id !== null) {
+                orderEntryId = !isNaN(Number(matched.id)) ? Number(matched.id) : matched.id;
+                // If Clickyfied returned a different orderId, prefer it
+                if (raw?.order?.orderId && raw.order.orderId !== clickyfiedOrderId) {
+                  clickyfiedOrderId = String(raw.order.orderId);
+                }
+                await prisma.order.update({
+                  where: { id: order.id },
+                  data: {
+                    providerReference: `CLICKYFIED:${clickyfiedOrderId}:${matched.id}`,
+                  },
+                });
+                break;
+              }
+              if (entriesList.length > 0) break; // got a response but no matching phone
+            } catch (fetchErr: any) {
+              if (fetchErr?.status === 429) {
+                throw new Error(
+                  `Rate limited by Clickyfied while looking up entry ID — please try reporting again in 30 seconds`
+                );
+              }
+              console.warn(`Could not retrieve entryId from Clickyfied using key "${key}":`, fetchErr?.message || fetchErr);
             }
-          } catch (fetchErr) {
-            console.warn("Could not retrieve entryId from Clickyfied order entries:", fetchErr);
           }
         }
 
