@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
         where: {
           OR: [
             ...searchKeys.map((k) => ({ providerReference: `CLICKYFIED:${k}` })),
+            ...searchKeys.map((k) => ({ providerReference: { startsWith: `CLICKYFIED:${k}:` } })),
             ...searchKeys.map((k) => ({ providerReference: k })),
             ...searchKeys.map((k) => ({ externalReference: k })),
             ...searchKeys
@@ -50,18 +51,53 @@ export async function POST(request: NextRequest) {
       event === "report.not_received.confirmed_sent" ||
       payload?.report
     ) {
-      const repData = payload?.report;
+      const repData = payload?.report || {};
+      const repEntryId = repData?.orderEntryId ?? payload?.orderEntryId;
+      const repNumber = repData?.number ?? payload?.number;
+
       if (orders.length > 0) {
-        // Find the specific report for the matching order(s)
-        const orderIds = orders.map((o) => o.id);
+        // Find the specific target order in this batch:
+        let targetOrder: any = null;
+
+        // 1. Match by orderEntryId (e.g. providerReference ends with :<repEntryId>)
+        if (repEntryId !== undefined && repEntryId !== null) {
+          targetOrder = orders.find((o) => {
+            if (!o.providerReference) return false;
+            const parts = o.providerReference.replace("CLICKYFIED:", "").split(":");
+            return parts[1] && String(parts[1]) === String(repEntryId);
+          });
+        }
+
+        // 2. Match by phone number
+        if (!targetOrder && repNumber) {
+          const normRep = normalizePhoneLast9(String(repNumber));
+          targetOrder = orders.find((o) => normalizePhoneLast9(o.phoneNumber) === normRep);
+        }
+
+        // 3. Match order with an active open delivery report
+        if (!targetOrder) {
+          const orderIds = orders.map((o) => o.id);
+          const openRep = await prisma.deliveryReport.findFirst({
+            where: {
+              orderId: { in: orderIds },
+              status: { in: ["OPEN", "INVESTIGATING", "UNDER_REVIEW"] },
+            },
+            orderBy: { createdAt: "desc" },
+          });
+          if (openRep) {
+            targetOrder = orders.find((o) => o.id === openRep.orderId);
+          }
+        }
+
+        if (!targetOrder) {
+          targetOrder = orders[0];
+        }
+
+        // Find the specific report for this target order
         const report = await prisma.deliveryReport.findFirst({
-          where: { orderId: { in: orderIds } },
+          where: { orderId: targetOrder.id },
           orderBy: { createdAt: "desc" },
         });
-
-        const targetOrder = report
-          ? orders.find((o) => o.id === report.orderId) ?? orders[0]
-          : orders[0];
 
         if (report && targetOrder) {
           const rawStatus = String(repData?.status || "").toLowerCase();

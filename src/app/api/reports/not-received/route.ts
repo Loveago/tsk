@@ -306,71 +306,86 @@ export async function POST(request: NextRequest) {
 
     if (notReceivedSetting?.value !== "false" && isClickyfiedOrder) {
       try {
-        const { getProviderRoutingConfig } = await import("@/lib/provider-apis/router");
+        const { getProviderRoutingConfig, normalizePhoneLast9 } = await import("@/lib/provider-apis/router");
         const { ClickyfiedClient } = await import("@/lib/provider-apis/clickyfied");
+        const { recordOrderApiLog } = await import("@/lib/order-api-logs");
+
         const config = await getProviderRoutingConfig();
         const client = new ClickyfiedClient(config.clickyfied);
 
-        const clickyfiedId = order.providerReference?.startsWith("CLICKYFIED:")
-          ? order.providerReference.replace("CLICKYFIED:", "")
-          : order.externalReference || `TSK-ORD-${order.id}`;
+        let clickyfiedOrderId = order.externalReference || `TSK-ORD-${order.id}`;
+        let orderEntryId: string | number | undefined = undefined;
 
-        // If this order shares its providerReference with other orders (legacy multi-entry batch),
-        // check if a report was already registered for any order in this batch.
-        let alreadyReportedSharedBatch = false;
-        if (order.providerReference) {
-          const sharedOrders = await prisma.order.findMany({
-            where: { providerReference: order.providerReference },
-            select: { id: true },
-          });
-          if (sharedOrders.length > 1) {
-            const priorReport = await prisma.deliveryReport.findFirst({
-              where: {
-                orderId: { in: sharedOrders.map((o) => o.id) },
-                id: { not: report.id },
-              },
-            });
-            if (priorReport) {
-              alreadyReportedSharedBatch = true;
-            }
+        if (order.providerReference?.startsWith("CLICKYFIED:")) {
+          const rawRef = order.providerReference.replace("CLICKYFIED:", "").trim();
+          const [refOrderId, refEntryId] = rawRef.split(":");
+          if (refOrderId) clickyfiedOrderId = refOrderId;
+          if (refEntryId) {
+            orderEntryId = !isNaN(Number(refEntryId)) ? Number(refEntryId) : refEntryId;
+          }
+        } else if (order.providerReference) {
+          const [refOrderId, refEntryId] = order.providerReference.trim().split(":");
+          if (refOrderId) clickyfiedOrderId = refOrderId;
+          if (refEntryId) {
+            orderEntryId = !isNaN(Number(refEntryId)) ? Number(refEntryId) : refEntryId;
           }
         }
 
-        if (alreadyReportedSharedBatch) {
-          await prisma.deliveryReportEvent.create({
-            data: {
-              reportId: report.id,
-              type: "INVESTIGATION_STARTED",
-              message: `Report queued for admin review. (Order belongs to a legacy batch where a report was already registered on Clickyfied).`,
-              actorLabel: "System",
-            },
-          });
-        } else {
-          const { recordOrderApiLog } = await import("@/lib/order-api-logs");
-          const repRes = await client.reportNotReceived(clickyfiedId);
-
-          await recordOrderApiLog({
-            orderId: order.id,
-            provider: "CLICKYFIED",
-            action: "NOT_RECEIVED",
-            endpoint: `/orders/${encodeURIComponent(String(clickyfiedId))}/not-received`,
-            method: "POST",
-            requestPayload: { clickyfiedId },
-            responsePayload: repRes,
-            statusCode: 200,
-            success: true,
-            providerReference: clickyfiedId,
-          });
-
-          await prisma.deliveryReportEvent.create({
-            data: {
-              reportId: report.id,
-              type: "INVESTIGATION_STARTED",
-              message: `Report forwarded to Clickyfied API (Order Ref: ${clickyfiedId})`,
-              actorLabel: "Clickyfied API",
-            },
-          });
+        // If orderEntryId is not yet cached on order, fetch it from Clickyfied order details
+        if (orderEntryId === undefined && clickyfiedOrderId) {
+          try {
+            const ordStatus = await client.getOrderStatus(clickyfiedOrderId);
+            const raw = ordStatus.raw as any;
+            const entriesList: any[] = raw?.order?.entries || raw?.entries || [];
+            const phoneNorm = normalizePhoneLast9(order.phoneNumber);
+            const matched = entriesList.find(
+              (e: any) => e.number && normalizePhoneLast9(e.number) === phoneNorm
+            );
+            if (matched && matched.id !== undefined && matched.id !== null) {
+              orderEntryId = !isNaN(Number(matched.id)) ? Number(matched.id) : matched.id;
+              await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                  providerReference: `CLICKYFIED:${clickyfiedOrderId}:${matched.id}`,
+                },
+              });
+            }
+          } catch (fetchErr) {
+            console.warn("Could not retrieve entryId from Clickyfied order entries:", fetchErr);
+          }
         }
+
+        // Action 6: Report Not Received for a Multi-Entry (or Single-Entry) Order
+        const reportPayload = {
+          orderId: clickyfiedOrderId,
+          orderEntryId,
+          number: order.phoneNumber,
+          allocationGb: order.gbAmount,
+        };
+
+        const repRes = await client.reportNotReceived(reportPayload);
+
+        await recordOrderApiLog({
+          orderId: order.id,
+          provider: "CLICKYFIED",
+          action: "NOT_RECEIVED",
+          endpoint: "/api/orders/report-not-received",
+          method: "POST",
+          requestPayload: reportPayload,
+          responsePayload: repRes,
+          statusCode: 200,
+          success: true,
+          providerReference: orderEntryId ? `${clickyfiedOrderId}:${orderEntryId}` : clickyfiedOrderId,
+        });
+
+        await prisma.deliveryReportEvent.create({
+          data: {
+            reportId: report.id,
+            type: "INVESTIGATION_STARTED",
+            message: `Report forwarded to Clickyfied API (Order #${clickyfiedOrderId}${orderEntryId ? `, Entry #${orderEntryId}` : ""})`,
+            actorLabel: "Clickyfied API",
+          },
+        });
       } catch (err: any) {
         console.error("Failed to forward report to Clickyfied:", err);
         try {
@@ -379,25 +394,31 @@ export async function POST(request: NextRequest) {
             orderId: order.id,
             provider: "CLICKYFIED",
             action: "NOT_RECEIVED",
-            endpoint: err?.endpoint || `/orders/not-received`,
+            endpoint: err?.endpoint || `/api/orders/report-not-received`,
             method: "POST",
-            requestPayload: { clickyfiedId: order.providerReference || order.externalReference },
+            requestPayload: {
+              clickyfiedId: order.providerReference || order.externalReference,
+              number: order.phoneNumber,
+              allocationGb: order.gbAmount,
+            },
             responsePayload: err?.rawResponse || err?.rawText || { error: err?.message },
             statusCode: err?.status || 500,
             success: false,
-            errorMessage: err?.message || "Failed to forward report to Clickyfied",
+            errorMessage: err?.message || "Failed to submit not received report to Clickyfied",
             providerReference: order.providerReference,
           });
         } catch {}
 
-        await prisma.deliveryReportEvent.create({
-          data: {
-            reportId: report.id,
-            type: "RESPONSE_ADDED",
-            message: `Could not automatically forward to Clickyfied: ${err?.message || "Network error"}`,
-            actorLabel: "System",
-          },
-        }).catch(() => {});
+        await prisma.deliveryReportEvent
+          .create({
+            data: {
+              reportId: report.id,
+              type: "RESPONSE_ADDED",
+              message: `Could not automatically forward to Clickyfied: ${err?.message || "Network error"}`,
+              actorLabel: "System",
+            },
+          })
+          .catch(() => {});
       }
     }
 

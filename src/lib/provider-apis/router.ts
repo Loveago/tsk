@@ -742,7 +742,8 @@ export async function syncClickyfiedOrder(
       return { changed: false };
     }
 
-    const providerId = order.providerReference.replace("CLICKYFIED:", "").trim();
+    const rawRef = order.providerReference.replace("CLICKYFIED:", "").trim();
+    const [providerId, orderEntryId] = rawRef.split(":");
     if (!providerId) return { changed: false };
 
     lastCheckedOrders.set(orderId, now);
@@ -763,19 +764,23 @@ export async function syncClickyfiedOrder(
       where: {
         OR: [
           { providerReference: `CLICKYFIED:${providerId}` },
+          { providerReference: { startsWith: `CLICKYFIED:${providerId}:` } },
           { externalReference: rawAny?.order?.externalReference || undefined },
           { id: order.id },
         ],
       },
     });
 
-    const entriesList: Array<{ number?: string; status?: string }> =
+    const entriesList: Array<{ id?: string | number; number?: string; status?: string }> =
       rawAny?.order?.entries || rawAny?.entries || [];
 
     const entryMap = new Map<string, string>();
+    const entryIdMap = new Map<string, string | number>();
     for (const e of entriesList) {
-      if (e.number && e.status) {
-        entryMap.set(normalizePhoneLast9(e.number), e.status);
+      if (e.number) {
+        const norm = normalizePhoneLast9(e.number);
+        if (e.status) entryMap.set(norm, e.status);
+        if (e.id !== undefined && e.id !== null) entryIdMap.set(norm, e.id);
       }
     }
 
@@ -786,7 +791,19 @@ export async function syncClickyfiedOrder(
     for (const ord of linkedOrders) {
       lastCheckedOrders.set(ord.id, now);
 
-      const entryStatus = entryMap.get(normalizePhoneLast9(ord.phoneNumber));
+      const ordNormPhone = normalizePhoneLast9(ord.phoneNumber);
+      const entryStatus = entryMap.get(ordNormPhone);
+      const eId = entryIdMap.get(ordNormPhone);
+
+      // Cache entryId in providerReference if not already saved with colon
+      if (eId !== undefined && eId !== null && (!ord.providerReference || !ord.providerReference.includes(":"))) {
+        await prisma.order
+          .update({
+            where: { id: ord.id },
+            data: { providerReference: `CLICKYFIED:${providerId}:${eId}` },
+          })
+          .catch(() => {});
+      }
       const targetStatus = entryStatus
         ? mapClickyfiedStatus(entryStatus)
         : overallTargetStatus;
@@ -888,40 +905,23 @@ export async function syncClickyfiedDeliveryReport(
       return { changed: false };
     }
 
-    // Check if this order shares its providerReference with any other orders in the system
-    // (i.e. legacy multi-entry batch where multiple orders shared 1 providerReference)
-    let isSharedBatchOrder = false;
-    if (report.order.providerReference) {
-      const sharedCount = await prisma.order.count({
-        where: { providerReference: report.order.providerReference },
-      });
-      isSharedBatchOrder = sharedCount > 1;
-    }
-
-    if (isSharedBatchOrder) {
-      const firstReport = await prisma.deliveryReport.findFirst({
-        where: {
-          order: { providerReference: report.order.providerReference },
-        },
-        orderBy: { createdAt: "asc" },
-        select: { id: true },
-      });
-
-      // If this report is NOT the first report filed for this legacy multi-entry batch,
-      // do NOT sync from Clickyfied because Clickyfied's report belongs exclusively to the first report.
-      // Subsequent reports for orders in that legacy batch must be reviewed manually.
-      if (firstReport && firstReport.id !== report.id) {
-        return { changed: false };
-      }
+    // Parse provider order ID and entry ID
+    let providerOrderId = "";
+    let providerEntryId: string | number | undefined = undefined;
+    if (report.order.providerReference?.startsWith("CLICKYFIED:")) {
+      const rawRef = report.order.providerReference.replace("CLICKYFIED:", "").trim();
+      const [pId, eId] = rawRef.split(":");
+      providerOrderId = pId;
+      if (eId) providerEntryId = eId;
+    } else if (report.order.providerReference) {
+      const [pId, eId] = report.order.providerReference.trim().split(":");
+      providerOrderId = pId;
+      if (eId) providerEntryId = eId;
     }
 
     // Identify all possible Clickify order identifier candidates
     const idCandidates: string[] = [];
-    if (report.order.providerReference?.startsWith("CLICKYFIED:")) {
-      idCandidates.push(report.order.providerReference.replace("CLICKYFIED:", "").trim());
-    } else if (report.order.providerReference) {
-      idCandidates.push(report.order.providerReference.trim());
-    }
+    if (providerOrderId) idCandidates.push(providerOrderId);
     if (report.order.externalReference) {
       idCandidates.push(report.order.externalReference.trim());
     }
@@ -961,10 +961,37 @@ export async function syncClickyfiedDeliveryReport(
 
     if (!res && !orderRes) return { changed: false };
 
-    const repData =
-      Array.isArray(res?.reports) && res.reports.length > 0
-        ? res.reports[0]
-        : res?.report || res?.data || res || {};
+    // Action 6: Find the matching report for this specific entry in res.reports
+    const reportsList: any[] = Array.isArray(res?.reports)
+      ? res.reports
+      : res?.report
+      ? [res.report]
+      : [];
+
+    let repData: any = null;
+    const orderPhone9 = report.order.phoneNumber
+      ? normalizePhoneLast9(report.order.phoneNumber)
+      : null;
+
+    if (reportsList.length > 0) {
+      repData = reportsList.find((r: any) => {
+        if (providerEntryId && r.orderEntryId && String(r.orderEntryId) === String(providerEntryId)) {
+          return true;
+        }
+        if (orderPhone9 && r.number && normalizePhoneLast9(r.number) === orderPhone9) {
+          return true;
+        }
+        return false;
+      });
+
+      if (!repData && reportsList.length === 1) {
+        repData = reportsList[0];
+      }
+    }
+
+    if (!repData) {
+      repData = res?.report || res?.data || res || {};
+    }
 
     const rawStatus = String(repData?.status || "").toLowerCase();
     const adminNotes =
@@ -984,22 +1011,32 @@ export async function syncClickyfiedDeliveryReport(
     const orderSummary = orderRes?.raw?.order?.entrySummary || orderRes?.raw?.entrySummary;
     const orderMappedStatus = rawOrderStatus ? mapClickyfiedStatus(rawOrderStatus, orderSummary) : null;
 
-    // Check if the Clickyfied order was a multi-entry batch (legacy order)
-    const returnedEntries: Array<{ number?: string; status?: string; currentStatus?: string }> =
+    // Check if the Clickyfied order had multiple entries
+    const returnedEntries: Array<{ id?: string | number; number?: string; status?: string; currentStatus?: string }> =
       orderRes?.raw?.order?.entries || orderRes?.raw?.entries || [];
     const isMultiEntryBatch = returnedEntries.length > 1;
 
     let phoneEntryFailed = false;
     let phoneEntryDelivered = false;
     if (isMultiEntryBatch && report.order.phoneNumber) {
-      const orderPhone9 = normalizePhoneLast9(report.order.phoneNumber);
       const matchedEntry = returnedEntries.find(
-        (e) => normalizePhoneLast9(e.number) === orderPhone9
+        (e) =>
+          (providerEntryId && e.id && String(e.id) === String(providerEntryId)) ||
+          (e.number && normalizePhoneLast9(e.number) === orderPhone9)
       );
       if (matchedEntry) {
         const entrySt = String(matchedEntry.currentStatus || matchedEntry.status || "").toLowerCase();
         phoneEntryFailed = ["failed", "refund", "refunded", "cancelled", "rejected", "error"].includes(entrySt);
         phoneEntryDelivered = ["processed", "delivered", "confirmed_sent", "sent", "success"].includes(entrySt);
+
+        if (matchedEntry.id && !providerEntryId && providerOrderId) {
+          await prisma.order
+            .update({
+              where: { id: report.order.id },
+              data: { providerReference: `CLICKYFIED:${providerOrderId}:${matchedEntry.id}` },
+            })
+            .catch(() => {});
+        }
       }
     }
 
@@ -1021,7 +1058,7 @@ export async function syncClickyfiedDeliveryReport(
     // In a multi-entry batch, only refund if THIS specific recipient failed/refunded.
     // In a single-entry order, follow the order/report status directly.
     const isFailedOrRefunded = isMultiEntryBatch
-      ? phoneEntryFailed
+      ? phoneEntryFailed || (repData?.orderEntryId && ["failed", "refund", "refunded", "cancelled", "rejected"].includes(rawStatus))
       : isSingleEntryFailedOrRefunded;
 
     let newStatus = report.status;

@@ -41,7 +41,7 @@ export class ClickyfiedClient {
   ): Promise<T> {
     // Ensure public api root is prefixed if omitted
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-    const apiPath = cleanEndpoint.startsWith("/api/public/v1")
+    const apiPath = cleanEndpoint.startsWith("/api/")
       ? cleanEndpoint
       : `/api/public/v1${cleanEndpoint}`;
     const url = `${this.baseUrl}${apiPath}`;
@@ -138,6 +138,7 @@ export class ClickyfiedClient {
     orderId?: string | number;
     externalReference?: string;
     status?: string;
+    entries?: Array<any>;
     reused?: boolean;
     raw: unknown;
   }> {
@@ -171,17 +172,24 @@ export class ClickyfiedClient {
     );
 
     const orderId =
+      res?.order?.orderId ||
+      res?.order?.id ||
       res?.id ||
       res?.orderId ||
       res?.data?.id ||
-      res?.data?.orderId ||
-      res?.order?.id;
+      res?.data?.orderId;
+    const entries =
+      res?.order?.entries ||
+      res?.entries ||
+      res?.data?.entries ||
+      [];
     const status = res?.status || res?.data?.status || res?.order?.status || "accepted";
 
     return {
       orderId,
       externalReference: params.externalReference,
       status,
+      entries,
       reused: !!res?.reused,
       raw: res,
     };
@@ -204,12 +212,134 @@ export class ClickyfiedClient {
   }
 
   /**
-   * Action 5: Report Not Received
+   * Action 5 & Action 6: Report Not Received
+   * Endpoint: POST /api/orders/report-not-received
+   *
+   * Supports both single-entry and multi-entry orders.
+   * For multi-entry orders, each entry is reported individually using its orderEntryId,
+   * orderId, number, and allocationGb.
    */
-  async reportNotReceived(orderId: string | number): Promise<{
+  async reportNotReceived(
+    paramsOrOrderId:
+      | {
+          orderId: string | number;
+          orderEntryId?: string | number;
+          number?: string;
+          allocationGb?: number;
+        }
+      | string
+      | number
+  ): Promise<{
     success: boolean;
+    report?: any;
+    message?: string;
+    alreadyExists?: boolean;
     raw: unknown;
   }> {
+    let orderId: string | number;
+    let orderEntryId: string | number | undefined;
+    let number: string | undefined;
+    let allocationGb: number | undefined;
+
+    if (typeof paramsOrOrderId === "object" && paramsOrOrderId !== null) {
+      orderId = paramsOrOrderId.orderId;
+      orderEntryId = paramsOrOrderId.orderEntryId;
+      number = paramsOrOrderId.number;
+      allocationGb = paramsOrOrderId.allocationGb;
+    } else {
+      orderId = paramsOrOrderId;
+    }
+
+    // Format phone number to clean Ghana format (e.g. 0541234568)
+    let cleanNumber = number ? String(number).trim() : "";
+    if (cleanNumber.startsWith("+233")) cleanNumber = "0" + cleanNumber.slice(4);
+    else if (cleanNumber.startsWith("233")) cleanNumber = "0" + cleanNumber.slice(3);
+    if (cleanNumber.length === 9 && !cleanNumber.startsWith("0")) cleanNumber = "0" + cleanNumber;
+
+    const entryIdVal =
+      orderEntryId !== undefined && orderEntryId !== null
+        ? !isNaN(Number(orderEntryId))
+          ? Number(orderEntryId)
+          : orderEntryId
+        : undefined;
+
+    // Action 6: If we have orderEntryId and details, use the dedicated multi-entry / entry endpoint
+    if (entryIdVal !== undefined && cleanNumber && allocationGb !== undefined) {
+      const payload = {
+        orderEntryId: entryIdVal,
+        orderId: String(orderId),
+        number: cleanNumber,
+        allocationGb: Number(allocationGb),
+      };
+
+      try {
+        const res = await this.request<any>("/api/orders/report-not-received", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+        return {
+          success: true,
+          report: res?.report,
+          message: res?.message || "Not received report submitted successfully",
+          raw: res,
+        };
+      } catch (err: any) {
+        // Handle 400 when a report already exists for this entry
+        const isAlreadyExists =
+          err?.status === 400 &&
+          (err?.rawResponse?.code === "NOT_RECEIVED_ALREADY_EXISTS" ||
+            String(err?.message || "").toLowerCase().includes("already exists"));
+
+        if (isAlreadyExists) {
+          return {
+            success: true,
+            alreadyExists: true,
+            report: err?.rawResponse?.details || err?.rawResponse?.report,
+            message: "A not received report already exists for this entry",
+            raw: err?.rawResponse || err,
+          };
+        }
+
+        throw err;
+      }
+    }
+
+    // Fallback for cases without entry ID: try /api/orders/report-not-received if number & allocationGb present
+    if (cleanNumber && allocationGb !== undefined) {
+      try {
+        const res = await this.request<any>("/api/orders/report-not-received", {
+          method: "POST",
+          body: JSON.stringify({
+            orderId: String(orderId),
+            number: cleanNumber,
+            allocationGb: Number(allocationGb),
+          }),
+        });
+        return {
+          success: true,
+          report: res?.report,
+          message: res?.message,
+          raw: res,
+        };
+      } catch (err: any) {
+        if (
+          err?.status === 400 &&
+          (err?.rawResponse?.code === "NOT_RECEIVED_ALREADY_EXISTS" ||
+            String(err?.message || "").toLowerCase().includes("already exists"))
+        ) {
+          return {
+            success: true,
+            alreadyExists: true,
+            report: err?.rawResponse?.details || err?.rawResponse?.report,
+            raw: err?.rawResponse || err,
+          };
+        }
+        // If that fails, continue to legacy endpoint below
+      }
+    }
+
+    // Fallback to legacy endpoint
     const res = await this.request<any>(
       `/orders/${encodeURIComponent(String(orderId))}/not-received`,
       {
@@ -218,6 +348,7 @@ export class ClickyfiedClient {
     );
     return {
       success: true,
+      report: res?.report,
       raw: res,
     };
   }

@@ -368,28 +368,38 @@ export async function dispatchClickyfiedMtnBatch(
       const processedAt = rawAny?.order?.processedAt || rawAny?.processedAt;
       const overallStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
-      // Check if Clickyfied provided individual entry statuses
-      const returnedEntries: Array<{ number?: string; status?: string }> =
-        rawAny?.order?.entries || rawAny?.entries || [];
+      // Check if Clickyfied provided individual entry statuses and entry IDs
+      const returnedEntries: Array<{ id?: string | number; number?: string; status?: string }> =
+        rawAny?.order?.entries || rawAny?.entries || submitRes.entries || [];
 
       const entryStatusMap = new Map<string, string>();
+      const entryIdMap = new Map<string, string | number>();
       for (const re of returnedEntries) {
-        if (re.number && re.status) {
-          entryStatusMap.set(normalizePhoneLast9(re.number), re.status);
+        if (re.number) {
+          const norm = normalizePhoneLast9(re.number);
+          if (re.status) entryStatusMap.set(norm, re.status);
+          if (re.id !== undefined && re.id !== null) entryIdMap.set(norm, re.id);
         }
       }
 
       for (const order of targetBatch.orders) {
-        const entryRawStatus = entryStatusMap.get(normalizePhoneLast9(order.phoneNumber));
+        const phoneNorm = normalizePhoneLast9(order.phoneNumber);
+        const entryRawStatus = entryStatusMap.get(phoneNorm);
+        const entryId = entryIdMap.get(phoneNorm);
         const targetStatus = entryRawStatus
           ? mapClickyfiedStatus(entryRawStatus)
           : overallStatus;
+
+        const orderProviderRef =
+          entryId !== undefined && entryId !== null
+            ? `CLICKYFIED:${batchOrderId}:${entryId}`
+            : providerRef;
 
         await prisma.order.update({
           where: { id: order.id },
           data: {
             status: targetStatus,
-            providerReference: providerRef,
+            providerReference: orderProviderRef,
             externalReference: batchCode,
             failureReason: targetStatus === "FAILED" ? `Failed on Clickyfied: ${rawStatus}` : null,
           },
@@ -400,7 +410,7 @@ export async function dispatchClickyfiedMtnBatch(
             orderId: order.id,
             status: targetStatus,
             previousStatus: "PENDING",
-            note: `Submitted in Clickyfied MTN Batch #${batchCode} (${targetBatch.orders.length} entries, ${targetBatch.totalGb} GB). Provider Order #${batchOrderId}. Status: ${entryRawStatus || rawStatus || targetStatus}`,
+            note: `Submitted in Clickyfied MTN Batch #${batchCode} (${targetBatch.orders.length} entries, ${targetBatch.totalGb} GB). Provider Order #${batchOrderId}${entryId ? ` (Entry #${entryId})` : ""}. Status: ${entryRawStatus || rawStatus || targetStatus}`,
             changedBy: actorLabel,
           },
         });
