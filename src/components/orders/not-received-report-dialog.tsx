@@ -111,7 +111,6 @@ export function NotReceivedReportDetailDialog({
                 onView={() => setProofOpen(true)}
               />
             )}
-            {report.events.length > 0 && <TimelineSection events={report.events} />}
           </div>
         )}
       </Dialog>
@@ -246,26 +245,6 @@ function EvidenceSection({
           View Proof Image
         </Button>
       </div>
-    </section>
-  );
-}
-
-function TimelineSection({ events }: { events: NotReceivedReportDetail["events"] }) {
-  return (
-    <section>
-      <p className="mb-2 text-xs font-semibold text-slate-500">REPORT TIMELINE</p>
-      <ol className="space-y-3 border-l border-slate-200 pl-4 dark:border-white/10">
-        {events.map((e) => (
-          <li key={e.id} className="relative">
-            <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-brand-500" />
-            <p className="font-medium">{EVENT_LABELS[e.type] ?? e.type}</p>
-            {e.message && <p className="text-xs text-slate-500">{e.message}</p>}
-            <p className="text-[11px] text-slate-400">
-              {formatDateTime(e.createdAt)} · {e.actorLabel}
-            </p>
-          </li>
-        ))}
-      </ol>
     </section>
   );
 }

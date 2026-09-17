@@ -27,6 +27,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Activity,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -87,6 +88,7 @@ export const userNav: NavItem[] = [
 export const adminNav: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/orders", label: "Orders", icon: ClipboardList },
+  { href: "/admin/order-api-logs", label: "Order API Logs", icon: Activity },
   { href: "/admin/mtn-verification", label: "MTN Verification", icon: ShieldCheck },
   { href: "/admin/exports", label: "Exports", icon: FileSpreadsheet },
   { href: "/admin/delivery-reports", label: "Not Received", icon: FileWarning },

@@ -11,7 +11,8 @@ import { Pagination } from "@/components/ui/pagination";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
-import { Layers, Search, Store, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { Layers, Search, Store, RefreshCw, Activity } from "lucide-react";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
@@ -295,6 +296,14 @@ export default function AdminOrdersPage() {
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
+            <Link
+              href="/admin/order-api-logs"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              title="View provider dispatch logs and failures"
+            >
+              <Activity className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+              <span>API Logs</span>
+            </Link>
             <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
               <button
                 onClick={() => switchView("batches")}

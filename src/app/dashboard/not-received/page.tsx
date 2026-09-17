@@ -365,14 +365,6 @@ export default function NotReceivedPage() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    {r.order.status === "SUCCESS" && (
-                      <button
-                        onClick={() => openDetail(r.order.id)}
-                        className="inline-flex h-8 items-center rounded-lg border border-slate-200 px-3 text-xs font-semibold transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5"
-                      >
-                        View Order
-                      </button>
-                    )}
                     <button
                       onClick={() => setViewReportId(r.id)}
                       className="inline-flex h-8 items-center rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-3 text-xs font-bold text-white shadow-sm transition hover:opacity-90"

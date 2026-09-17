@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { changeOrderStatus } from "../orders";
+import { recordOrderApiLog } from "../order-api-logs";
 import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_URL } from "./bigwindata";
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
 import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig } from "./types";
@@ -258,17 +259,20 @@ export async function dispatchOrder(
     }
 
     const client = new BigwindataClient(config.bigwindata);
+    const bigwinStartTime = Date.now();
+    let purchasePayload: any = null;
     try {
       const bundleId = await client.resolveBundleId(order.network, order.gbAmount);
       const webhookUrl = `${appBaseUrl}/api/webhooks/providers/bigwindata`;
-
-      const purchaseRes = await client.purchase({
+      purchasePayload = {
         bundleId,
         recipient: order.phoneNumber,
         idempotencyKey: `TSK-ORD-${order.id}`,
         webhookUrl,
-      });
+      };
 
+      const purchaseRes = await client.purchase(purchasePayload);
+      const durationMs = Date.now() - bigwinStartTime;
       const providerRef = `BIGWIN:${purchaseRes.orderId || purchaseRes.order_id || purchaseRes.reference}`;
 
       // Update provider reference
@@ -278,6 +282,21 @@ export async function dispatchOrder(
           providerReference: providerRef,
           failureReason: null,
         },
+      });
+
+      // Record Order API Log
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "BIGWINDATA",
+        action: "SUBMIT_ORDER",
+        endpoint: `${config.bigwindata.baseUrl || DEFAULT_BIGWINDATA_BASE_URL}/api/purchase`,
+        method: "POST",
+        requestPayload: purchasePayload,
+        responsePayload: purchaseRes,
+        statusCode: 200,
+        success: true,
+        providerReference: providerRef,
+        durationMs,
       });
 
       // Advance order status to PROCESSING
@@ -298,7 +317,28 @@ export async function dispatchOrder(
         raw: purchaseRes,
       };
     } catch (err: any) {
+      const durationMs = Date.now() - bigwinStartTime;
       const errMsg = err?.message || "Failed to dispatch order to Bigwindata";
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { failureReason: errMsg },
+      });
+
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "BIGWINDATA",
+        action: "SUBMIT_ORDER",
+        endpoint: `${config.bigwindata.baseUrl || DEFAULT_BIGWINDATA_BASE_URL}/api/purchase`,
+        method: "POST",
+        requestPayload: purchasePayload,
+        responsePayload: err?.rawResponse || err?.rawText || { error: errMsg },
+        statusCode: err?.status || 500,
+        success: false,
+        errorMessage: errMsg,
+        durationMs,
+      });
+
       await prisma.orderStatusHistory.create({
         data: {
           orderId: order.id,
@@ -329,6 +369,8 @@ export async function dispatchOrder(
     }
 
     const client = new ClickyfiedClient(config.clickyfied);
+    const clickyfiedStartTime = Date.now();
+    let submitPayload: any = null;
     try {
       // Use public https callbackUrl only if appBaseUrl is a valid external URL AND callbackSigningSecret is provided
       const signingSecret = (config.clickyfied.callbackSigningSecret || "").trim();
@@ -346,13 +388,16 @@ export async function dispatchOrder(
       // Use user-requested pattern: order-1788XXXXXXXXX
       const externalReference = generateClickyfiedReference(order.id);
 
-      const submitRes = await client.submitOrder({
+      submitPayload = {
         externalReference,
         entries: [{ number: order.phoneNumber, allocationGB: order.gbAmount }],
         callbackUrl,
         callbackSigningSecret: signingSecret || undefined,
         idempotencyKey: externalReference,
-      });
+      };
+
+      const submitRes = await client.submitOrder(submitPayload);
+      const durationMs = Date.now() - clickyfiedStartTime;
 
       const orderId = submitRes.orderId || externalReference;
       const providerRef = `CLICKYFIED:${orderId}`;
@@ -362,13 +407,38 @@ export async function dispatchOrder(
       const rawStatus = rawAny?.order?.status || submitRes.status || rawAny?.status;
       const mappedStatus = mapClickyfiedStatus(rawStatus, summary);
 
+      // Check if Clickyfied accepted it with errors or rejected
+      const hasErrors = mappedStatus === "FAILED" || (summary?.error ?? 0) > 0;
+      const errorDetail = hasErrors
+        ? rawAny?.message ||
+          rawAny?.error ||
+          (rawAny?.errors && JSON.stringify(rawAny.errors)) ||
+          `Clickyfied rejected order (${rawStatus || "failed"})`
+        : null;
+
       await prisma.order.update({
         where: { id: order.id },
         data: {
           providerReference: providerRef,
           externalReference: order.externalReference || externalReference,
-          failureReason: null,
+          failureReason: errorDetail,
         },
+      });
+
+      // Record Order API Log
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "CLICKYFIED",
+        action: "SUBMIT_ORDER",
+        endpoint: `${config.clickyfied.baseUrl || DEFAULT_CLICKYFIED_SANDBOX_URL}/api/public/v1/orders`,
+        method: "POST",
+        requestPayload: submitPayload,
+        responsePayload: submitRes.raw,
+        statusCode: 200,
+        success: !hasErrors,
+        errorMessage: errorDetail,
+        providerReference: providerRef,
+        durationMs,
       });
 
       // Maintain identical status between Clickify and Tskconnect
@@ -393,14 +463,37 @@ export async function dispatchOrder(
       }
 
       return {
-        success: true,
+        success: !hasErrors,
         provider: "CLICKYFIED",
         providerReference: providerRef,
         status: mappedStatus,
         raw: submitRes,
+        error: errorDetail || undefined,
       };
     } catch (err: any) {
+      const durationMs = Date.now() - clickyfiedStartTime;
       const errMsg = err?.message || "Failed to dispatch order to Clickyfied";
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { failureReason: errMsg },
+      });
+
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "CLICKYFIED",
+        action: "SUBMIT_ORDER",
+        endpoint: err?.endpoint || err?.url || `${config.clickyfied.baseUrl || DEFAULT_CLICKYFIED_SANDBOX_URL}/api/public/v1/orders`,
+        method: "POST",
+        requestPayload: submitPayload,
+        responsePayload: err?.rawResponse || err?.rawText || (err?.errors ? { errors: err.errors } : { error: errMsg }),
+        statusCode: err?.status || 500,
+        success: false,
+        errorMessage: errMsg,
+        providerReference: submitPayload?.externalReference ? `CLICKYFIED:${submitPayload.externalReference}` : null,
+        durationMs,
+      });
+
       await prisma.orderStatusHistory.create({
         data: {
           orderId: order.id,
@@ -541,6 +634,21 @@ export async function syncClickyfiedOrder(
     const targetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
     if (targetStatus && targetStatus !== order.status) {
+      if (targetStatus === "FAILED") {
+        await recordOrderApiLog({
+          orderId: order.id,
+          provider: "CLICKYFIED",
+          action: "SYNC_ORDER",
+          endpoint: `${config.clickyfied.baseUrl || DEFAULT_CLICKYFIED_SANDBOX_URL}/api/public/v1/orders/${providerId}`,
+          method: "GET",
+          statusCode: 200,
+          success: false,
+          errorMessage: `Order marked as failed by Clickyfied (Status: ${rawStatus})`,
+          responsePayload: rawAny,
+          providerReference: order.providerReference,
+        });
+      }
+
       await changeOrderStatus(
         order.id,
         targetStatus,
@@ -557,6 +665,19 @@ export async function syncClickyfiedOrder(
     if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("Polling too frequently")) {
       return { changed: false, error: "Rate limit: wait 30s" };
     }
+
+    await recordOrderApiLog({
+      orderId,
+      provider: "CLICKYFIED",
+      action: "SYNC_ORDER",
+      endpoint: err?.endpoint || err?.url || `/api/public/v1/orders`,
+      method: "GET",
+      statusCode: err?.status || 500,
+      success: false,
+      errorMessage: err?.message || "Clickyfied status sync failed",
+      responsePayload: err?.rawResponse || err?.rawText || { error: err?.message },
+    });
+
     return { changed: false, error: err?.message || "Sync failed" };
   } finally {
     syncingOrders.delete(orderId);

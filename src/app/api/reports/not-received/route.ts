@@ -299,7 +299,21 @@ export async function POST(request: NextRequest) {
           ? order.providerReference.replace("CLICKYFIED:", "")
           : order.externalReference || `TSK-ORD-${order.id}`;
 
-        await client.reportNotReceived(clickyfiedId);
+        const { recordOrderApiLog } = await import("@/lib/order-api-logs");
+        const repRes = await client.reportNotReceived(clickyfiedId);
+
+        await recordOrderApiLog({
+          orderId: order.id,
+          provider: "CLICKYFIED",
+          action: "NOT_RECEIVED",
+          endpoint: `/orders/${encodeURIComponent(String(clickyfiedId))}/not-received`,
+          method: "POST",
+          requestPayload: { clickyfiedId },
+          responsePayload: repRes,
+          statusCode: 200,
+          success: true,
+          providerReference: clickyfiedId,
+        });
 
         await prisma.deliveryReportEvent.create({
           data: {
@@ -311,6 +325,23 @@ export async function POST(request: NextRequest) {
         });
       } catch (err: any) {
         console.error("Failed to forward report to Clickyfied:", err);
+        try {
+          const { recordOrderApiLog } = await import("@/lib/order-api-logs");
+          await recordOrderApiLog({
+            orderId: order.id,
+            provider: "CLICKYFIED",
+            action: "NOT_RECEIVED",
+            endpoint: err?.endpoint || `/orders/not-received`,
+            method: "POST",
+            requestPayload: { clickyfiedId: order.providerReference || order.externalReference },
+            responsePayload: err?.rawResponse || err?.rawText || { error: err?.message },
+            statusCode: err?.status || 500,
+            success: false,
+            errorMessage: err?.message || "Failed to forward report to Clickyfied",
+            providerReference: order.providerReference,
+          });
+        } catch {}
+
         await prisma.deliveryReportEvent.create({
           data: {
             reportId: report.id,

@@ -73,9 +73,14 @@ export class ClickyfiedClient {
       try {
         json = text ? JSON.parse(text) : null;
       } catch {
-        throw new Error(
+        const parseErr = new Error(
           `Clickyfied HTTP ${res.status}: Invalid JSON response: ${text.slice(0, 150)}`
-        );
+        ) as Error & { status?: number; rawText?: string; endpoint?: string; url?: string };
+        parseErr.status = res.status;
+        parseErr.rawText = text;
+        parseErr.endpoint = apiPath;
+        parseErr.url = url;
+        throw parseErr;
       }
 
       if (!res.ok) {
@@ -84,16 +89,36 @@ export class ClickyfiedClient {
           json?.error ||
           (json?.errors && JSON.stringify(json.errors)) ||
           `Clickyfied request failed with HTTP ${res.status}`;
-        const err = new Error(errorMsg) as Error & { status?: number };
+        const err = new Error(errorMsg) as Error & {
+          status?: number;
+          rawResponse?: any;
+          rawText?: string;
+          endpoint?: string;
+          url?: string;
+        };
         err.status = res.status;
+        err.rawResponse = json;
+        err.rawText = text;
+        err.endpoint = apiPath;
+        err.url = url;
         throw err;
       }
 
       return json as T;
     } catch (err: any) {
       if (err.name === "AbortError") {
-        throw new Error("Clickyfied request timed out after 25 seconds");
+        const timeoutErr = new Error("Clickyfied request timed out after 25 seconds") as Error & {
+          status?: number;
+          endpoint?: string;
+          url?: string;
+        };
+        timeoutErr.status = 504;
+        timeoutErr.endpoint = apiPath;
+        timeoutErr.url = url;
+        throw timeoutErr;
       }
+      if (!err.endpoint) err.endpoint = apiPath;
+      if (!err.url) err.url = url;
       throw err;
     } finally {
       clearTimeout(timeout);

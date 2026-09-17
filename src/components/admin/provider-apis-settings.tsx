@@ -19,7 +19,9 @@ import {
   Globe,
   Sliders,
   Check,
+  Activity,
 } from "lucide-react";
+import Link from "next/link";
 import {
   DEFAULT_BIGWINDATA_API_KEY,
   DEFAULT_BIGWINDATA_BASE_URL,
@@ -390,6 +392,29 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
             />
           </button>
         </div>
+      </div>
+
+      {/* Quick Link to Order API Logs */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-indigo-200/80 bg-indigo-50/60 p-4 shadow-sm dark:border-indigo-900/40 dark:bg-indigo-950/20">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+            <Activity className="h-5 w-5" />
+          </div>
+          <div>
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+              Order API Logs & Diagnostics
+            </h4>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">
+              Inspect Clickyfied and Bigwindata request/response payloads, HTTP error codes, and why order dispatches failed.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/admin/order-api-logs"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-indigo-700"
+        >
+          View Order API Logs →
+        </Link>
       </div>
 
       {/* Test Feedback Banner */}

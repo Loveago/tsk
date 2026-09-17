@@ -119,6 +119,7 @@ model Order {
   history        OrderStatusHistory[]
   deliveryReports DeliveryReport[]
   storefrontOrder StorefrontOrder?
+  apiLogs        OrderApiLog[]
 
   @@index([userId])
   @@index([status])
@@ -275,6 +276,32 @@ model ApiRequestLog {
   @@index([requestId])
   @@index([createdAt])
 }
+
+model OrderApiLog {
+  id                Int      @id @default(autoincrement())
+  orderId           Int?
+  order             Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  provider          String   // CLICKYFIED | BIGWINDATA
+  action            String   // SUBMIT_ORDER | SYNC_ORDER | CHECK_STATUS | NOT_RECEIVED | TEST
+  endpoint          String
+  method            String   @default("POST")
+  requestPayload    String?  @db.Text
+  responsePayload   String?  @db.Text
+  statusCode        Int?
+  success           Boolean  @default(false)
+  errorMessage      String?  @db.Text
+  providerReference String?
+  durationMs        Int?
+  createdAt         DateTime @default(now())
+
+  @@index([orderId])
+  @@index([provider])
+  @@index([action])
+  @@index([success])
+  @@index([statusCode])
+  @@index([createdAt])
+}
+
 
 model AuditLog {
   id            Int      @id @default(autoincrement())

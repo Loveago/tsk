@@ -98,6 +98,7 @@ export default function AdminSettingsPage() {
     () => [
       { href: "/admin", label: "Dashboard Overview" },
       { href: "/admin/orders", label: "Orders" },
+      { href: "/admin/order-api-logs", label: "Order API Logs" },
       { href: "/admin/exports", label: "Exports" },
       { href: "/admin/delivery-reports", label: "Not Received (Reports)" },
       { href: "/admin/mtn-verification", label: "MTN Verification" },
