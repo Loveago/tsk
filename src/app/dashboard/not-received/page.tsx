@@ -14,6 +14,7 @@ import {
   Eye,
   FileWarning,
   Search,
+  RotateCcw,
 } from "lucide-react";
 
 interface MyReportRow {
@@ -36,9 +37,12 @@ interface MyReportRow {
 
 interface Stats {
   total: number;
-  open: number;
-  investigating: number;
-  closed: number;
+  underReview?: number;
+  resolved?: number;
+  refunded?: number;
+  open?: number;
+  investigating?: number;
+  closed?: number;
 }
 
 const statusInputCls =
@@ -47,7 +51,7 @@ const statusInputCls =
 export default function NotReceivedPage() {
   const { toast } = useToast();
   const [myReports, setMyReports] = React.useState<MyReportRow[]>([]);
-  const [myStats, setMyStats] = React.useState<Stats>({ total: 0, open: 0, investigating: 0, closed: 0 });
+  const [myStats, setMyStats] = React.useState<Stats>({ total: 0, underReview: 0, resolved: 0, refunded: 0 });
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
   const [page, setPage] = React.useState(1);
@@ -65,7 +69,7 @@ export default function NotReceivedPage() {
       const res = await fetch(`/api/reports/not-received?${params}`);
       const json = await res.json();
       setMyReports(json.reports ?? []);
-      setMyStats(json.stats ?? { total: 0, open: 0, investigating: 0, closed: 0 });
+      setMyStats(json.stats ?? { total: 0, underReview: 0, resolved: 0, refunded: 0 });
       setTotal(json.total ?? 0);
       setPages(json.pages ?? 1);
     } catch {
@@ -82,9 +86,9 @@ export default function NotReceivedPage() {
 
   const tiles = [
     { label: "Total Reports", value: String(myStats.total), icon: ClipboardList, cls: "text-slate-400" },
-    { label: "Open", value: String(myStats.open), icon: Clock, cls: "text-amber-500" },
-    { label: "Investigating", value: String(myStats.investigating), icon: Eye, cls: "text-blue-500" },
-    { label: "Closed", value: String(myStats.closed), icon: CheckCircle2, cls: "text-emerald-500" },
+    { label: "Under Review", value: String(myStats.underReview ?? myStats.open ?? 0), icon: Clock, cls: "text-amber-500" },
+    { label: "Resolved", value: String(myStats.resolved ?? myStats.closed ?? 0), icon: CheckCircle2, cls: "text-emerald-500" },
+    { label: "Refunded", value: String(myStats.refunded ?? 0), icon: RotateCcw, cls: "text-cyan-500" },
   ];
 
   return (
@@ -146,12 +150,10 @@ export default function NotReceivedPage() {
               }}
               className={`${statusInputCls} w-44`}
             >
-              <option value="">All Statuses</option>
-              <option value="OPEN">Open</option>
-              <option value="INVESTIGATING">Investigating</option>
-              <option value="DELIVERED">Delivered</option>
+              <option value="">All Status</option>
+              <option value="UNDER_REVIEW">Under Review</option>
               <option value="RESOLVED">Resolved</option>
-              <option value="REJECTED">Rejected</option>
+              <option value="REFUNDED">Refunded</option>
             </select>
             {(q || status) && (
               <button

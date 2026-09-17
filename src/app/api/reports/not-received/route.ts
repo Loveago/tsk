@@ -44,8 +44,16 @@ export async function GET(request: NextRequest) {
     // "My Not Received" reports list (§14) — the user's actual filed reports
     if (searchParams.get("view") === "reports") {
       const reportWhere: Record<string, unknown> = { userId: user.id };
-      if (status && ["OPEN", "UNDER_REVIEW", "INVESTIGATING", "DELIVERED", "RESOLVED", "REFUNDED", "CONFIRM_SENT", "REJECTED"].includes(status)) {
-        reportWhere.status = status;
+      if (status) {
+        if (status === "UNDER_REVIEW" || status === "REVIEW") {
+          reportWhere.status = { in: ["OPEN", "UNDER_REVIEW", "INVESTIGATING"] };
+        } else if (status === "RESOLVED") {
+          reportWhere.status = { in: ["RESOLVED", "DELIVERED", "CONFIRM_SENT"] };
+        } else if (status === "REFUNDED") {
+          reportWhere.status = "REFUNDED";
+        } else if (["OPEN", "UNDER_REVIEW", "INVESTIGATING", "DELIVERED", "RESOLVED", "REFUNDED", "CONFIRM_SENT", "REJECTED"].includes(status)) {
+          reportWhere.status = status;
+        }
       }
       if (q) {
         reportWhere.OR = [
@@ -89,14 +97,22 @@ export async function GET(request: NextRequest) {
         } catch {}
       }
 
-      const [open, investigating, closed] = await Promise.all([
-        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["OPEN", "UNDER_REVIEW"] } } }),
-        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["INVESTIGATING", "DELIVERED"] } } }),
-        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["RESOLVED", "REFUNDED", "CONFIRM_SENT", "REJECTED"] } } }),
+      const [underReview, resolved, refunded] = await Promise.all([
+        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["OPEN", "UNDER_REVIEW", "INVESTIGATING"] } } }),
+        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["RESOLVED", "DELIVERED", "CONFIRM_SENT"] } } }),
+        prisma.deliveryReport.count({ where: { userId: user.id, status: "REFUNDED" } }),
       ]);
       return NextResponse.json({
         reports: reports.map((r) => ({ ...r, code: deliveryReportCode(r.seq) })),
-        stats: { total, open, investigating, closed },
+        stats: {
+          total,
+          underReview,
+          resolved,
+          refunded,
+          open: underReview,
+          investigating: 0,
+          closed: resolved + refunded,
+        },
         total,
         page,
         pages: Math.max(1, Math.ceil(total / pageSize)),
