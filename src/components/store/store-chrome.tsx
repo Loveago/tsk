@@ -310,7 +310,7 @@ export function StoreChrome(props: StoreChromeProps) {
             <p>
               {name} © {new Date().getFullYear()}
             </p>
-            <p>Powered by Tskconnect · Secure Paystack checkout</p>
+            <p>Secure Mobile Money checkout</p>
           </div>
         </div>
       </footer>
@@ -457,7 +457,7 @@ export function StoreChrome(props: StoreChromeProps) {
                 </a>
               )}
               <div className="flex items-center justify-between px-3 text-xs text-slate-400">
-                <span>Powered by Tskconnect</span>
+                <span>Secure Checkout</span>
                 <span>
                   {name} © {new Date().getFullYear()}
                 </span>

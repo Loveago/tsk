@@ -1,24 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Compass,
   ArrowRight,
   Store,
   Search,
-  Sparkles,
   ShieldCheck,
   Zap,
-  TrendingUp,
-  ExternalLink,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function StorefrontIndexPage() {
   const router = useRouter();
   const [slugInput, setSlugInput] = useState("");
-  const mainDomain = process.env.NEXT_PUBLIC_MAIN_DOMAIN || "tsk05.net";
 
   function handleGoToStore(e: React.FormEvent) {
     e.preventDefault();
@@ -46,13 +42,10 @@ export default function StorefrontIndexPage() {
               tskstore<span className="text-violet-400">.net</span>
             </span>
           </div>
-          <a
-            href={`https://${mainDomain}/login`}
-            className="text-xs font-semibold text-slate-400 hover:text-white transition flex items-center gap-1.5"
-          >
-            Store Owner Portal
-            <ExternalLink className="h-3 w-3" />
-          </a>
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Verified Storefronts
+          </span>
         </div>
       </header>
 
@@ -61,20 +54,19 @@ export default function StorefrontIndexPage() {
         {/* Playful Inquisitive Badge */}
         <div className="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 py-1.5 text-xs font-medium text-violet-300">
           <Compass className="h-3.5 w-3.5 animate-spin text-violet-400" />
-          Well, look who&apos;s inquisitive! 👀
+          Independent Telecom Reseller Network
         </div>
 
         <div className="space-y-4">
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight">
-            Looking for something specific, <br />
+            Direct Telecom Bundles, <br />
             <span className="bg-gradient-to-r from-violet-400 via-fuchsia-300 to-pink-400 bg-clip-text text-transparent">
-              or just exploring?
+              instantly delivered.
             </span>
           </h1>
           <p className="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto">
-            You&apos;ve landed on the engine behind Ghana&apos;s independent telecom reseller storefronts.
-            Every store on <span className="text-violet-300 font-semibold">tskstore.net</span> is
-            independently owned and powered by verified local entrepreneurs.
+            Find an independent store below to browse discounted MTN, Telecel, and AirtelTigo
+            data bundles with secure Mobile Money checkout.
           </p>
         </div>
 
@@ -92,7 +84,7 @@ export default function StorefrontIndexPage() {
                 type="text"
                 value={slugInput}
                 onChange={(e) => setSlugInput(e.target.value)}
-                placeholder="enter-store-slug"
+                placeholder="enter-store-name"
                 className="w-full bg-transparent text-white placeholder:text-slate-600 focus:outline-none text-sm font-medium"
                 required
               />
@@ -106,7 +98,7 @@ export default function StorefrontIndexPage() {
             </button>
           </form>
           <p className="text-xs text-slate-500 mt-2">
-            Have a store link from someone? Type their name above to shop their packages.
+            Have a store link from someone? Enter their name above to shop their packages.
           </p>
         </div>
 
@@ -119,7 +111,7 @@ export default function StorefrontIndexPage() {
             </div>
             <h3 className="text-base font-bold text-white">Already placed an order?</h3>
             <p className="text-sm text-slate-400">
-              Tracking your bundle delivery status or looking for a payment receipt? If you know the store name, jump straight to their tracking page.
+              Every order generates a tracking reference. If you know the store name, jump straight to their tracking page to check delivery progress in real time.
             </p>
             <div className="pt-2">
               <span className="text-xs text-slate-500 font-mono">
@@ -128,23 +120,28 @@ export default function StorefrontIndexPage() {
             </div>
           </div>
 
-          {/* Card 2: Create your own store CTA */}
-          <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/40 via-slate-900/60 to-slate-900/60 p-6 space-y-3 hover:border-violet-500/50 transition">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/20 text-violet-300">
-              <Sparkles className="h-5 w-5" />
+          {/* Card 2: Safe and Verified Network Delivery */}
+          <div className="rounded-2xl border border-violet-500/20 bg-slate-900/60 p-6 space-y-3 hover:border-violet-500/50 transition">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+              <ShieldCheck className="h-5 w-5" />
             </div>
-            <h3 className="text-base font-bold text-white">Want your own reseller storefront?</h3>
+            <h3 className="text-base font-bold text-white">Verified Telecom Dispatch</h3>
             <p className="text-sm text-slate-400">
-              Sell MTN, Telecel, and AirtelTigo data bundles at your own retail prices and earn instant commissions into your mobile money wallet.
+              Stores on tskstore.net process payments securely via Mobile Money with automated bundle dispatch across MTN, Telecel, and AirtelTigo.
             </p>
-            <div className="pt-2">
-              <a
-                href={`https://${mainDomain}/register`}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-400 hover:text-violet-300 underline underline-offset-4"
-              >
-                Launch your store on {mainDomain}
-                <ArrowRight className="h-3 w-3" />
-              </a>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 bg-white/5 border border-white/10 px-2.5 py-1 rounded-full">
+                <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                MTN & Telecel
+              </span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 bg-white/5 border border-white/10 px-2.5 py-1 rounded-full">
+                <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                AirtelTigo
+              </span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 bg-white/5 border border-white/10 px-2.5 py-1 rounded-full">
+                <Zap className="h-3 w-3 text-yellow-400" />
+                Instant MoMo
+              </span>
             </div>
           </div>
         </div>
@@ -153,15 +150,12 @@ export default function StorefrontIndexPage() {
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 py-6 text-center text-xs text-slate-600">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>© {new Date().getFullYear()} tskstore.net. Platform infrastructure by Tskconnect.</p>
+          <p>© {new Date().getFullYear()} tskstore.net. All rights reserved.</p>
           <div className="flex items-center gap-4">
             <span className="inline-flex items-center gap-1 text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Storefront Gateway Live
             </span>
-            <a href={`https://${mainDomain}`} className="hover:text-slate-400 transition">
-              {mainDomain}
-            </a>
           </div>
         </div>
       </footer>
