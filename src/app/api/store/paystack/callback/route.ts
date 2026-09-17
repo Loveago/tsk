@@ -45,13 +45,20 @@ export async function GET(request: NextRequest) {
   // On success redirect to the dedicated order detail page.
   // If outcome was failed but we have a valid order reference and store slug,
   // redirect to the order detail page so the page can perform on-the-fly reconciliation!
+  const storefrontDomain = (process.env.STOREFRONT_DOMAIN || "tskstore.net").toLowerCase();
+  const isStorefrontOrigin = origin.toLowerCase().includes(storefrontDomain);
+
   let target: string;
   if (slug && reference) {
-    target = `/store/${slug}/order/${encodeURIComponent(reference)}`;
+    target = isStorefrontOrigin
+      ? `/${slug}/order/${encodeURIComponent(reference)}`
+      : `/store/${slug}/order/${encodeURIComponent(reference)}`;
   } else if (slug) {
-    target = `/store/${slug}?payment=${outcome}&reference=${encodeURIComponent(reference)}`;
+    target = isStorefrontOrigin
+      ? `/${slug}?payment=${outcome}&reference=${encodeURIComponent(reference)}`
+      : `/store/${slug}?payment=${outcome}&reference=${encodeURIComponent(reference)}`;
   } else {
-    target = `/store?payment=${outcome}`;
+    target = isStorefrontOrigin ? `/?payment=${outcome}` : `/store?payment=${outcome}`;
   }
   return NextResponse.redirect(new URL(target, origin));
 }

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { CheckCircle2, Clock, XCircle, AlertCircle, ArrowLeft, Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { fromPesewas, verifyAndSettleStorefrontOrder } from "@/lib/storefront";
+import { storeHref } from "@/components/store/brands";
 
 export const dynamic = "force-dynamic";
 
@@ -153,7 +154,7 @@ export default async function StorefrontOrderPage({
     <div className="mx-auto max-w-lg px-4 py-10 sm:py-16">
       {/* Back link */}
       <Link
-        href={`/store/${slug}`}
+        href={storeHref(slug)}
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
@@ -248,14 +249,14 @@ export default async function StorefrontOrderPage({
       {/* Actions */}
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <Link
-          href={`/store/${slug}/track`}
+          href={storeHref(slug, "track")}
           className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
         >
           <Search className="h-4 w-4" />
           Track Order
         </Link>
         <Link
-          href={`/store/${slug}`}
+          href={storeHref(slug)}
           className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-yellow-300 py-3 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/30 transition hover:bg-yellow-400"
         >
           Buy Another Bundle

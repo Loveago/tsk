@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { fromPesewas } from "@/lib/storefront";
 import { NetworkLogo } from "@/components/store/network-logo";
-import { NETWORK_BRANDS, ghs, networkBySlug } from "@/components/store/brands";
+import { NETWORK_BRANDS, ghs, networkBySlug, storeHref } from "@/components/store/brands";
 import { NetworkBuyForm } from "./buy-form";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +49,7 @@ export default async function NetworkPage({
     <div className="mx-auto max-w-6xl px-4 pb-6">
       {/* Breadcrumb */}
       <nav className="flex flex-wrap items-center gap-2 py-3 text-xs text-slate-500 sm:py-4 sm:text-sm dark:text-slate-400">
-        <Link href={`/store/${slug}`} className="hover:text-slate-800 dark:hover:text-slate-200">
+        <Link href={storeHref(slug)} className="hover:text-slate-800 dark:hover:text-slate-200">
           Home
         </Link>
         <span>/</span>

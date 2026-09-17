@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { NetworkLogo } from "./network-logo";
-import { NETWORK_BRANDS } from "./brands";
+import { NETWORK_BRANDS, networkHref, storeHref } from "./brands";
 import type { NetworkProvider } from "@/lib/types";
 
 /**
@@ -41,7 +41,7 @@ export function NetworkWheel({
               style={{ transform: `rotate(${angle}deg)` }}
             >
               <Link
-                href={`/store/${slug}/${NETWORK_BRANDS[network].slug}`}
+                href={networkHref(slug, network)}
                 aria-label={`Shop ${NETWORK_BRANDS[network].label} bundles`}
                 className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2"
               >
@@ -66,7 +66,7 @@ export function NetworkWheel({
       {/* Center card */}
       <div className="absolute inset-0 flex items-center justify-center">
         <Link
-          href={`/store/${slug}`}
+          href={storeHref(slug)}
           className="flex flex-col items-center gap-1 rounded-3xl bg-white px-8 py-6 text-center shadow-2xl shadow-slate-900/10 transition-transform hover:scale-105 dark:bg-[#111a2c] md:px-10 md:py-8"
         >
           <span className="font-serif text-xl font-bold text-slate-900 dark:text-white md:text-2xl">

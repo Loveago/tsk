@@ -1,218 +1,125 @@
 ================================================================================
-           TSKCONNECT / TSKCONNECT — COMPLETE VERCEL DEPLOYMENT GUIDE
+     TSKCONNECT — VERCEL DUAL-DOMAIN DEPLOYMENT & TESTING GUIDE
+     (How to Use Two Separate Domains or Subdomains on One Vercel Project)
 ================================================================================
 Repository: https://github.com/Loveago/tsk.git
 Framework:  Next.js 15 (App Router) + Prisma + Tailwind CSS
+Platform:   Vercel
+
+You can use two separate domains on the SAME Vercel project:
+• Domain 1 (Management Portal): For Admin, Users, Billing, and Dashboard.
+• Domain 2 (Storefront Portal): Dedicated to Customers, Stores, and Order Tracking.
+
+This works whether you use:
+• Two free Vercel subdomains (e.g. `tsk-admin.vercel.app` & `tsk-store.vercel.app`)
+  OR
+• Two custom domains (e.g. `tsk05.net` & `tskstore.net`)
+================================================================================
 
 --------------------------------------------------------------------------------
 TABLE OF CONTENTS
 --------------------------------------------------------------------------------
-1. CRITICAL NOTICE: Database (SQLite vs Cloud PostgreSQL)
-2. PREREQUISITES
-3. STEP 1: Set Up a Free Cloud Database (Neon or Supabase)
-4. STEP 2: Update Prisma Schema for PostgreSQL
-5. STEP 3: Push Changes to GitHub
-6. STEP 4: Deploy to Vercel (Web Dashboard)
-7. STEP 5: Add Environment Variables in Vercel
-8. STEP 6: Run Database Schema & Initial Seed
-9. STEP 7: Configure Paystack Webhooks & Callbacks
-10. ALTERNATIVE: Deploy Using Vercel CLI
-11. TROUBLESHOOTING & COMMON MISTAKES
+1. Step 1: Add Both Separate Domains to Your Vercel Project
+   • Option A: Two Free .vercel.app Subdomains (Zero DNS required)
+   • Option B: Two Custom Domains (e.g. tsk05.net & tskstore.net)
+2. Step 2: Set the Dual-Domain Environment Variables in Vercel
+3. Step 3: Update Database Schema (Prisma DB Push)
+4. Step 4: Redeploy the Project on Vercel
+5. Step 5: Verify How the Two Domains Interact
+
 
 ================================================================================
-1. CRITICAL NOTICE: DATABASE (SQLite vs Cloud PostgreSQL)
+STEP 1: ADD BOTH SEPARATE DOMAINS TO YOUR VERCEL PROJECT
 ================================================================================
-⚠️ IMPORTANT:
-In local development, the app uses SQLite ("file:./dev.db").
-Vercel executes Next.js server actions and API routes inside serverless functions
-(AWS Lambda). These functions have an EPHEMERAL (temporary), READ-ONLY filesystem.
+Go to your **Vercel Project Dashboard** -> **Settings** -> **Domains**.
 
-Any data written to a local SQLite file on Vercel will be WIPED when functions
-recycle. For production on Vercel, you MUST use a cloud database (PostgreSQL).
+--------------------------------------------------------------------------------
+OPTION A: Using Two Free .vercel.app Subdomains (Instant, No DNS setup needed)
+--------------------------------------------------------------------------------
+Vercel allows you to add multiple `.vercel.app` aliases to the exact same project!
 
-Recommended Free Serverless Postgres Providers:
-- Neon (https://neon.tech) — Recommended (free tier, instant setup, pooling)
-- Supabase (https://supabase.com) — Free tier, PostgreSQL
-- Vercel Postgres / Neon integration directly in the Vercel marketplace
+1. Your primary domain is already there (e.g. `my-portal.vercel.app`).
+2. In the "Add Domain" box, type a second `.vercel.app` subdomain for your stores:
+   Example: `my-storefront.vercel.app`
+3. Click "Add".
+4. Vercel automatically assigns it instantly with SSL!
 
-================================================================================
-2. PREREQUISITES
-================================================================================
-1. GitHub Account: Already pushed to https://github.com/Loveago/tsk.git
-2. Vercel Account: Sign up free at https://vercel.com with your GitHub account.
-3. Cloud Postgres Account: Sign up free at https://neon.tech or https://supabase.com.
-4. Paystack Account: https://dashboard.paystack.com (for Ghana mobile money top-ups).
+You now have two distinct domains pointing to your app:
+• `my-portal.vercel.app`
+• `my-storefront.vercel.app`
 
-================================================================================
-3. STEP 1: SET UP A FREE CLOUD DATABASE (NEON RECOMMENDED)
-================================================================================
-1. Go to https://neon.tech and sign up / log in with GitHub.
-2. Click "Create Project".
-   - Name: tskconnect-db
-   - Region: Choose the closest region (e.g., Frankfurt / Ireland for EMEA/Ghana).
-3. Once created, copy the "Connection string".
-   Select "Prisma" or "Connection Pooling".
-   It looks like:
-   postgresql://username:password@ep-cool-frog-123456-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
+--------------------------------------------------------------------------------
+OPTION B: Using Two Custom Domains (e.g. tsk05.net & tskstore.net)
+--------------------------------------------------------------------------------
+1. In Vercel Project -> Settings -> Domains:
+   - Add `tsk05.net` and `www.tsk05.net`
+   - Add `tskstore.net` and `www.tskstore.net`
+2. In your DNS provider (Namecheap, Cloudflare, GoDaddy, etc.), set:
+   For tsk05.net:
+     A record:     @   ->  76.76.21.21
+     CNAME record: www ->  cname.vercel-dns.com
+   For tskstore.net:
+     A record:     @   ->  76.76.21.21
+     CNAME record: www ->  cname.vercel-dns.com
 
-Save this connection string — this is your DATABASE_URL!
 
 ================================================================================
-4. STEP 2: UPDATE PRISMA SCHEMA FOR POSTGRESQL
+STEP 2: SET THE DUAL-DOMAIN ENVIRONMENT VARIABLES IN VERCEL
 ================================================================================
-In your project file `prisma/schema.prisma`:
+Go to: **Settings** -> **Environment Variables** in your Vercel Project.
 
-Change lines 5-8 from:
---------------------------------------------------
-datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-}
---------------------------------------------------
-To:
---------------------------------------------------
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
---------------------------------------------------
+Add / Update these 4 domain variables:
 
-================================================================================
-5. STEP 3: PUSH CHANGES TO GITHUB
-================================================================================
-Run the following commands in your terminal:
+(Replace with your two chosen domains, WITHOUT `https://`):
 
-  git add prisma/schema.prisma
-  git commit -m "Configure Prisma datasource for PostgreSQL"
-  git push origin main
+| Variable Key                   | Example (Option A: Vercel)    | Example (Option B: Custom) |
+| :----------------------------- | :---------------------------- | :------------------------- |
+| MAIN_DOMAIN                    | my-portal.vercel.app          | tsk05.net                  |
+| NEXT_PUBLIC_MAIN_DOMAIN        | my-portal.vercel.app          | tsk05.net                  |
+| STOREFRONT_DOMAIN              | my-storefront.vercel.app      | tskstore.net               |
+| NEXT_PUBLIC_STOREFRONT_DOMAIN  | my-storefront.vercel.app      | tskstore.net               |
+
+Also ensure your other required variables are set:
+• DATABASE_URL: Your cloud Neon/Postgres pooling connection string
+• AUTH_SECRET: 32+ character random secret
+• PAYSTACK_SECRET_KEY: sk_test_... (or sk_live_...)
+
 
 ================================================================================
-6. STEP 4: DEPLOY TO VERCEL (WEB DASHBOARD)
+STEP 3: UPDATE DATABASE SCHEMA (PRISMA DB PUSH)
 ================================================================================
-1. Go to https://vercel.com and log in.
-2. On your Vercel Dashboard, click "Add New..." -> "Project".
-3. Under "Import Git Repository", find:
-   Loveago/tsk
-   (If it does not appear, click "Adjust GitHub App Permissions" and grant access).
-4. Click "Import".
-5. In the "Configure Project" screen:
-   - Project Name: tskconnect (or tsk)
-   - Framework Preset: Next.js (automatically detected)
-   - Root Directory: ./ (default)
-   - Build Command: leave default (Next.js handles `prisma generate` via postinstall)
-   - Output Directory: leave default (.next)
-6. DO NOT CLICK DEPLOY YET! Proceed to Step 5 to add Environment Variables.
+Push the latest storefront database schema to your cloud database:
+
+From your local machine terminal:
+DATABASE_URL="your_neon_postgres_url" npx prisma db push
+
 
 ================================================================================
-7. STEP 5: ADD ENVIRONMENT VARIABLES IN VERCEL
+STEP 4: REDEPLOY THE PROJECT ON VERCEL
 ================================================================================
-Under the "Environment Variables" section in the Vercel project configuration,
-add the following keys:
+1. Push your latest code to GitHub:
+   git add .
+   git commit -m "Configure multi-domain routing"
+   git push origin main
 
-1) DATABASE_URL
-   Value: Your Neon/Supabase Postgres connection string.
-   Example:
-   postgresql://neondb_owner:YOUR_PASS@ep-xyz-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
+2. Or in Vercel Dashboard:
+   Go to the "Deployments" tab -> click the `...` menu on the latest deployment -> select "Redeploy".
+   (Uncheck "Use existing Build Cache" so it loads the updated domain variables).
 
-2) AUTH_SECRET
-   Value: A secure 32+ character random string.
-   Generate on your terminal with:
-     openssl rand -base64 32
-   Example:
-   dGhpcy1pcy1hLXN1cGVyLXNlY3JldC1rZXktZm9yLXZlcmNlbC0yMDI2
-
-3) PAYSTACK_SECRET_KEY
-   Value: Your Paystack Secret Key from Paystack Dashboard -> Settings -> API Keys.
-   Test mode: sk_test_...
-   Live mode: sk_live_...
-
-4) NEXT_PUBLIC_APP_URL
-   Value: https://your-project-name.vercel.app
-   (You can update this after Vercel assigns your project domain).
-
-5) ADMIN_EMAIL (Optional, defaults to admin@tskconnect.com)
-   Value: your-preferred-admin-email@domain.com
-
-6) ADMIN_PASSWORD (Optional, defaults to admin123)
-   Value: YourSuperSecureAdminPassword!
-
-Once all variables are entered, click "Deploy".
 
 ================================================================================
-8. STEP 6: RUN DATABASE SCHEMA & INITIAL SEED
-================================================================================
-Once the cloud database is created, you must push the tables and seed default data
-(admin user, networks, default pricing profiles, and data packages).
-
-You can run this locally targeting the cloud database:
-
-1. In your local `.env` file, set:
-   DATABASE_URL="postgresql://username:password@your-host/neondb?sslmode=require"
-   ADMIN_EMAIL="admin@tskconnect.com"
-   ADMIN_PASSWORD="YourSecureAdminPassword123!"
-
-2. Generate client & push tables to the cloud database:
-   npx prisma db push
-
-3. Seed the default database data (Admin accounts, packages, pricing profiles):
-   npm run db:seed
-
-   (If ADMIN_EMAIL and ADMIN_PASSWORD are set in .env, the seed will create the admin
-    with your specified credentials directly!)
-
-================================================================================
-9. STEP 7: CONFIGURE PAYSTACK WEBHOOKS & CALLBACKS
-================================================================================
-To receive instant wallet top-up and storefront order callbacks:
-
-1. Go to https://dashboard.paystack.com/#/settings/developers
-2. Under "Webhook URL", enter:
-   https://your-project.vercel.app/api/store/paystack/callback
-3. Under "Callback URL", enter:
-   https://your-project.vercel.app/dashboard/billing
-4. Save Changes.
-
-================================================================================
-10. ALTERNATIVE: DEPLOY USING VERCEL CLI
-================================================================================
-If you prefer deploying directly from your terminal:
-
-1. Install Vercel CLI globally:
-   npm install -g vercel
-
-2. Log in to Vercel:
-   vercel login
-
-3. Link and Deploy:
-   vercel
-
-4. Add production environment variables:
-   vercel env add DATABASE_URL production
-   vercel env add AUTH_SECRET production
-   vercel env add PAYSTACK_SECRET_KEY production
-
-5. Deploy to Production:
-   vercel --prod
-
-================================================================================
-11. TROUBLESHOOTING & COMMON MISTAKES
-================================================================================
-Q: Deployment fails with "Prisma Client has not been generated yet".
-A: Ensure package.json has:
-   "postinstall": "prisma generate"
-   (This is already configured in this repository).
-
-Q: "Database schema is out of sync" or 500 error on login.
-A: Make sure you executed `npx prisma db push` against your production
-   DATABASE_URL so the tables exist in Postgres.
-
-Q: Paystack payments succeed but wallet doesn't credit.
-A: Verify PAYSTACK_SECRET_KEY in Vercel environment variables matches the key
-   corresponding to the mode you are testing (Test mode vs Live mode).
-
-Q: How to view/edit database records directly?
-A: Run Prisma Studio locally connected to your cloud database:
-   npx prisma studio
-   Then open http://localhost:5555 in your browser.
+STEP 5: VERIFY HOW THE TWO DOMAINS INTERACT
 ================================================================================
 
+1. MANAGEMENT DOMAIN (e.g. `https://my-portal.vercel.app`):
+   • Open `https://my-portal.vercel.app/login` -> Logs in to management dashboard.
+   • Open `https://my-portal.vercel.app/@storename` -> Automatically redirects to
+     `https://my-storefront.vercel.app/storename`!
+
+2. STOREFRONT DOMAIN (e.g. `https://my-storefront.vercel.app`):
+   • Open root `https://my-storefront.vercel.app/` -> Renders the Inquisitive Visitor homepage.
+   • Open `https://my-storefront.vercel.app/kofi-data` -> Renders the customer store.
+   • Open `https://my-storefront.vercel.app/kofi-data/mtn` -> Clean network page.
+   • Open `https://my-storefront.vercel.app/admin` -> Instantly redirects to
+     `https://my-portal.vercel.app/login` for security!
+================================================================================

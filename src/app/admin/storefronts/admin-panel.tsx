@@ -51,6 +51,7 @@ export function AdminStorefrontPanel({
   initialStorefrontEnabled?: boolean;
 }) {
   const router = useRouter();
+  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskstore.net";
   const [storefrontsActive, setStorefrontsActive] = React.useState(initialStorefrontEnabled);
   const [togglingMaster, setTogglingMaster] = React.useState(false);
   const [userId, setUserId] = React.useState(candidates[0]?.id ?? "");
@@ -317,7 +318,14 @@ export function AdminStorefrontPanel({
               <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="px-4 py-2">{s.owner}</td>
                 <td className="px-4 py-2">
-                  <a href={`/store/${s.slug}`} className="font-semibold text-violet-600 hover:underline dark:text-violet-400">/store/{s.slug}</a>
+                  <a
+                    href={`https://${storefrontDomain}/${s.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-violet-600 hover:underline dark:text-violet-400"
+                  >
+                    {storefrontDomain}/{s.slug}
+                  </a>
                   <span className="ml-2 text-slate-400">{s.name}</span>
                 </td>
                 <td className="px-4 py-2">

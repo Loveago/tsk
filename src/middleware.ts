@@ -15,10 +15,89 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/packages",
 ];
 
+const STOREFRONT_DOMAIN = (process.env.STOREFRONT_DOMAIN || "tskstore.net").toLowerCase();
+const MAIN_DOMAIN = (process.env.MAIN_DOMAIN || "tsk05.net").toLowerCase();
+
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const rawHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
+  const host = rawHost.split(":")[0].toLowerCase();
+  const isStorefrontDomain = host === STOREFRONT_DOMAIN || host === `www.${STOREFRONT_DOMAIN}`;
+  const isLocalhost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
 
+  // ---------------------------------------------------------------------------
+  // 1. STOREFRONT DOMAIN ROUTING (tskstore.net)
+  // ---------------------------------------------------------------------------
+  if (isStorefrontDomain) {
+    // Prevent access to management dashboard & admin panel on the storefront domain
+    if (pathname.startsWith("/admin") || pathname.startsWith("/dashboard")) {
+      return NextResponse.redirect(`https://${MAIN_DOMAIN}/login`);
+    }
+
+    // Allow API endpoints, internal assets, and favicon to execute directly
+    if (
+      pathname.startsWith("/api") ||
+      pathname.startsWith("/_next") ||
+      pathname.includes(".")
+    ) {
+      return NextResponse.next();
+    }
+
+    // Normalize legacy /store URLs to clean root URLs
+    if (pathname === "/store" || pathname === "/store/") {
+      const cleanUrl = request.nextUrl.clone();
+      cleanUrl.pathname = "/";
+      return NextResponse.redirect(cleanUrl);
+    }
+    if (pathname.startsWith("/store/")) {
+      const cleanPath = pathname.replace(/^\/store/, "");
+      const cleanUrl = request.nextUrl.clone();
+      cleanUrl.pathname = cleanPath || "/";
+      return NextResponse.redirect(cleanUrl);
+    }
+
+    // Handle Storefront root (e.g. https://tskstore.net/)
+    // Rewrites to /store which renders the dedicated "Inquisitive Visitor" homepage
+    if (pathname === "/" || pathname === "") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/store";
+      return NextResponse.rewrite(url);
+    }
+
+    // Rewrite clean storefront paths:
+    // /:slug -> /store/:slug
+    // /:slug/mtn -> /store/:slug/mtn
+    // /:slug/track -> /store/:slug/track
+    // /:slug/order/:ref -> /store/:slug/order/:ref
+    const url = request.nextUrl.clone();
+    url.pathname = `/store${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. MAIN PLATFORM ROUTING (tsk05.net / localhost)
+  // ---------------------------------------------------------------------------
+
+  // Friendly /@slug redirects to the dedicated storefront domain (or rewrites in local dev)
+  if (pathname.startsWith("/@")) {
+    const slug = pathname.slice(2).replace(/\/+$/, "");
+    if (/^[a-z0-9-]{3,32}$/.test(slug)) {
+      if (isLocalhost) {
+        const url = request.nextUrl.clone();
+        url.pathname = `/store/${slug}`;
+        return NextResponse.rewrite(url);
+      }
+      return NextResponse.redirect(`https://${STOREFRONT_DOMAIN}/${slug}`);
+    }
+  }
+
+  // If in production on main domain and visitor accesses /store/slug, redirect to clean storefront domain
+  if (!isLocalhost && pathname.startsWith("/store/")) {
+    const cleanPath = pathname.replace(/^\/store/, "");
+    return NextResponse.redirect(`https://${STOREFRONT_DOMAIN}${cleanPath}${search}`);
+  }
+
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
   let payload: { role?: unknown; tv?: unknown } | null = null;
   if (token) {
     try {
@@ -71,19 +150,18 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Friendly /@slug addresses rewrite to the public storefront page (§8)
-  if (pathname.startsWith("/@")) {
-    const slug = pathname.slice(2).replace(/\/+$/, "");
-    if (/^[a-z0-9-]{3,32}$/.test(slug)) {
-      const url = request.nextUrl.clone();
-      url.pathname = `/store/${slug}`;
-      return NextResponse.rewrite(url);
-    }
-  }
-
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/login", "/register", "/@:path*"],
+  matcher: [
+    /*
+     * Match all request paths except for:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public files with extensions
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

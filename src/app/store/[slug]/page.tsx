@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { fromPesewas } from "@/lib/storefront";
 import { NetworkLogo } from "@/components/store/network-logo";
 import { NetworkWheel } from "@/components/store/network-wheel";
-import { NETWORK_BRANDS, NETWORK_ORDER, ghs, networkHref } from "@/components/store/brands";
+import { NETWORK_BRANDS, NETWORK_ORDER, ghs, networkHref, storeHref } from "@/components/store/brands";
 import type { NetworkProvider } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -93,7 +93,7 @@ export default async function PublicStorePage({
               Buy bundles
             </a>
             <Link
-              href={`/store/${slug}/track`}
+              href={storeHref(slug, "track")}
               className="inline-flex h-12 items-center gap-2 rounded-full bg-white px-7 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/5 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
             >
               <Clock className="h-4 w-4" />

@@ -1,49 +1,93 @@
 ================================================================================
-           COMPLETE COPY-AND-PASTE VPS DEPLOYMENT GUIDE (TSK05.NET)
+     COMPLETE VPS DEPLOYMENT GUIDE: DUAL-DOMAIN ARCHITECTURE
+     • tsk05.net    -> Management Portal, Admin, User Dashboards
+     • tskstore.net -> Customer Storefronts, Orders & Tracking
 ================================================================================
 OS: Ubuntu 22.04 / 24.04 LTS or Debian 12
-Domain: tsk05.net (and www.tsk05.net)
-Stack: Node.js 22 LTS, PM2, PostgreSQL (Local), Nginx Reverse Proxy, Certbot SSL
+VPS Setup: Single Next.js App (Port 3000) + PM2 + Local PostgreSQL + Nginx + Certbot
+Architecture: Both domains point to the SAME VPS IP address and share the same database.
 ================================================================================
 
 --------------------------------------------------------------------------------
-STEP 1: CONNECT TO YOUR VPS & UPDATE PACKAGES
+TABLE OF CONTENTS
 --------------------------------------------------------------------------------
+1. DNS Configuration (Both Domains Point to Same IP)
+2. Step 1: Connect to VPS & Configure Firewall
+3. Step 2: Install Node.js 22 LTS & PM2
+4. Step 3: Install & Configure PostgreSQL
+5. Step 4: Clone Repository & Install Dependencies
+6. Step 5: Configure Production Environment (.env)
+7. Step 6: Database Setup & Next.js Production Build
+8. Step 7: Configure PM2 Process Manager
+9. Step 8: Configure Nginx for Both Domains (tsk05.net & tskstore.net)
+10. Step 9: Issue Free SSL Certificates (Certbot HTTPS)
+11. Step 10: Configure Paystack Webhooks & Callbacks
+12. Step 11: Verification & Live Testing
+13. Step 12: 1-Click Update Script & Maintenance Commands
+
+
+================================================================================
+1. DNS CONFIGURATION (BOTH DOMAINS POINT TO SAME VPS IP)
+================================================================================
+A VPS has one public IP address. Both domains will point to that SAME IP.
+When a visitor visits tskstore.net, Nginx proxies to Next.js with Host: tskstore.net,
+serving customer storefronts. When a user visits tsk05.net, they access the portal.
+
+In your DNS manager (Namecheap, Cloudflare, GoDaddy, Hostinger, etc.):
+
+For tsk05.net:
+| Type | Host / Name | Value / Destination | TTL |
+| :--- | :--- | :--- | :--- |
+| A    | @           | <YOUR_VPS_IP>       | Auto / 1 min |
+| A    | www         | <YOUR_VPS_IP>       | Auto / 1 min |
+
+For tskstore.net:
+| Type | Host / Name | Value / Destination | TTL |
+| :--- | :--- | :--- | :--- |
+| A    | @           | <YOUR_VPS_IP>       | Auto / 1 min |
+| A    | www         | <YOUR_VPS_IP>       | Auto / 1 min |
+
+(Do not delete your tsk05.net records — both domains live together happily!)
+
+
+================================================================================
+2. STEP 1: CONNECT TO VPS & CONFIGURE FIREWALL
+================================================================================
 # SSH into your VPS (replace your_vps_ip with your actual VPS IP address)
 ssh root@your_vps_ip
 
-# Update all system packages and install essential utilities
+# Update system packages and install prerequisites
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl git ufw build-essential libpq-dev nginx certbot python3-certbot-nginx
 
-# Configure UFW Firewall (allows SSH, HTTP, HTTPS)
+# Configure UFW Firewall (allows SSH, HTTP port 80, HTTPS port 443)
 sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
 sudo ufw --force enable
 sudo ufw status
 
 
---------------------------------------------------------------------------------
-STEP 2: INSTALL NODE.JS 22 LTS & PM2
---------------------------------------------------------------------------------
+================================================================================
+3. STEP 2: INSTALL NODE.JS 22 LTS & PM2
+================================================================================
 # Install Node.js 22 LTS via NodeSource
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# Verify Node.js and npm versions
+# Verify versions
 node -v
 npm -v
 
 # Install PM2 globally
 sudo npm install -g pm2
 
-# Configure PM2 to automatically restart on VPS boot
+# Configure PM2 to automatically launch on system reboot
 sudo pm2 startup systemd -u root --hp /root
 
 
---------------------------------------------------------------------------------
-STEP 3: INSTALL & CONFIGURE POSTGRESQL ON VPS
---------------------------------------------------------------------------------
+================================================================================
+4. STEP 3: INSTALL & CONFIGURE POSTGRESQL
+================================================================================
 # Install PostgreSQL and contrib tools
 sudo apt install -y postgresql postgresql-contrib
 
@@ -51,8 +95,8 @@ sudo apt install -y postgresql postgresql-contrib
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
 
-# Create a secure database user and the tskconnect database
-# Replace 'YourSecurePassword123!' with a strong password!
+# Create database user and database
+# (Replace 'Loverboy888112!' with your chosen secure database password)
 sudo -u postgres psql << 'EOF'
 CREATE USER tsk_user WITH PASSWORD 'Loverboy888112!';
 CREATE DATABASE tskconnect_db OWNER tsk_user;
@@ -68,15 +112,14 @@ sudo -u postgres psql -d tskconnect_db -c "GRANT ALL ON SCHEMA public TO tsk_use
 PGPASSWORD='Loverboy888112!' psql -U tsk_user -d tskconnect_db -h 127.0.0.1 -c "\conninfo"
 
 
---------------------------------------------------------------------------------
-STEP 4: CLONE REPOSITORY & SETUP DIRECTORY
---------------------------------------------------------------------------------
-# Create web directory and navigate to it
+================================================================================
+5. STEP 4: CLONE REPOSITORY & INSTALL DEPENDENCIES
+================================================================================
+# Create web directory
 sudo mkdir -p /var/www
 cd /var/www
 
-# Clone your repository from GitHub
-# (Use HTTPS or set up your VPS SSH key with GitHub)
+# Clone repository
 git clone https://github.com/Loveago/tsk.git tskconnect
 cd /var/www/tskconnect
 
@@ -84,16 +127,26 @@ cd /var/www/tskconnect
 npm install
 
 
---------------------------------------------------------------------------------
-STEP 5: CONFIGURE ENVIRONMENT VARIABLES (.env)
---------------------------------------------------------------------------------
-# Create your production .env file
-# Tip: Generate a random AUTH_SECRET with: openssl rand -base64 32
-
+================================================================================
+6. STEP 5: CONFIGURE PRODUCTION ENVIRONMENT (.ENV)
+================================================================================
+# Create production .env file
 cat << 'EOF' > /var/www/tskconnect/.env
+# Database Connection (Local PostgreSQL)
 DATABASE_URL="postgresql://tsk_user:Loverboy888112!@localhost:5432/tskconnect_db?schema=public"
-AUTH_SECRET="CHANGE_THIS_TO_A_VE122!!2RY_LONG_RANDOM_SEsduudgCRET_KEY_123456"
 
+# Auth Session Secret (Generate with: openssl rand -base64 32)
+AUTH_SECRET="CHANGE_THIS_TO_A_VERY_LONG_RANDOM_SECRET_KEY_123456"
+
+# Multi-Domain Platform Architecture
+MAIN_DOMAIN="tsk05.net"
+NEXT_PUBLIC_MAIN_DOMAIN="tsk05.net"
+STOREFRONT_DOMAIN="tskstore.net"
+NEXT_PUBLIC_STOREFRONT_DOMAIN="tskstore.net"
+
+# Paystack (Ghana MoMo Top-ups & Storefront Checkout)
+# Get keys at: https://dashboard.paystack.com/#/settings/developers
+PAYSTACK_SECRET_KEY="sk_live_replace_with_your_paystack_secret_key"
 
 # Initial Admin Credentials (used during seed)
 ADMIN_EMAIL="admin@tsk05.net"
@@ -105,13 +158,13 @@ NODE_ENV="production"
 PORT=3000
 EOF
 
-# Secure file permissions so only root/app can read secrets
+# Restrict permissions so only root/node can read secrets
 chmod 600 /var/www/tskconnect/.env
 
 
---------------------------------------------------------------------------------
-STEP 6: RUN DATABASE MIGRATIONS & BUILD THE APP
---------------------------------------------------------------------------------
+================================================================================
+7. STEP 6: DATABASE SETUP & NEXT.JS PRODUCTION BUILD
+================================================================================
 cd /var/www/tskconnect
 
 # Generate Prisma Client
@@ -120,16 +173,16 @@ npx prisma generate
 # Push database schema to PostgreSQL
 npm run db:push
 
-# (Optional) Seed initial admin user and default system settings
+# (Optional) Seed initial admin user and default packages
 npm run db:seed
 
 # Build Next.js application for production
-npm run build
+NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 
---------------------------------------------------------------------------------
-STEP 7: CONFIGURE PM2 ECOSYSTEM & START SERVICE
---------------------------------------------------------------------------------
+================================================================================
+8. STEP 7: CONFIGURE PM2 PROCESS MANAGER
+================================================================================
 # Create PM2 ecosystem file
 cat << 'EOF' > /var/www/tskconnect/ecosystem.config.js
 module.exports = {
@@ -156,24 +209,25 @@ EOF
 # Start application with PM2
 pm2 start /var/www/tskconnect/ecosystem.config.js
 
-# Save PM2 process list so it automatically restarts on system reboot
+# Save PM2 process list to persist across reboots
 pm2 save
 
-# Verify the app is running locally
+# Verify application responds locally
 curl -I http://127.0.0.1:3000
 
 
---------------------------------------------------------------------------------
-STEP 8: CONFIGURE NGINX REVERSE PROXY FOR TSK05.NET
---------------------------------------------------------------------------------
-# Create Nginx site configuration
+================================================================================
+9. STEP 8: CONFIGURE NGINX FOR BOTH DOMAINS
+================================================================================
+We create two modular Nginx site configs: one for tsk05.net and one for tskstore.net.
+
+--- [ 8A: NGINX CONFIG FOR TSK05.NET ] ---
 cat << 'EOF' > /etc/nginx/sites-available/tsk05.net
 server {
     listen 80;
     listen [::]:80;
     server_name tsk05.net www.tsk05.net;
 
-    # Allow large Excel batch file uploads & logo uploads
     client_max_body_size 50M;
 
     location / {
@@ -184,18 +238,19 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
 
-        # Standard proxy headers
+        # Multi-tenant proxy headers
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
 
         proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 120s;
         proxy_connect_timeout 60s;
     }
 
-    # Cache static assets (Next.js static files)
+    # Static file caching
     location /_next/static/ {
         alias /var/www/tskconnect/.next/static/;
         expires 365d;
@@ -204,45 +259,125 @@ server {
 }
 EOF
 
-# Enable the site and remove default Nginx config
+--- [ 8B: NGINX CONFIG FOR TSKSTORE.NET ] ---
+cat << 'EOF' > /etc/nginx/sites-available/tskstore.net
+server {
+    listen 80;
+    listen [::]:80;
+    server_name tskstore.net www.tskstore.net;
+
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        # WebSocket support
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+
+        # Multi-tenant proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 60s;
+    }
+
+    # Static file caching
+    location /_next/static/ {
+        alias /var/www/tskconnect/.next/static/;
+        expires 365d;
+        access_log off;
+    }
+}
+EOF
+
+--- [ 8C: ENABLE SITES & TEST NGINX ] ---
 sudo ln -sf /etc/nginx/sites-available/tsk05.net /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/tskstore.net /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
-# Test Nginx configuration syntax
+# Test Nginx syntax
 sudo nginx -t
 
-# Reload Nginx to apply changes
+# Reload Nginx
 sudo systemctl reload nginx
 
 
---------------------------------------------------------------------------------
-STEP 9: OBTAIN FREE SSL CERTIFICATE (HTTPS)
---------------------------------------------------------------------------------
-# Certbot will automatically issue and configure the SSL certificate for your domain
-sudo certbot --nginx -d tsk05.net -d www.tsk05.net --non-interactive --agree-tos -m admin@tsk05.net --redirect
+================================================================================
+10. STEP 9: ISSUE FREE SSL CERTIFICATES (CERTBOT HTTPS)
+================================================================================
+Run Certbot to secure both domains and their www subdomains in one command:
+
+sudo certbot --nginx -d tsk05.net -d www.tsk05.net -d tskstore.net -d www.tskstore.net --non-interactive --agree-tos -m admin@tsk05.net --redirect
 
 # Test automatic SSL certificate renewal
 sudo certbot renew --dry-run
 
 
---------------------------------------------------------------------------------
-STEP 10: FUTURE UPDATES & DEPLOYMENT SCRIPT
---------------------------------------------------------------------------------
-# When you push new code to GitHub, run this 1-liner to update your live site:
+================================================================================
+11. STEP 10: CONFIGURE PAYSTACK WEBHOOKS & CALLBACKS
+================================================================================
+In Paystack Dashboard -> Settings -> API Keys & Webhooks
+(https://dashboard.paystack.com/#/settings/developers):
+
+1. Webhook URL:
+   https://tsk05.net/api/billing/paystack/webhook
+   (Handles user wallet top-up confirmations)
+
+2. Storefront Webhook URL (if using second webhook or primary):
+   https://tskstore.net/api/store/paystack/callback
+   (Handles customer reseller order payments)
+
+3. Default Callback URL:
+   https://tsk05.net/dashboard/billing
+
+
+================================================================================
+12. STEP 11: VERIFICATION & LIVE TESTING
+================================================================================
+Run these curl checks directly on the VPS to verify routing:
+
+# 1. Test storefront root (Inquisitive Visitor homepage)
+curl -I -H "Host: tskstore.net" http://127.0.0.1:3000/
+# Expected: HTTP 200
+
+# 2. Test security redirect (blocks admin on storefront domain)
+curl -I -H "Host: tskstore.net" http://127.0.0.1:3000/admin
+# Expected: HTTP 307/308 Redirect to https://tsk05.net/login
+
+# 3. Test clean store routing
+curl -I -H "Host: tskstore.net" http://127.0.0.1:3000/loveagostore
+# Expected: HTTP 200
+
+# 4. Test main platform
+curl -I -H "Host: tsk05.net" http://127.0.0.1:3000/dashboard
+# Expected: HTTP 200 / 307 (auth redirect)
+
+
+================================================================================
+13. STEP 12: 1-CLICK UPDATE SCRIPT & MAINTENANCE
+================================================================================
+Whenever you push updates to GitHub, run this single command on the VPS:
 
 cd /var/www/tskconnect && \
 git pull origin main && \
 npm install && \
 npx prisma generate && \
 npm run db:push && \
-npm run build && \
-pm2 restart tskconnect
-NODE_OPTIONS="--max-old-space-size=2048" npm run build
+NODE_OPTIONS="--max-old-space-size=2048" npm run build && \
+pm2 reload all
 
-# Helpful monitoring commands:
-# Check app logs:       pm2 logs tskconnect
-# Check app status:     pm2 status
-# Restart app:          pm2 restart tskconnect
-# PostgreSQL console:   sudo -u postgres psql -d tskconnect_db
-# Backup database:      pg_dump -U tsk_user -h 127.0.0.1 tskconnect_db > ~/tsk_backup_$(date +%F).sql
+Helpful maintenance commands:
+• Check PM2 status:     pm2 status
+• View live app logs:   pm2 logs tskconnect
+• Restart application:  pm2 reload tskconnect
+• Check Nginx error:    sudo tail -f /var/log/nginx/error.log
+• PostgreSQL console:   sudo -u postgres psql -d tskconnect_db
+• Database backup:      pg_dump -U tsk_user -h 127.0.0.1 tskconnect_db > ~/tsk_backup_$(date +%F).sql
 ================================================================================

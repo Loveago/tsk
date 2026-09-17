@@ -55,7 +55,8 @@ export default async function StorefrontOverviewPage() {
       }),
     ]);
 
-  const storeUrl = `/store/${storefront.slug}`;
+  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskstore.net";
+  const storeUrl = `https://${storefrontDomain}/${storefront.slug}`;
   const stats = [
     {
       label: "Available balance",
@@ -111,14 +112,15 @@ export default async function StorefrontOverviewPage() {
               </div>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 Public address:{" "}
-                <Link
+                <a
                   href={storeUrl}
                   target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 font-semibold text-violet-600 hover:underline dark:text-violet-400"
                 >
-                  /store/{storefront.slug}
+                  {storefrontDomain}/{storefront.slug}
                   <ExternalLink className="h-3 w-3" />
-                </Link>
+                </a>
               </p>
               <div className="mt-3">
                 <CopyShareButtons url={storeUrl} storeName={storefront.name} />

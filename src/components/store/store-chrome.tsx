@@ -15,7 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { NetworkLogo } from "./network-logo";
-import { NETWORK_BRANDS, networkHref } from "./brands";
+import { NETWORK_BRANDS, networkHref, storeHref } from "./brands";
 import type { NetworkProvider } from "@/lib/types";
 
 export interface StoreChromeProps {
@@ -160,7 +160,7 @@ export function StoreChrome(props: StoreChromeProps) {
       {/* Pill navigation */}
       <div className="sticky top-0 z-40 px-3 pt-3">
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between rounded-full bg-white pl-3 pr-2 shadow-lg shadow-slate-900/5 dark:bg-[#111a2c]">
-          <Link href={`/store/${slug}`} className="flex items-center gap-2.5">
+          <Link href={storeHref(slug)} className="flex items-center gap-2.5">
             <StoreMark name={name} logoUrl={logoUrl} />
             <span className="font-serif text-lg font-bold text-slate-900 dark:text-white">{name}</span>
           </Link>
@@ -177,7 +177,7 @@ export function StoreChrome(props: StoreChromeProps) {
               <ChevronDown className={`h-3.5 w-3.5 transition-transform ${shopOpen ? "rotate-180" : ""}`} />
             </button>
             <Link
-              href={`/store/${slug}/track`}
+              href={storeHref(slug, "track")}
               className="flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-white/10"
             >
               <Clock className="h-4 w-4" />
@@ -210,10 +210,10 @@ export function StoreChrome(props: StoreChromeProps) {
                     )}
                   </div>
                   <div className="mt-2 border-t border-slate-100 pt-2 dark:border-white/10">
-                    <Link href={`/store/${slug}#shop`} onClick={() => setShopOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/10">
+                    <Link href={storeHref(slug, "#shop")} onClick={() => setShopOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/10">
                       Advanced browse →
                     </Link>
-                    <Link href={`/store/${slug}/track`} onClick={() => setShopOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/10">
+                    <Link href={storeHref(slug, "track")} onClick={() => setShopOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/10">
                       Track an order →
                     </Link>
                     {wa && (
@@ -271,7 +271,7 @@ export function StoreChrome(props: StoreChromeProps) {
                 ))}
                 <li>
                   <Link
-                    href={`/store/${slug}#shop`}
+                    href={storeHref(slug, "#shop")}
                     className="block text-sm font-medium text-slate-700 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
                   >
                     Browse all packages →
@@ -284,7 +284,7 @@ export function StoreChrome(props: StoreChromeProps) {
               <p className="text-xs font-bold uppercase tracking-widest text-yellow-500">Company</p>
               <ul className="mt-4 space-y-2.5 text-sm font-medium text-slate-700 dark:text-slate-300">
                 <li>
-                  <Link href={`/store/${slug}/track`} className="hover:text-slate-950 dark:hover:text-white">
+                  <Link href={storeHref(slug, "track")} className="hover:text-slate-950 dark:hover:text-white">
                     Track Order
                   </Link>
                 </li>
@@ -387,7 +387,7 @@ export function StoreChrome(props: StoreChromeProps) {
             <p className="px-6 pb-1 pt-6 text-[11px] font-bold uppercase tracking-widest text-slate-400">Main</p>
             <nav className="px-4">
               <Link
-                href={`/store/${slug}`}
+                href={storeHref(slug)}
                 onClick={() => setDrawerOpen(false)}
                 className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
               >
@@ -398,7 +398,7 @@ export function StoreChrome(props: StoreChromeProps) {
                 <ChevronRight className="ml-auto h-4 w-4 text-slate-300" />
               </Link>
               <Link
-                href={`/store/${slug}/track`}
+                href={storeHref(slug, "track")}
                 onClick={() => setDrawerOpen(false)}
                 className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
               >

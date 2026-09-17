@@ -5,13 +5,14 @@ import { StorefrontSettingsForm } from "./settings-form";
 export default async function StorefrontSettingsPage() {
   const user = await requireUser();
   const storefront = await requireActiveStorefront(user.id);
+  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskstore.net";
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <header>
         <h1 className="text-xl font-bold text-slate-900 dark:text-white">Storefront Settings</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Public store profile and mobile money payout account. Your store address is{" "}
-          <span className="font-semibold text-violet-600 dark:text-violet-400">/store/{storefront.slug}</span>.
+          <span className="font-semibold text-violet-600 dark:text-violet-400">{storefrontDomain}/{storefront.slug}</span>.
         </p>
       </header>
       <StorefrontSettingsForm
