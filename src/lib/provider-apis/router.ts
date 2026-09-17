@@ -568,28 +568,11 @@ export function mapClickyfiedStatus(
   } | null,
   processedAt?: string | Date | null
 ): "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" {
-  if (entrySummary && typeof entrySummary.total === "number" && entrySummary.total > 0) {
-    const total = entrySummary.total;
-    const sent = entrySummary.sent ?? 0;
-    const error = entrySummary.error ?? 0;
-    const processing = entrySummary.processing ?? 0;
-    const pending = entrySummary.pending ?? 0;
-
-    if (sent >= total) return "SUCCESS";
-    if (error >= total) return "FAILED";
-    if (processing > 0) return "PROCESSING";
-    if (pending > 0) return "PENDING";
-  }
-
   const s = (rawStatus || "").trim().toLowerCase();
+
+  // 1. Terminal statuses (completed / delivered / sent / processed / success)
   if (["completed", "delivered", "sent", "processed", "success"].includes(s)) {
     return "SUCCESS";
-  }
-  if (processedAt && !["failed", "rejected", "error", "unsuccessful", "cancelled", "canceled"].includes(s)) {
-    return "SUCCESS";
-  }
-  if (["processing", "in_progress", "sending", "in-progress"].includes(s)) {
-    return "PROCESSING";
   }
   if (["failed", "rejected", "error", "unsuccessful"].includes(s)) {
     return "FAILED";
@@ -597,9 +580,36 @@ export function mapClickyfiedStatus(
   if (["cancelled", "canceled"].includes(s)) {
     return "CANCELLED";
   }
-  // If status on Clickyfied is pending/accepted/queued/submitted, status on TSK is strictly PENDING
+
+  // 2. Direct 1-to-1 match with Clickyfied's primary status
+  if (["processing", "in_progress", "sending", "in-progress"].includes(s)) {
+    return "PROCESSING";
+  }
   if (["pending", "accepted", "submitted", "queued", "created"].includes(s)) {
+    // If Clickyfied reported pending/accepted, but entrySummary indicates some or all have begun processing:
+    if (entrySummary && typeof entrySummary.total === "number" && entrySummary.total > 0) {
+      if ((entrySummary.processing ?? 0) > 0 || (entrySummary.sent ?? 0) > 0) {
+        return "PROCESSING";
+      }
+    }
     return "PENDING";
+  }
+
+  // 3. Fallback to entrySummary if rawStatus was empty or unrecognized
+  if (entrySummary && typeof entrySummary.total === "number" && entrySummary.total > 0) {
+    const total = entrySummary.total;
+    const sent = entrySummary.sent ?? 0;
+    const error = entrySummary.error ?? 0;
+    const processing = entrySummary.processing ?? 0;
+
+    if (sent >= total) return "SUCCESS";
+    if (error >= total) return "FAILED";
+    if (processing > 0 || sent > 0) return "PROCESSING";
+    return "PENDING";
+  }
+
+  if (processedAt && !["failed", "rejected", "error", "unsuccessful", "cancelled", "canceled"].includes(s)) {
+    return "SUCCESS";
   }
 
   return "PENDING";
@@ -608,6 +618,9 @@ export function mapClickyfiedStatus(
 /**
  * Automatically splits any OrderBatch where orders were dispatched across multiple distinct
  * Clickyfied batches so that each dispatched batch is displayed as its own separate row on TSK!
+ * 
+ * Crucially: Orders dispatched together in the same Clickyfied batch (e.g. CF-BATCH-000001)
+ * remain TOGETHER in one batch, never broken down into single orders.
  */
 export async function splitMultiDispatchBatches(): Promise<void> {
   try {
@@ -634,39 +647,51 @@ export async function splitMultiDispatchBatches(): Promise<void> {
     for (const b of batches) {
       const groups = new Map<string, typeof b.orders>();
       for (const ord of b.orders) {
-        const key = ord.providerReference || ord.externalReference || "pending";
-        const list = groups.get(key) ?? [];
+        // Group by the Clickyfied BATCH identifier, NOT individual entry IDs!
+        let batchKey = "pending";
+        if (ord.externalReference && ord.externalReference.startsWith("CF-BATCH-")) {
+          batchKey = ord.externalReference;
+        } else if (ord.providerReference?.startsWith("CLICKYFIED:")) {
+          const parts = ord.providerReference.replace("CLICKYFIED:", "").split(":");
+          // parts[0] is the Clickyfied orderId or batch reference
+          batchKey = `CLICKYFIED:${parts[0]}`;
+        }
+        const list = groups.get(batchKey) ?? [];
         list.push(ord);
-        groups.set(key, list);
+        groups.set(batchKey, list);
       }
 
       if (groups.size > 1) {
         let isFirst = true;
         for (const [key, ords] of groups) {
+          const sampleRef = ords.find((o) => o.externalReference?.startsWith("CF-BATCH-"))?.externalReference;
+
           if (isFirst) {
+            const updateData: Record<string, any> = {
+              totalRecipients: ords.length,
+              totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
+              totalAmount: ords.reduce((s, o) => s + o.amount, 0),
+            };
+            if (sampleRef && b.batchCode !== sampleRef) {
+              updateData.batchCode = sampleRef;
+            }
             await prisma.orderBatch.update({
               where: { id: b.id },
-              data: {
-                totalRecipients: ords.length,
-                totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
-                totalAmount: ords.reduce((s, o) => s + o.amount, 0),
-              },
+              data: updateData,
             });
             const { recomputeBatchStatus } = await import("../orders");
             await recomputeBatchStatus(b.id);
             isFirst = false;
           } else {
             const { nextBatchCode } = await import("../batches");
-            const sampleRef = ords.find((o) => o.externalReference?.startsWith("CF-BATCH-"))?.externalReference;
             const newCode = sampleRef || (await nextBatchCode());
 
-            const existing = await prisma.orderBatch.findUnique({
+            let targetBatch = await prisma.orderBatch.findUnique({
               where: { batchCode: newCode },
             });
 
-            const newBatch =
-              existing ??
-              (await prisma.orderBatch.create({
+            if (!targetBatch) {
+              targetBatch = await prisma.orderBatch.create({
                 data: {
                   batchCode: newCode,
                   userId: b.userId,
@@ -676,17 +701,84 @@ export async function splitMultiDispatchBatches(): Promise<void> {
                   totalAmount: ords.reduce((s, o) => s + o.amount, 0),
                   status: "PENDING",
                 },
-              }));
+              });
+            } else {
+              await prisma.orderBatch.update({
+                where: { id: targetBatch.id },
+                data: {
+                  totalRecipients: ords.length,
+                  totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
+                  totalAmount: ords.reduce((s, o) => s + o.amount, 0),
+                },
+              });
+            }
 
             await prisma.order.updateMany({
               where: { id: { in: ords.map((o) => o.id) } },
-              data: { batchId: newBatch.id },
+              data: { batchId: targetBatch.id },
             });
 
             const { recomputeBatchStatus } = await import("../orders");
-            await recomputeBatchStatus(newBatch.id);
+            await recomputeBatchStatus(targetBatch.id);
           }
         }
+      }
+    }
+
+    // Attach any orphaned dispatched Clickyfied orders (batchId: null) into their respective OrderBatch
+    const orphanedOrders = await prisma.order.findMany({
+      where: {
+        batchId: null,
+        providerReference: { startsWith: "CLICKYFIED:" },
+        externalReference: { startsWith: "CF-BATCH-" },
+      },
+      select: {
+        id: true,
+        userId: true,
+        network: true,
+        providerReference: true,
+        externalReference: true,
+        gbAmount: true,
+        amount: true,
+        status: true,
+      },
+    });
+
+    if (orphanedOrders.length > 0) {
+      const orphanGroups = new Map<string, typeof orphanedOrders>();
+      for (const ord of orphanedOrders) {
+        const key = ord.externalReference!;
+        const list = orphanGroups.get(key) ?? [];
+        list.push(ord);
+        orphanGroups.set(key, list);
+      }
+
+      for (const [batchCode, ords] of orphanGroups) {
+        let existing = await prisma.orderBatch.findUnique({
+          where: { batchCode },
+        });
+
+        if (!existing) {
+          existing = await prisma.orderBatch.create({
+            data: {
+              batchCode,
+              userId: ords[0].userId,
+              network: ords[0].network,
+              totalRecipients: ords.length,
+              totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
+              totalAmount: ords.reduce((s, o) => s + o.amount, 0),
+              status: "PROCESSING",
+            },
+          });
+        }
+
+        await prisma.order.updateMany({
+          where: { id: { in: ords.map((o) => o.id) } },
+          data: { batchId: existing.id },
+        });
+
+        const { recomputeBatchStatus } = await import("../orders");
+        await recomputeBatchStatus(existing.id);
       }
     }
   } catch (err) {

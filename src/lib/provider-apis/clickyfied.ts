@@ -196,6 +196,35 @@ export class ClickyfiedClient {
   }
 
   /**
+   * Resolves an orderId or externalReference (e.g. CF-BATCH-000006) to Clickyfied's
+   * canonical orderId (e.g. order-1789655697659).
+   */
+  async resolveCanonicalOrderId(idOrRef: string | number): Promise<string> {
+    const raw = String(idOrRef).trim();
+    if (raw.startsWith("order-")) {
+      return raw;
+    }
+
+    try {
+      const res = await this.request<any>("/orders?limit=100");
+      const list: any[] = res?.orders || res?.data?.orders || [];
+      const match = list.find(
+        (o: any) =>
+          o.externalReference === raw ||
+          o.orderId === raw ||
+          o.id === raw
+      );
+      if (match?.orderId) {
+        return String(match.orderId);
+      }
+    } catch {
+      // ignore
+    }
+
+    return raw;
+  }
+
+  /**
    * Action 3: Get Order Status
    * Note: check status at most once every 30 seconds per order.
    */
@@ -203,7 +232,13 @@ export class ClickyfiedClient {
     status: string;
     raw: unknown;
   }> {
-    const res = await this.request<any>(`/orders/${encodeURIComponent(String(orderId))}`);
+    let targetId = String(orderId).trim();
+    if (!targetId.startsWith("order-")) {
+      try {
+        targetId = await this.resolveCanonicalOrderId(targetId);
+      } catch {}
+    }
+    const res = await this.request<any>(`/orders/${encodeURIComponent(targetId)}`);
     const status = res?.status || res?.data?.status || res?.order?.status || "UNKNOWN";
     return {
       status,
@@ -250,6 +285,9 @@ export class ClickyfiedClient {
       orderId = paramsOrOrderId;
     }
 
+    // Resolve canonical order ID (e.g. if CF-BATCH-000006 was provided, resolve to order-1789...)
+    const canonicalOrderId = await this.resolveCanonicalOrderId(orderId);
+
     // Format phone number to clean Ghana format (e.g. 0541234568)
     let cleanNumber = number ? String(number).trim() : "";
     if (cleanNumber.startsWith("+233")) cleanNumber = "0" + cleanNumber.slice(4);
@@ -263,62 +301,72 @@ export class ClickyfiedClient {
           : orderEntryId
         : undefined;
 
-    // Action 6: If we have orderEntryId AND full entry details, use the new dedicated endpoint
-    if (entryIdVal !== undefined && cleanNumber && allocationGb !== undefined) {
-      const payload = {
-        orderEntryId: entryIdVal,
-        orderId: String(orderId),
-        number: cleanNumber,
-        allocationGb: Number(allocationGb),
-      };
+    const payload: Record<string, unknown> = {};
+    if (entryIdVal !== undefined) payload.orderEntryId = entryIdVal;
+    if (cleanNumber) payload.number = cleanNumber;
+    if (allocationGb !== undefined) payload.allocationGb = Number(allocationGb);
 
-      try {
-        const res = await this.request<any>("/api/orders/report-not-received", {
+    // Clickyfied's JSON endpoint is /api/public/v1/orders/<order_id>/not-received.
+    // When orderEntryId, number, and allocationGb are provided in the body, Clickyfied
+    // creates a dedicated per-entry report for that recipient (Action 6).
+    try {
+      const res = await this.request<any>(
+        `/orders/${encodeURIComponent(canonicalOrderId)}/not-received`,
+        {
           method: "POST",
-          body: JSON.stringify(payload),
-        });
+          body: Object.keys(payload).length > 0 ? JSON.stringify(payload) : undefined,
+        }
+      );
 
+      return {
+        success: true,
+        alreadyExists: Boolean(res?.alreadyReported),
+        report: res?.report,
+        message: res?.message || (res?.alreadyReported ? "Already reported" : "Not received report submitted successfully"),
+        raw: res,
+      };
+    } catch (err: any) {
+      // Handle 400 when a report already exists for this entry
+      const isAlreadyExists =
+        err?.status === 400 &&
+        (err?.rawResponse?.code === "NOT_RECEIVED_ALREADY_EXISTS" ||
+          String(err?.message || "").toLowerCase().includes("already exists"));
+
+      if (isAlreadyExists) {
         return {
           success: true,
-          report: res?.report,
-          message: res?.message || "Not received report submitted successfully",
-          raw: res,
+          alreadyExists: true,
+          report: err?.rawResponse?.details || err?.rawResponse?.report,
+          message: "A not received report already exists for this entry",
+          raw: err?.rawResponse || err,
         };
-      } catch (err: any) {
-        // Handle 400 when a report already exists for this entry
-        const isAlreadyExists =
-          err?.status === 400 &&
-          (err?.rawResponse?.code === "NOT_RECEIVED_ALREADY_EXISTS" ||
-            String(err?.message || "").toLowerCase().includes("already exists"));
+      }
 
-        if (isAlreadyExists) {
+      // If /orders/<id>/not-received returned 404 or 405, attempt /api/orders/report-not-received fallback
+      if ((err?.status === 404 || err?.status === 405) && entryIdVal !== undefined) {
+        try {
+          const fallbackRes = await this.request<any>("/api/orders/report-not-received", {
+            method: "POST",
+            body: JSON.stringify({
+              orderId: canonicalOrderId,
+              orderEntryId: entryIdVal,
+              number: cleanNumber,
+              allocationGb: Number(allocationGb),
+            }),
+          });
           return {
             success: true,
-            alreadyExists: true,
-            report: err?.rawResponse?.details || err?.rawResponse?.report,
-            message: "A not received report already exists for this entry",
-            raw: err?.rawResponse || err,
+            report: fallbackRes?.report,
+            message: fallbackRes?.message,
+            raw: fallbackRes,
           };
+        } catch {
+          // Rethrow original error below
         }
-
-        throw err;
       }
+
+      throw err;
     }
-
-    // Fallback to legacy endpoint when orderEntryId is not known.
-    // Note: The new /api/orders/report-not-received endpoint REQUIRES orderEntryId;
-    // sending without it results in 400 "Missing required fields". Use the old path instead.
-    const res = await this.request<any>(
-      `/orders/${encodeURIComponent(String(orderId))}/not-received`,
-      {
-        method: "POST",
-      }
-    );
-    return {
-      success: true,
-      report: res?.report,
-      raw: res,
-    };
   }
 
   /**

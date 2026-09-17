@@ -331,8 +331,15 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Ensure clickyfiedOrderId is resolved to canonical orderId (e.g. order-1789...)
+        if (!clickyfiedOrderId.startsWith("order-")) {
+          try {
+            clickyfiedOrderId = await client.resolveCanonicalOrderId(clickyfiedOrderId);
+          } catch {}
+        }
+
         // If orderEntryId is not yet cached on order, fetch it from Clickyfied order details.
-        // We try with both the parsed Clickyfied orderId and the order's externalReference (batchCode).
+        // We try with both the canonical Clickyfied orderId and the order's externalReference (batchCode).
         if (orderEntryId === undefined) {
           const lookupKeys = Array.from(
             new Set([clickyfiedOrderId, order.externalReference].filter(Boolean) as string[])
@@ -412,6 +419,15 @@ export async function POST(request: NextRequest) {
         };
 
         const repRes = await client.reportNotReceived(reportPayload);
+
+        if (orderEntryId) {
+          await prisma.order
+            .update({
+              where: { id: order.id },
+              data: { providerReference: `CLICKYFIED:${clickyfiedOrderId}:${orderEntryId}` },
+            })
+            .catch(() => {});
+        }
 
         await recordOrderApiLog({
           orderId: order.id,
