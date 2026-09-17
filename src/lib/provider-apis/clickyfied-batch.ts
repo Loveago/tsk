@@ -40,8 +40,43 @@ export interface PendingMtnBatchStats {
   }>;
 }
 
-// In-memory mutex to ensure two simultaneous dispatches do not race
+// In-memory mutex to ensure two simultaneous dispatches do not race in the same process
 let isDispatchingBatch = false;
+
+/**
+ * Acquires a distributed database lock for batch dispatch with a lease window.
+ * Ensures across PM2 cluster workers or multi-instance containers that only ONE worker dispatches at a time.
+ */
+async function acquireBatchDispatchLock(leaseSeconds = 60): Promise<boolean> {
+  const lockKey = "clickyfied_batch_dispatch_lock";
+  const now = Date.now();
+
+  try {
+    const existing = await prisma.systemSetting.findUnique({ where: { key: lockKey } });
+    if (existing && existing.value) {
+      const lockTime = parseInt(existing.value, 10);
+      if (!isNaN(lockTime) && now - lockTime < leaseSeconds * 1000) {
+        return false;
+      }
+    }
+
+    await prisma.systemSetting.upsert({
+      where: { key: lockKey },
+      create: { key: lockKey, value: String(now) },
+      update: { value: String(now) },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function releaseBatchDispatchLock(): Promise<void> {
+  const lockKey = "clickyfied_batch_dispatch_lock";
+  try {
+    await prisma.systemSetting.delete({ where: { key: lockKey } }).catch(() => {});
+  } catch {}
+}
 
 /**
  * Partitions orders sequentially into batches respecting both the GB threshold window (100–120 GB)
@@ -282,11 +317,26 @@ export async function dispatchClickyfiedMtnBatch(
       dispatchedCount: 0,
       totalGb: 0,
       batchIds: [],
-      error: "A batch dispatch operation is already in progress.",
+      error: "A batch dispatch operation is already in progress in this worker.",
+    };
+  }
+
+  // Acquire distributed lock so other PM2 cluster workers do not dispatch concurrently
+  const lockAcquired = await acquireBatchDispatchLock(60);
+  if (!lockAcquired) {
+    return {
+      success: false,
+      dispatchedCount: 0,
+      totalGb: 0,
+      batchIds: [],
+      error: "Another cluster worker or server is currently dispatching a batch.",
     };
   }
 
   isDispatchingBatch = true;
+  let claimedOrderIds: number[] = [];
+  let claimToken: string | null = null;
+
   try {
     const config = await getProviderRoutingConfig();
     if (!config.clickyfied.enabled) {
@@ -353,6 +403,50 @@ export async function dispatchClickyfiedMtnBatch(
 
     // Generate a fresh, sequential batch code for this Clickyfied dispatch
     const batchCode = await getNextClickyfiedBatchCode();
+
+    // -------------------------------------------------------------------------
+    // ATOMIC ORDER CLAIMING: Lock these exact orders in DB before calling external API.
+    // If another worker or request already claimed any of these, updateMany will
+    // claim fewer than targetBatch.orders.length, allowing us to abort immediately!
+    // -------------------------------------------------------------------------
+    const targetOrderIds = targetBatch.orders.map((o) => o.id);
+    claimToken = `CLICKYFIED_CLAIMED:${batchCode}`;
+    claimedOrderIds = targetOrderIds;
+
+    const claimResult = await prisma.order.updateMany({
+      where: {
+        id: { in: targetOrderIds },
+        status: "PENDING",
+        providerReference: null,
+      },
+      data: {
+        providerReference: claimToken,
+        externalReference: batchCode,
+      },
+    });
+
+    if (claimResult.count !== targetOrderIds.length) {
+      console.warn(`[ClickyfiedBatch] Claim mismatch: expected ${targetOrderIds.length}, claimed ${claimResult.count}. Aborting to avoid duplicate dispatch.`);
+      if (claimResult.count > 0) {
+        await prisma.order.updateMany({
+          where: {
+            id: { in: targetOrderIds },
+            providerReference: claimToken,
+          },
+          data: {
+            providerReference: null,
+            externalReference: null,
+          },
+        }).catch(() => {});
+      }
+      return {
+        success: false,
+        dispatchedCount: 0,
+        totalGb: 0,
+        batchIds: [],
+        error: "Target orders were already claimed by another dispatch cycle.",
+      };
+    }
 
     const entries = targetBatch.orders.map((o) => {
       let num = o.phoneNumber.trim();
@@ -512,6 +606,18 @@ export async function dispatchClickyfiedMtnBatch(
       };
     } catch (batchErr: any) {
       console.error(`[ClickyfiedBatch] Dispatch of ${batchCode} failed:`, batchErr);
+      if (claimedOrderIds.length > 0 && claimToken) {
+        await prisma.order.updateMany({
+          where: {
+            id: { in: claimedOrderIds },
+            providerReference: claimToken,
+          },
+          data: {
+            providerReference: null,
+            externalReference: null,
+          },
+        }).catch(() => {});
+      }
       await prisma.orderStatusHistory.createMany({
         data: targetBatch.orders.map((o) => ({
           orderId: o.id,
@@ -531,6 +637,7 @@ export async function dispatchClickyfiedMtnBatch(
     }
   } finally {
     isDispatchingBatch = false;
+    await releaseBatchDispatchLock();
   }
 }
 
@@ -592,6 +699,13 @@ export async function checkAndTriggerMtnBatch(
 
     // 2. Timer expiration trigger: timer hit 0, dispatch all remaining queued orders
     if (trigger === "TIMER" && status.minutesElapsed >= batchConfig.timerMinutes && status.pendingCount > 0) {
+      // Immediately reset timer timestamp so no subsequent ticks or other threads see expired timer
+      await prisma.systemSetting.upsert({
+        where: { key: "clickyfied_batch_last_dispatched_at" },
+        create: { key: "clickyfied_batch_last_dispatched_at", value: new Date().toISOString() },
+        update: { value: new Date().toISOString() },
+      });
+
       let dispatchTotalGb = 0;
       let dispatchCount = 0;
       let iterations = 0;

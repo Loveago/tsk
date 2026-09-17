@@ -268,6 +268,7 @@ export async function POST(request: NextRequest) {
                 source: "WEB",
                 batchId: batch.id,
                 skipMtnValidation: true,
+                skipAutoDispatch: true,
               })
             )
           );

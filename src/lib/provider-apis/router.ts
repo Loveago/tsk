@@ -199,7 +199,7 @@ async function getAppBaseUrl(): Promise<string> {
  */
 export async function dispatchOrder(
   orderId: number,
-  options: { force?: boolean } = {}
+  options: { force?: boolean; skipThresholdTrigger?: boolean } = {}
 ): Promise<ProviderDispatchResult> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -383,6 +383,13 @@ export async function dispatchOrder(
       const { getClickyfiedBatchConfig, checkAndTriggerMtnBatch } = await import("./clickyfied-batch");
       const batchConfig = await getClickyfiedBatchConfig();
       if (batchConfig.enabled) {
+        if (options.skipThresholdTrigger) {
+          return {
+            success: true,
+            provider: "CLICKYFIED",
+            status: "PENDING",
+          };
+        }
         // Order accumulates in PENDING. Check if volume threshold (e.g. 100 GB) is met.
         const triggerRes = await checkAndTriggerMtnBatch("THRESHOLD");
         return {
@@ -1307,7 +1314,7 @@ export async function dispatchOrdersBatch(orderIds: number[]): Promise<{
 
   for (const id of orderIds) {
     try {
-      const result = await dispatchOrder(id);
+      const result = await dispatchOrder(id, { skipThresholdTrigger: true });
       results.push({ orderId: id, result });
       if (result.provider === "MANUAL") {
         skippedManual += 1;

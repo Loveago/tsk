@@ -10,6 +10,13 @@ let isPolling = false;
 export function startProviderSyncPoller() {
   if (typeof window !== "undefined") return;
 
+  // In PM2 cluster mode, only instance 0 should run background polling loops
+  const instanceId = process.env.NODE_APP_INSTANCE;
+  if (instanceId !== undefined && instanceId !== "" && instanceId !== "0") {
+    console.log(`[ProviderSyncPoller] Skipping poller initialization on PM2 cluster worker #${instanceId}`);
+    return;
+  }
+
   const g = globalThis as any;
   if (g.__providerSyncPollerStarted) {
     return;

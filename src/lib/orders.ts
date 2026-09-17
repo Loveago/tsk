@@ -88,6 +88,7 @@ export interface CreateOrderInput {
   historyNote?: string;
   historyBy?: string;
   skipMtnValidation?: boolean;
+  skipAutoDispatch?: boolean;
 }
 
 /**
@@ -178,16 +179,18 @@ export async function createOrder(input: CreateOrderInput) {
   });
 
   // If provider API routing is enabled (or Clickify sandbox is active), auto-dispatch the new order
-  try {
-    const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("./provider-apis/router");
-    const config = await getProviderRoutingConfig();
-    if (shouldAutoDispatch(config)) {
-      dispatchOrder(order.id).catch((err) => {
-        console.error(`Auto-dispatch failed for order #${order.id}:`, err);
-      });
+  if (!input.skipAutoDispatch) {
+    try {
+      const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("./provider-apis/router");
+      const config = await getProviderRoutingConfig();
+      if (shouldAutoDispatch(config)) {
+        dispatchOrder(order.id).catch((err) => {
+          console.error(`Auto-dispatch failed for order #${order.id}:`, err);
+        });
+      }
+    } catch (err) {
+      console.error(`Provider routing check failed for order #${order.id}:`, err);
     }
-  } catch (err) {
-    console.error(`Provider routing check failed for order #${order.id}:`, err);
   }
 
   return order;
