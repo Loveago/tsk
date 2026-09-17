@@ -1106,57 +1106,59 @@ export async function syncClickyfiedDeliveryReport(
       repData?.evidence?.url ||
       null;
 
-    // Determine if the report was refunded or rejected by Clickyfied
-    const isReportRefunded =
+    // 1. Check if Clickyfied explicitly resolved as a refund:
+    const isExplicitRefund =
       Boolean(repData) &&
       reportBelongsToOrder &&
-      (["failed", "refund", "refunded", "fail", "failure", "unsuccessful", "cancelled", "canceled", "rejected"].includes(rawStatus) ||
-        resolutionStr.includes("refund") ||
-        resolutionStr.includes("fail") ||
-        resolutionStr.includes("cancel") ||
-        resolutionStr.includes("reject") ||
-        notesLower.includes("refund") ||
-        notesLower.includes("failed") ||
-        notesLower.includes("cancel") ||
-        notesLower.includes("reverse") ||
-        notesLower.includes("credit back") ||
-        notesLower.includes("return"));
+      (["refund", "refunded"].includes(rawStatus) ||
+        resolutionStr === "refund" ||
+        resolutionStr === "refunded" ||
+        Boolean(notesLower.match(/refund(?:ed)?\s+(?:ghs|gh₵)?\s*[0-9]+/i)) ||
+        Boolean(notesLower.match(/refund(?:ed)?\s+[0-9]+(?:\.[0-9]+)?\s*gb/i)));
 
-    const isReportDelivered =
+    // 2. Check if Clickyfied explicitly resolved as confirmed sent:
+    const isExplicitConfirmedSent =
       Boolean(repData) &&
       reportBelongsToOrder &&
-      !isReportRefunded &&
+      !isExplicitRefund &&
       (["confirmed_sent", "delivered"].includes(rawStatus) ||
         resolutionStr === "confirmed_sent" ||
-        resolutionStr === "delivered" ||
+        resolutionStr === "delivered");
+
+    // 3. Check if Clickyfied explicitly resolved (e.g. proof provided or resolved):
+    const isExplicitResolved =
+      Boolean(repData) &&
+      reportBelongsToOrder &&
+      !isExplicitRefund &&
+      !isExplicitConfirmedSent &&
+      (["resolved", "completed", "closed"].includes(rawStatus) ||
+        resolutionStr === "resolved" ||
         Boolean(evidenceUrl));
 
-    const isFailedOrRefunded =
-      isReportRefunded ||
-      phoneEntryFailed ||
-      (!isMultiEntryBatch && (
-        orderMappedStatus === "FAILED" ||
-        orderMappedStatus === "CANCELLED" ||
-        ["failed", "cancelled", "canceled", "rejected", "error", "unsuccessful", "refunded", "refund"].includes(rawOrderStatus)
-      ));
+    // 4. Check if rejected / cancelled:
+    const isExplicitRejected =
+      Boolean(repData) &&
+      reportBelongsToOrder &&
+      !isExplicitRefund &&
+      (["rejected", "cancelled", "canceled"].includes(rawStatus) ||
+        resolutionStr === "rejected" ||
+        resolutionStr === "cancelled");
 
     let newStatus = report.status;
-    const isAlreadyDelivered = report.status === "DELIVERED" || report.status === "CONFIRM_SENT";
-    // An already confirmed sent/delivered report should never be downgraded to REFUNDED from an unmatched report
-    if (isAlreadyDelivered && !reportBelongsToOrder) {
+    const isAlreadyDeliveredOrResolved = ["DELIVERED", "CONFIRM_SENT", "RESOLVED"].includes(report.status);
+
+    if (isAlreadyDeliveredOrResolved && !reportBelongsToOrder) {
       newStatus = report.status;
-    } else if (isFailedOrRefunded) {
+    } else if (isExplicitRefund) {
       newStatus = "REFUNDED";
-    } else if (rawStatus === "confirmed_sent" || resolutionStr === "confirmed_sent") {
+    } else if (isExplicitConfirmedSent || (phoneEntryDelivered && !isExplicitRefund)) {
       newStatus = "CONFIRM_SENT";
-    } else if (rawStatus === "resolved" || resolutionStr === "resolved") {
+    } else if (isExplicitResolved) {
       newStatus = "RESOLVED";
-    } else if (isReportDelivered || (phoneEntryDelivered && !isReportRefunded)) {
-      newStatus = "CONFIRM_SENT";
-    } else if (["resolved", "completed"].includes(rawStatus) && reportBelongsToOrder) {
-      newStatus = isReportRefunded ? "REFUNDED" : "RESOLVED";
-    } else if (["closed"].includes(rawStatus) && reportBelongsToOrder) {
-      newStatus = isReportRefunded ? "REFUNDED" : isReportDelivered ? "CONFIRM_SENT" : "RESOLVED";
+    } else if (isExplicitRejected) {
+      newStatus = "REJECTED";
+    } else if (phoneEntryFailed) {
+      newStatus = "REFUNDED";
     } else if (["pending_resolution", "pending", "investigating"].includes(rawStatus) && reportBelongsToOrder) {
       newStatus = "INVESTIGATING";
     }
@@ -1238,18 +1240,22 @@ export async function syncClickyfiedDeliveryReport(
         }
       }
 
-      // If report is CONFIRM_SENT / DELIVERED and order was erroneously marked FAILED, restore order to SUCCESS
-      if ((newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED") && report.order.id && report.order.status === "FAILED") {
+      // If report is CONFIRM_SENT / DELIVERED / RESOLVED and order was in FAILED, restore order to SUCCESS
+      if (
+        (newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED" || newStatus === "RESOLVED") &&
+        report.order.id &&
+        report.order.status === "FAILED"
+      ) {
         try {
           await changeOrderStatus(
             report.order.id,
             "SUCCESS",
-            adminNotes || "Delivery confirmed sent by provider",
+            adminNotes || `Issue resolved by Clickyfied provider (${newStatus})`,
             { id: "system", label: actorLabel },
             { force: true }
           );
         } catch (orderErr) {
-          console.error("Failed to restore order status during delivery confirmation:", orderErr);
+          console.error("Failed to restore order status during delivery confirmation/resolution:", orderErr);
         }
       }
 

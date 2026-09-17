@@ -354,8 +354,8 @@ export default function OrdersPage() {
                       <td className="px-3 py-2">
                         <div className="flex justify-end gap-1.5">
                           {/* Cancel order feature removed per user request */}
-                          {/* Report only shows on completed orders (SUCCESS or COMPLETED) */}
-                          {(o.status === "SUCCESS" || o.status === "COMPLETED") && (() => {
+                          {/* Report only shows on completed orders (SUCCESS or COMPLETED) or any order with a delivery report */}
+                          {((o.status === "SUCCESS" || o.status === "COMPLETED") || (o.deliveryReports && o.deliveryReports.length > 0) || o._hasReportedLocally) && (() => {
                             const rep = (o.deliveryReports && o.deliveryReports[0]) || (o._hasReportedLocally ? { id: "", status: "UNDER_REVIEW" } : null);
                             const isSubmitting = submittingReportId === o.id;
 
@@ -396,6 +396,10 @@ export default function OrdersPage() {
                                   {hasProof && <Eye className="h-3 w-3 ml-0.5" />}
                                 </button>
                               );
+                            }
+
+                            if (o.status !== "SUCCESS" && o.status !== "COMPLETED") {
+                              return null;
                             }
 
                             return (

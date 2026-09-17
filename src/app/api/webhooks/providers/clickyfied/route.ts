@@ -154,20 +154,49 @@ export async function POST(request: NextRequest) {
             repData?.resolutionNote ||
             null;
           const notesLower = String(adminNotes || "").toLowerCase();
+          const resolutionStr = String(
+            repData?.resolution || repData?.resolutionType || repData?.action || repData?.decision || ""
+          ).toLowerCase();
 
-          const isFailedOrRefunded =
-            ["failed", "refund", "refunded", "fail", "failure", "unsuccessful"].includes(rawStatus) ||
-            notesLower.includes("refund") ||
-            notesLower.includes("failed") ||
-            notesLower.includes("fail ");
+          const isRefund =
+            event === "report.not_received.refunded" ||
+            ["refund", "refunded"].includes(rawStatus) ||
+            resolutionStr === "refund" ||
+            resolutionStr === "refunded" ||
+            Boolean(notesLower.match(/refund(?:ed)?\s+(?:ghs|gh₵)?\s*[0-9]+/i)) ||
+            Boolean(notesLower.match(/refund(?:ed)?\s+[0-9]+(?:\.[0-9]+)?\s*gb/i));
 
-          const newStatus = isFailedOrRefunded
+          const isConfirmedSent =
+            event === "report.not_received.confirmed_sent" ||
+            ["confirmed_sent", "delivered"].includes(rawStatus) ||
+            resolutionStr === "confirmed_sent" ||
+            resolutionStr === "delivered";
+
+          const isRejected =
+            event === "report.not_received.rejected" ||
+            ["rejected", "cancelled", "canceled"].includes(rawStatus) ||
+            resolutionStr === "rejected" ||
+            resolutionStr === "cancelled";
+
+          const isPending =
+            ["open", "pending", "pending_resolution", "investigating", "under_review"].includes(rawStatus) ||
+            event === "report.not_received.investigating" ||
+            event === "report.not_received.created";
+
+          const newStatus = isRefund
             ? "REFUNDED"
-            : event === "report.not_received.confirmed_sent" || ["confirmed_sent", "delivered"].includes(rawStatus)
+            : isConfirmedSent
             ? "CONFIRM_SENT"
-            : rawStatus === "rejected" || rawStatus === "cancelled"
+            : isRejected
             ? "REJECTED"
-            : "RESOLVED";
+            : isPending
+            ? "INVESTIGATING"
+            : ["resolved", "completed", "closed"].includes(rawStatus) ||
+              resolutionStr === "resolved" ||
+              event === "report.not_received.resolved" ||
+              Boolean(repData?.evidenceUrl || repData?.evidence_url || repData?.proofUrl || repData?.evidence?.url)
+            ? "RESOLVED"
+            : report.status;
 
           const evidenceUrl =
             repData?.evidenceUrl ||
@@ -212,6 +241,8 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          const isTerminal = ["RESOLVED", "CONFIRM_SENT", "DELIVERED", "REFUNDED", "REJECTED"].includes(newStatus);
+
           await prisma.deliveryReport.update({
             where: { id: report.id },
             data: {
@@ -225,8 +256,12 @@ export async function POST(request: NextRequest) {
                     proofImageUploadedBy: "Clickyfied Callback",
                   }
                 : {}),
-              resolvedAt: new Date(),
-              resolvedBy: "Clickyfied Callback",
+              ...(isTerminal
+                ? {
+                    resolvedAt: new Date(),
+                    resolvedBy: "Clickyfied Callback",
+                  }
+                : {}),
             },
           });
 
@@ -245,13 +280,13 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // If confirmed sent on Clickyfied, restore order status to SUCCESS if it was previously marked FAILED
-          if (newStatus === "CONFIRM_SENT" && targetOrder && targetOrder.status === "FAILED") {
+          // If confirmed sent or resolved on Clickyfied, restore order status to SUCCESS if it was previously marked FAILED
+          if ((newStatus === "CONFIRM_SENT" || newStatus === "RESOLVED") && targetOrder && targetOrder.status === "FAILED") {
             try {
               await changeOrderStatus(
                 targetOrder.id,
                 "SUCCESS",
-                adminNotes || "Order confirmed sent by Clickyfied provider",
+                adminNotes || "Order confirmed sent/resolved by Clickyfied provider",
                 { id: "system", label: "Clickyfied Callback" },
                 { force: true }
               );
