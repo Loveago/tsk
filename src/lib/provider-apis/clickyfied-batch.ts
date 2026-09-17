@@ -217,11 +217,40 @@ export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> 
 }
 
 /**
+ * Generates or increments a clean sequential batch code (e.g. CF-BATCH-000001, CF-BATCH-000002)
+ */
+export async function getNextClickyfiedBatchCode(): Promise<string> {
+  const setting = await prisma.systemSetting.findUnique({
+    where: { key: "clickyfied_batch_seq" },
+  });
+  let seq = parseInt(setting?.value || "0", 10);
+  if (seq === 0) {
+    const lastOrder = await prisma.order.findFirst({
+      where: { externalReference: { startsWith: "CF-BATCH-" } },
+      orderBy: { id: "desc" },
+      select: { externalReference: true },
+    });
+    if (lastOrder?.externalReference) {
+      const match = lastOrder.externalReference.match(/CF-BATCH-(\d+)/i);
+      if (match) seq = parseInt(match[1], 10);
+    }
+  }
+  seq += 1;
+  await prisma.systemSetting.upsert({
+    where: { key: "clickyfied_batch_seq" },
+    create: { key: "clickyfied_batch_seq", value: String(seq) },
+    update: { value: String(seq) },
+  });
+  return `CF-BATCH-${String(seq).padStart(6, "0")}`;
+}
+
+/**
  * Dispatches eligible pending MTN orders in batches strictly respecting the configured GB limit
  * per batch (and max 100 entries per submission) to Clickyfied.
  * 
- * If options.onlyFullBatches is true (e.g. threshold trigger), only batches that reached the
- * threshold are sent; remaining orders stay in PENDING for the next batch.
+ * Crucially: Each dispatch cycle dispatches ONLY ONE batch (up to the configured GB limit).
+ * Any remaining orders stay in PENDING to accumulate until they reach the limit, the timer expires,
+ * or admin triggers dispatch again. That subsequent dispatch is sent as the next sequential batch!
  */
 export async function dispatchClickyfiedMtnBatch(
   actorLabel = "Clickyfied Batch Trigger",
@@ -231,6 +260,7 @@ export async function dispatchClickyfiedMtnBatch(
   dispatchedCount: number;
   totalGb: number;
   batchIds: string[];
+  batchCode?: string;
   error?: string;
   message?: string;
 }> {
@@ -271,20 +301,27 @@ export async function dispatchClickyfiedMtnBatch(
 
     // Partition orders strictly by the configured GB limit and 100 entries max
     const partitioned = partitionIntoBatches(orders, batchConfig.gbThreshold, 100);
+    const targetBatch = partitioned[0];
 
-    // If options.onlyFullBatches is set (e.g. volume threshold trigger), only dispatch batches
-    // that reached the limit. Remaining orders stay in PENDING for the next batch!
-    const batchesToDispatch = options.onlyFullBatches
-      ? partitioned.filter((b) => b.totalGb >= batchConfig.gbThreshold)
-      : partitioned;
-
-    if (batchesToDispatch.length === 0) {
+    if (!targetBatch || targetBatch.orders.length === 0) {
       return {
         success: true,
         dispatchedCount: 0,
         totalGb: 0,
         batchIds: [],
-        message: `No batch has accumulated to the ${batchConfig.gbThreshold} GB limit yet. Orders remain queued for the next batch or timer.`,
+        message: "No pending MTN orders to dispatch.",
+      };
+    }
+
+    // If options.onlyFullBatches is set (e.g. volume threshold trigger), only dispatch
+    // if the current batch has accumulated to the threshold limit!
+    if (options.onlyFullBatches && targetBatch.totalGb < batchConfig.gbThreshold) {
+      return {
+        success: true,
+        dispatchedCount: 0,
+        totalGb: 0,
+        batchIds: [],
+        message: `Current batch (${targetBatch.totalGb} GB) has not reached the ${batchConfig.gbThreshold} GB limit yet. Orders remain queued to accumulate.`,
       };
     }
 
@@ -301,133 +338,138 @@ export async function dispatchClickyfiedMtnBatch(
       ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
       : undefined;
 
-    let totalDispatched = 0;
-    let totalDispatchedGb = 0;
-    const batchIds: string[] = [];
+    // Generate unique sequential batch reference (e.g. CF-BATCH-000001, CF-BATCH-000002)
+    const batchCode = await getNextClickyfiedBatchCode();
 
-    for (let idx = 0; idx < batchesToDispatch.length; idx++) {
-      const batch = batchesToDispatch[idx];
-      const batchRef = generateClickyfiedReference(`batch-${Date.now()}-${idx}`);
+    const entries = targetBatch.orders.map((o) => {
+      let num = o.phoneNumber.trim();
+      if (num.startsWith("+233")) num = "0" + num.slice(4);
+      else if (num.startsWith("233")) num = "0" + num.slice(3);
+      if (num.length === 9 && !num.startsWith("0")) num = "0" + num;
+      return { number: num, allocationGB: o.gbAmount };
+    });
 
-      const entries = batch.orders.map((o) => {
-        let num = o.phoneNumber.trim();
-        if (num.startsWith("+233")) num = "0" + num.slice(4);
-        else if (num.startsWith("233")) num = "0" + num.slice(3);
-        if (num.length === 9 && !num.startsWith("0")) num = "0" + num;
-        return { number: num, allocationGB: o.gbAmount };
+    try {
+      const submitRes = await client.submitOrder({
+        externalReference: batchCode,
+        entries,
+        callbackUrl,
+        callbackSigningSecret: signingSecret || undefined,
+        idempotencyKey: batchCode,
       });
 
-      try {
-        const submitRes = await client.submitOrder({
-          externalReference: batchRef,
-          entries,
-          callbackUrl,
-          callbackSigningSecret: signingSecret || undefined,
-          idempotencyKey: batchRef,
+      const batchOrderId = String(submitRes.orderId || batchCode);
+      const providerRef = `CLICKYFIED:${batchOrderId}`;
+
+      // Extract Clickyfied's reported status (so our order status strictly matches Clickyfied)
+      const rawAny = submitRes.raw as any;
+      const summary = rawAny?.order?.entrySummary || rawAny?.entrySummary;
+      const rawStatus = rawAny?.order?.status || submitRes.status || rawAny?.status || "pending";
+      const processedAt = rawAny?.order?.processedAt || rawAny?.processedAt;
+      const overallStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
+
+      // Check if Clickyfied provided individual entry statuses
+      const returnedEntries: Array<{ number?: string; status?: string }> =
+        rawAny?.order?.entries || rawAny?.entries || [];
+
+      const entryStatusMap = new Map<string, string>();
+      for (const re of returnedEntries) {
+        if (re.number && re.status) {
+          entryStatusMap.set(normalizePhoneLast9(re.number), re.status);
+        }
+      }
+
+      for (const order of targetBatch.orders) {
+        const entryRawStatus = entryStatusMap.get(normalizePhoneLast9(order.phoneNumber));
+        const targetStatus = entryRawStatus
+          ? mapClickyfiedStatus(entryRawStatus)
+          : overallStatus;
+
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: targetStatus,
+            providerReference: providerRef,
+            externalReference: batchCode,
+            failureReason: targetStatus === "FAILED" ? `Failed on Clickyfied: ${rawStatus}` : null,
+          },
         });
 
-        const batchOrderId = String(submitRes.orderId || batchRef);
-        batchIds.push(batchOrderId);
-        const providerRef = `CLICKYFIED:${batchOrderId}`;
-
-        // Extract Clickyfied's reported status (so our order status strictly matches Clickyfied)
-        const rawAny = submitRes.raw as any;
-        const summary = rawAny?.order?.entrySummary || rawAny?.entrySummary;
-        const rawStatus = rawAny?.order?.status || submitRes.status || rawAny?.status || "pending";
-        const processedAt = rawAny?.order?.processedAt || rawAny?.processedAt;
-        const overallStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
-
-        // Check if Clickyfied provided individual entry statuses
-        const returnedEntries: Array<{ number?: string; status?: string }> =
-          rawAny?.order?.entries || rawAny?.entries || [];
-
-        const entryStatusMap = new Map<string, string>();
-        for (const re of returnedEntries) {
-          if (re.number && re.status) {
-            entryStatusMap.set(normalizePhoneLast9(re.number), re.status);
-          }
-        }
-
-        for (const order of batch.orders) {
-          const entryRawStatus = entryStatusMap.get(normalizePhoneLast9(order.phoneNumber));
-          const targetStatus = entryRawStatus
-            ? mapClickyfiedStatus(entryRawStatus)
-            : overallStatus;
-
-          await prisma.order.update({
-            where: { id: order.id },
-            data: {
-              status: targetStatus,
-              providerReference: providerRef,
-              externalReference: batchRef,
-              failureReason: targetStatus === "FAILED" ? `Failed on Clickyfied: ${rawStatus}` : null,
-            },
-          });
-
-          await prisma.orderStatusHistory.create({
-            data: {
-              orderId: order.id,
-              status: targetStatus,
-              previousStatus: "PENDING",
-              note: `Submitted in Clickyfied MTN Batch #${batchOrderId} (${batch.orders.length} entries, ${batch.totalGb} GB). Provider Status: ${entryRawStatus || rawStatus || targetStatus}`,
-              changedBy: actorLabel,
-            },
-          });
-        }
-
-        // Recompute parent batch status for any user batches containing these orders
-        const parentBatchIds = Array.from(
-          new Set(batch.orders.map((o) => o.batchId).filter(Boolean) as string[])
-        );
-        for (const bId of parentBatchIds) {
-          try {
-            const { recomputeBatchStatus } = await import("../orders");
-            await recomputeBatchStatus(bId);
-          } catch {
-            // ignore
-          }
-        }
-
-        totalDispatched += batch.orders.length;
-        totalDispatchedGb += batch.totalGb;
-      } catch (chunkErr: any) {
-        console.error(`[ClickyfiedBatch] Batch ${idx + 1} dispatch failed:`, chunkErr);
-        await prisma.orderStatusHistory.createMany({
-          data: batch.orders.map((o) => ({
-            orderId: o.id,
-            status: "PENDING",
-            note: `Clickyfied Batch attempt failed: ${chunkErr?.message || "Network error"}`,
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: targetStatus,
+            previousStatus: "PENDING",
+            note: `Submitted in Clickyfied MTN Batch #${batchCode} (${targetBatch.orders.length} entries, ${targetBatch.totalGb} GB). Provider Order #${batchOrderId}. Status: ${entryRawStatus || rawStatus || targetStatus}`,
             changedBy: actorLabel,
-          })),
+          },
         });
       }
+
+      // Recompute parent batch status for any user batches containing these orders
+      const parentBatchIds = Array.from(
+        new Set(targetBatch.orders.map((o) => o.batchId).filter(Boolean) as string[])
+      );
+      for (const bId of parentBatchIds) {
+        try {
+          const { recomputeBatchStatus } = await import("../orders");
+          await recomputeBatchStatus(bId);
+        } catch {
+          // ignore
+        }
+      }
+
+      // Reset the last dispatched timestamp so timer starts fresh for the remaining queue
+      await prisma.systemSetting.upsert({
+        where: { key: "clickyfied_batch_last_dispatched_at" },
+        create: { key: "clickyfied_batch_last_dispatched_at", value: new Date().toISOString() },
+        update: { value: new Date().toISOString() },
+      });
+
+      const remainingOrdersCount = count - targetBatch.orders.length;
+      const remainingOrdersGb = Math.max(0, orders.reduce((sum, o) => sum + o.gbAmount, 0) - targetBatch.totalGb);
+
+      await recordAudit({
+        actorLabel,
+        action: "provider.clickyfied_mtn_batch_dispatched",
+        target: `clickyfied:batch:mtn`,
+        newValue: JSON.stringify({
+          batchCode,
+          batchOrderId,
+          dispatchedCount: targetBatch.orders.length,
+          totalGb: targetBatch.totalGb,
+          remainingOrdersCount,
+          remainingOrdersGb,
+        }),
+      });
+
+      return {
+        success: true,
+        dispatchedCount: targetBatch.orders.length,
+        totalGb: targetBatch.totalGb,
+        batchIds: [batchOrderId],
+        batchCode,
+        message: `Dispatched ${batchCode} with ${targetBatch.orders.length} MTN order(s) (${targetBatch.totalGb} GB) to Clickyfied. ${remainingOrdersCount > 0 ? `${remainingOrdersCount} order(s) (${remainingOrdersGb} GB) remain in PENDING queue to accumulate for next batch.` : "Queue is now empty."}`,
+      };
+    } catch (batchErr: any) {
+      console.error(`[ClickyfiedBatch] Dispatch of ${batchCode} failed:`, batchErr);
+      await prisma.orderStatusHistory.createMany({
+        data: targetBatch.orders.map((o) => ({
+          orderId: o.id,
+          status: "PENDING",
+          note: `Clickyfied Batch attempt (${batchCode}) failed: ${batchErr?.message || "Network error"}`,
+          changedBy: actorLabel,
+        })),
+      });
+
+      return {
+        success: false,
+        dispatchedCount: 0,
+        totalGb: 0,
+        batchIds: [],
+        error: batchErr?.message || "Batch submission failed",
+      };
     }
-
-    // Update the last dispatched timestamp in system settings
-    await prisma.systemSetting.upsert({
-      where: { key: "clickyfied_batch_last_dispatched_at" },
-      create: { key: "clickyfied_batch_last_dispatched_at", value: new Date().toISOString() },
-      update: { value: new Date().toISOString() },
-    });
-
-    await recordAudit({
-      actorLabel,
-      action: "provider.clickyfied_mtn_batch_dispatched",
-      target: `clickyfied:batch:mtn`,
-      newValue: JSON.stringify({
-        dispatchedCount: totalDispatched,
-        totalGb: totalDispatchedGb,
-        batchIds,
-      }),
-    });
-
-    return {
-      success: totalDispatched > 0,
-      dispatchedCount: totalDispatched,
-      totalGb: totalDispatchedGb,
-      batchIds,
-      message: `Successfully dispatched ${totalDispatched} MTN order(s) (${totalDispatchedGb} GB) to Clickyfied across ${batchIds.length} batch(es).`,
-    };
   } finally {
     isDispatchingBatch = false;
   }
