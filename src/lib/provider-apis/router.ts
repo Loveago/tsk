@@ -219,6 +219,15 @@ export async function dispatchOrder(
     };
   }
 
+  if (order.providerReference && !options.force) {
+    return {
+      success: true,
+      provider: order.providerReference.startsWith("CLICKYFIED:") ? "CLICKYFIED" : "BIGWINDATA",
+      status: order.status,
+      error: `Order already dispatched to provider (${order.providerReference})`,
+    };
+  }
+
   const config = await getProviderRoutingConfig();
   const isSandboxMode = config.clickyfied.enabled && isClickyfiedSandbox(config.clickyfied);
 
