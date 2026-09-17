@@ -58,19 +58,42 @@ export function ImportAcceptedModal({
 
   const handleFileChange = async (selectedFile: File) => {
     if (!selectedFile) return;
+    if (selectedFile.size > 250 * 1024 * 1024) {
+      toast("File size exceeds maximum limit of 250MB", "error");
+      return;
+    }
     setFile(selectedFile);
     setLoading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
+      // Read file text directly in the browser. This allows sending clean JSON,
+      // avoiding Node/undici multipart/form-data boundary parsing errors.
+      let data: any;
+      try {
+        const content = await selectedFile.text();
+        const res = await fetch("/api/admin/mtn-verification/accepted/import/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: selectedFile.name,
+            content,
+          }),
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to parse file");
+      } catch (jsonErr: any) {
+        // Fallback: If JSON fails or file is too large for memory, try FormData with safe ASCII filename
+        const safeFilename = selectedFile.name.replace(/[^\w.-]/g, "_");
+        const formData = new FormData();
+        formData.append("file", selectedFile, safeFilename);
 
-      const res = await fetch("/api/admin/mtn-verification/accepted/import/preview", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to parse file");
+        const res = await fetch("/api/admin/mtn-verification/accepted/import/preview", {
+          method: "POST",
+          body: formData,
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? jsonErr.message ?? "Failed to parse file");
+      }
 
       // If direct import is requested, immediately trigger confirm
       if (directImport) {

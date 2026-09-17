@@ -157,17 +157,32 @@ export default function UserMtnVerificationPage() {
     setUploading(true);
     setUploadResult(null);
     try {
-      const form = new FormData();
-      form.append("file", uploadFile);
-      const res = await fetch("/api/mtn-verification/upload", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast(data.error ?? "Upload failed", "error");
-        return;
+      let data: any;
+      try {
+        const content = await uploadFile.text();
+        const res = await fetch("/api/mtn-verification/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: uploadFile.name,
+            content,
+          }),
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      } catch (jsonErr: any) {
+        // Fallback to FormData with safe ASCII filename
+        const safeFilename = uploadFile.name.replace(/[^\w.-]/g, "_");
+        const form = new FormData();
+        form.append("file", uploadFile, safeFilename);
+        const res = await fetch("/api/mtn-verification/upload", {
+          method: "POST",
+          body: form,
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? jsonErr.message ?? "Upload failed");
       }
+
       setUploadResult(data);
       if (data.submitted > 0) {
         toast(`${data.submitted} number(s) submitted for verification`, "success");

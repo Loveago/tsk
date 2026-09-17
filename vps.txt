@@ -136,17 +136,17 @@ cat << 'EOF' > /var/www/tskconnect/.env
 DATABASE_URL="postgresql://tsk_user:Loverboy888112!@localhost:5432/tskconnect_db?schema=public"
 
 # Auth Session Secret (Generate with: openssl rand -base64 32)
-AUTH_SECRET="CHANGE_THIS_TO_A_VERY_LONG_RANDOM_SECRET_KEY_123456"
+AUTH_SECRET="CHANGE_THIS_TO_A_VERY_LvdvvdvONG_RANDOMasjijdijdvd_SECRET_KEY_123456"
 
 # Multi-Domain Platform Architecture
 MAIN_DOMAIN="tsk05.net"
 NEXT_PUBLIC_MAIN_DOMAIN="tsk05.net"
-STOREFRONT_DOMAIN="tskstore.net"
-NEXT_PUBLIC_STOREFRONT_DOMAIN="tskstore.net"
+STOREFRONT_DOMAIN="tskdatastore.com"
+NEXT_PUBLIC_STOREFRONT_DOMAIN="tskdatastore.com"
 
 # Paystack (Ghana MoMo Top-ups & Storefront Checkout)
 # Get keys at: https://dashboard.paystack.com/#/settings/developers
-PAYSTACK_SECRET_KEY="sk_live_replace_with_your_paystack_secret_key"
+£PAYSTACK_SECRET_KEY="sk_live_replace_with_your_paystack_secret_key"
 
 # Initial Admin Credentials (used during seed)
 ADMIN_EMAIL="admin@tsk05.net"
@@ -228,7 +228,7 @@ server {
     listen [::]:80;
     server_name tsk05.net www.tsk05.net;
 
-    client_max_body_size 50M;
+    client_max_body_size 250M;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -264,9 +264,9 @@ cat << 'EOF' > /etc/nginx/sites-available/tskstore.net
 server {
     listen 80;
     listen [::]:80;
-    server_name tskstore.net www.tskstore.net;
+    server_name tskdatastore.com www.tskdatastore.com;
 
-    client_max_body_size 50M;
+    client_max_body_size 250M;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -314,7 +314,7 @@ sudo systemctl reload nginx
 ================================================================================
 Run Certbot to secure both domains and their www subdomains in one command:
 
-sudo certbot --nginx -d tsk05.net -d www.tsk05.net -d tskstore.net -d www.tskstore.net --non-interactive --agree-tos -m admin@tsk05.net --redirect
+sudo certbot --nginx -d tsk05.net -d www.tsk05.net -d tskdatastore.com -d www.tskdatastore.com --non-interactive --agree-tos -m admin@tsk05.net --redirect
 
 # Test automatic SSL certificate renewal
 sudo certbot renew --dry-run

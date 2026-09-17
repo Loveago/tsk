@@ -24,35 +24,50 @@ export async function POST(request: NextRequest) {
       return apiError(429, "Too many file uploads. Please wait a minute before trying again.");
     }
 
-    // Parse multipart form
-    let formData: FormData;
-    try {
-      formData = await request.formData();
-    } catch {
-      return apiError(400, "Failed to parse form data. Ensure you are uploading a multipart/form-data request.");
-    }
-
-    const file = formData.get("file");
-    if (!file || !(file instanceof File)) {
-      return apiError(400, "No file provided. Please attach a .txt file.");
-    }
-
-    if (!file.name.toLowerCase().endsWith(".txt")) {
-      return apiError(400, "Only .txt files are supported for bulk upload.");
-    }
-
     // 200 MB ceiling
     const MAX_BYTES = 200 * 1024 * 1024;
-    if (file.size > MAX_BYTES) {
-      return apiError(413, "File is too large. Maximum allowed size is 200 MB.");
+    const contentType = request.headers.get("content-type") ?? "";
+    let content = "";
+    let filename = "upload.txt";
+
+    if (contentType.includes("application/json")) {
+      const body = await request.json();
+      content = body.content ?? "";
+      filename = body.filename ?? "upload.txt";
+    } else if (contentType.includes("multipart/form-data")) {
+      let formData: FormData;
+      try {
+        formData = await request.formData();
+      } catch {
+        return apiError(400, "Failed to parse form data. Please ensure the file is a valid .txt file.");
+      }
+
+      const file = formData.get("file");
+      if (!file || !(file instanceof File)) {
+        return apiError(400, "No file provided. Please attach a .txt file.");
+      }
+
+      if (!file.name.toLowerCase().endsWith(".txt")) {
+        return apiError(400, "Only .txt files are supported for bulk upload.");
+      }
+
+      if (file.size > MAX_BYTES) {
+        return apiError(413, "File is too large. Maximum allowed size is 200 MB.");
+      }
+
+      filename = file.name;
+      try {
+        content = await file.text();
+      } catch {
+        return apiError(400, "Could not read the file. Ensure it is a valid UTF-8 encoded text file.");
+      }
+    } else {
+      content = await request.text();
+      filename = request.headers.get("x-filename") || "upload.txt";
     }
 
-    // Read file text
-    let content: string;
-    try {
-      content = await file.text();
-    } catch {
-      return apiError(400, "Could not read the file. Ensure it is a valid UTF-8 encoded text file.");
+    if (!filename.toLowerCase().endsWith(".txt")) {
+      return apiError(400, "Only .txt files are supported for bulk upload.");
     }
 
     if (!content.trim()) {
@@ -60,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse numbers from the file (validates MTN format, deduplicates, etc.)
-    const parsed = await parseMtnNumbersFile(content, file.name);
+    const parsed = await parseMtnNumbersFile(content, filename);
 
     if (parsed.validNumbers.length === 0) {
       return NextResponse.json({
