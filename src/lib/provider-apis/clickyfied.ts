@@ -225,6 +225,56 @@ export class ClickyfiedClient {
   }
 
   /**
+   * Searches recent Clickyfied orders for a specific recipient phone number.
+   * Returns canonical orderId, orderEntryId, and entry status.
+   */
+  async findOrderByPhone(phoneNumber: string): Promise<{
+    orderId?: string;
+    orderEntryId?: number | string;
+    status?: string;
+    number?: string;
+    allocationGb?: number;
+  } | null> {
+    const rawClean = String(phoneNumber || "").trim();
+    let cleanLast9 = rawClean.replace(/\D/g, "");
+    if (cleanLast9.length > 9) cleanLast9 = cleanLast9.slice(-9);
+
+    try {
+      const res = await this.request<any>("/orders?limit=50");
+      const orders = res?.orders || res?.data?.orders || [];
+      for (const o of orders) {
+        try {
+          const details = await this.getOrderStatus(o.orderId);
+          const entries: any[] =
+            (details.raw as any)?.order?.entries || (details.raw as any)?.entries || [];
+          const match = entries.find((e: any) => {
+            if (!e.number) return false;
+            let eNum = String(e.number).replace(/\D/g, "");
+            if (eNum.length > 9) eNum = eNum.slice(-9);
+            return eNum === cleanLast9;
+          });
+          if (match) {
+            const eId = match.orderEntryId ?? match.entryId ?? match.id ?? match._id;
+            return {
+              orderId: String(o.orderId),
+              orderEntryId:
+                eId !== undefined && eId !== null
+                  ? !isNaN(Number(eId))
+                    ? Number(eId)
+                    : eId
+                  : undefined,
+              status: match.status || o.status,
+              number: match.number,
+              allocationGb: match.allocationGB || match.allocationGb,
+            };
+          }
+        } catch {}
+      }
+    } catch {}
+    return null;
+  }
+
+  /**
    * Action 3: Get Order Status
    * Note: check status at most once every 30 seconds per order.
    */

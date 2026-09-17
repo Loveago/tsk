@@ -823,6 +823,40 @@ export async function splitMultiDispatchBatches(): Promise<void> {
         }
       }
     }
+
+    // -------------------------------------------------------------------------
+    // 3. RECONCILE & CLEANUP GHOST BATCHES:
+    // If an OrderBatch has 0 actual orders linked to it, delete the ghost batch!
+    // If an OrderBatch has out-of-sync recipient count or totals, reconcile it!
+    // -------------------------------------------------------------------------
+    const existingBatches = await prisma.orderBatch.findMany({
+      include: {
+        _count: { select: { orders: true } },
+      },
+    });
+
+    for (const b of existingBatches) {
+      const actualCount = b._count.orders;
+      if (actualCount === 0) {
+        // Delete ghost batch with 0 orders so it doesn't show in table with an empty recipients modal
+        await prisma.orderBatch.delete({ where: { id: b.id } }).catch(() => {});
+      } else if (actualCount !== b.totalRecipients) {
+        const aggregates = await prisma.order.aggregate({
+          where: { batchId: b.id },
+          _sum: { gbAmount: true, amount: true },
+        });
+        await prisma.orderBatch.update({
+          where: { id: b.id },
+          data: {
+            totalRecipients: actualCount,
+            totalGb: aggregates._sum.gbAmount || 0,
+            totalAmount: aggregates._sum.amount || 0,
+          },
+        });
+        const { recomputeBatchStatus } = await import("../orders");
+        await recomputeBatchStatus(b.id);
+      }
+    }
   } catch (err) {
     console.error("[splitMultiDispatchBatches] Error:", err);
   }

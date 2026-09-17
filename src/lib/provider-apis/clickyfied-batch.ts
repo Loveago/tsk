@@ -339,8 +339,20 @@ export async function dispatchClickyfiedMtnBatch(
       ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
       : undefined;
 
-    // Generate unique sequential batch reference (e.g. CF-BATCH-000001, CF-BATCH-000002)
-    const batchCode = await getNextClickyfiedBatchCode();
+    // Determine the batch code for this dispatch:
+    // If these orders already belong to an OrderBatch (e.g. CF-BATCH-000226), keep that batch code!
+    // If they are loose orders without a batch, use a sequential batch code.
+    const parentBatchId = targetBatch.orders.find((o) => o.batchId)?.batchId;
+    let batchCode: string;
+    if (parentBatchId) {
+      const existingBatch = await prisma.orderBatch.findUnique({
+        where: { id: parentBatchId },
+        select: { batchCode: true },
+      });
+      batchCode = existingBatch?.batchCode || (await getNextClickyfiedBatchCode());
+    } else {
+      batchCode = await getNextClickyfiedBatchCode();
+    }
 
     const entries = targetBatch.orders.map((o) => {
       let num = o.phoneNumber.trim();
@@ -504,31 +516,29 @@ export async function dispatchClickyfiedMtnBatch(
       });
 
       if (!dispatchedBatch) {
-        if (parentBatchIds.length === 1) {
-          dispatchedBatch = await prisma.orderBatch.update({
-            where: { id: parentBatchIds[0] },
-            data: {
-              batchCode,
-              totalRecipients: targetBatch.orders.length,
-              totalGb: targetBatch.totalGb,
-              totalAmount: targetBatch.orders.reduce((s, o) => s + o.amount, 0),
-              status: overallStatus === "PENDING" ? "PENDING" : "PROCESSING",
-            },
-          });
-        } else {
-          const firstOrd = targetBatch.orders[0];
-          dispatchedBatch = await prisma.orderBatch.create({
-            data: {
-              batchCode,
-              userId: firstOrd.userId,
-              network: "MTN",
-              totalRecipients: targetBatch.orders.length,
-              totalGb: targetBatch.totalGb,
-              totalAmount: targetBatch.orders.reduce((s, o) => s + o.amount, 0),
-              status: overallStatus === "PENDING" ? "PENDING" : "PROCESSING",
-            },
-          });
-        }
+        const firstOrd = targetBatch.orders[0];
+        dispatchedBatch = await prisma.orderBatch.create({
+          data: {
+            batchCode,
+            userId: firstOrd.userId,
+            network: "MTN",
+            totalRecipients: targetBatch.orders.length,
+            totalGb: targetBatch.totalGb,
+            totalAmount: targetBatch.orders.reduce((s, o) => s + o.amount, 0),
+            status: overallStatus === "PENDING" ? "PENDING" : "PROCESSING",
+          },
+        });
+      } else {
+        // Dispatched batch already exists (it is the parent batch): update its counts and status
+        await prisma.orderBatch.update({
+          where: { id: dispatchedBatch.id },
+          data: {
+            totalRecipients: targetBatch.orders.length,
+            totalGb: targetBatch.totalGb,
+            totalAmount: targetBatch.orders.reduce((s, o) => s + o.amount, 0),
+            status: overallStatus === "PENDING" ? "PENDING" : "PROCESSING",
+          },
+        });
       }
 
       // Assign all dispatched orders to this batch

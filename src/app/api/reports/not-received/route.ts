@@ -338,8 +338,70 @@ export async function POST(request: NextRequest) {
           } catch {}
         }
 
+        // If order does not have a canonical orderId or entryId, search Clickyfied by phone number
+        if (!clickyfiedOrderId.startsWith("order-") || orderEntryId === undefined) {
+          try {
+            const matched = await client.findOrderByPhone(order.phoneNumber);
+            if (matched?.orderId) {
+              clickyfiedOrderId = matched.orderId;
+              if (matched.orderEntryId !== undefined) {
+                orderEntryId = matched.orderEntryId;
+              }
+              // Save to database order immediately
+              await prisma.order
+                .update({
+                  where: { id: order.id },
+                  data: {
+                    providerReference: orderEntryId
+                      ? `CLICKYFIED:${clickyfiedOrderId}:${orderEntryId}`
+                      : `CLICKYFIED:${clickyfiedOrderId}`,
+                  },
+                })
+                .catch(() => {});
+            }
+          } catch (lookupPhoneErr) {
+            console.warn("Could not find order by phone on Clickyfied:", lookupPhoneErr);
+          }
+        }
+
+        // If clickyfiedOrderId STILL does not start with "order-", do NOT call Clickyfied with an internal TSK-ORD ID!
+        if (!clickyfiedOrderId.startsWith("order-")) {
+          await recordOrderApiLog({
+            orderId: order.id,
+            provider: "CLICKYFIED",
+            action: "NOT_RECEIVED",
+            endpoint: "/api/orders/report-not-received",
+            method: "POST",
+            requestPayload: {
+              number: order.phoneNumber,
+              allocationGb: order.gbAmount,
+            },
+            responsePayload: {
+              error: "Order was not found on Clickyfied. It was not dispatched to Clickyfied or is not recognized.",
+            },
+            statusCode: 404,
+            success: false,
+            errorMessage: "Order not found on Clickyfied provider",
+            providerReference: order.providerReference,
+          });
+
+          await prisma.deliveryReportEvent.create({
+            data: {
+              reportId: report.id,
+              type: "RESPONSE_ADDED",
+              message: "Order was not found on Clickyfied provider. Report logged internally.",
+              actorLabel: "System",
+            },
+          });
+
+          return NextResponse.json({
+            success: true,
+            report: { ...report, code: deliveryReportCode(report.seq) },
+            message: "Report logged internally. Clickyfied order reference not found.",
+          });
+        }
+
         // If orderEntryId is not yet cached on order, fetch it from Clickyfied order details.
-        // We try with both the canonical Clickyfied orderId and the order's externalReference (batchCode).
         if (orderEntryId === undefined) {
           const lookupKeys = Array.from(
             new Set([clickyfiedOrderId, order.externalReference].filter(Boolean) as string[])
@@ -351,12 +413,10 @@ export async function POST(request: NextRequest) {
               const entriesList: any[] = raw?.order?.entries || raw?.entries || [];
 
               if (entriesList.length > 0) {
-                // If Clickyfied returned a canonical orderId, prefer it
                 if (raw?.order?.orderId && raw.order.orderId !== clickyfiedOrderId) {
                   clickyfiedOrderId = String(raw.order.orderId);
                 }
 
-                // Find ALL sibling orders in our DB belonging to this batch or Clickyfied order
                 const siblingOrders = await prisma.order.findMany({
                   where: {
                     OR: [
@@ -369,7 +429,6 @@ export async function POST(request: NextRequest) {
                   select: { id: true, phoneNumber: true, providerReference: true },
                 });
 
-                // Update ALL sibling orders with their respective entryId at once
                 for (const sib of siblingOrders) {
                   const sibNorm = normalizePhoneLast9(sib.phoneNumber);
                   const matchedEntry = entriesList.find(
