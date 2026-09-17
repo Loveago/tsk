@@ -406,16 +406,66 @@ export async function dispatchClickyfiedMtnBatch(
         });
       }
 
-      // Recompute parent batch status for any user batches containing these orders
+      // For any parent OrderBatch where only SOME orders were in this dispatch:
+      // Keep the dispatched orders in the original OrderBatch, and move the remaining pending orders
+      // into a new OrderBatch so the batches are separated on TSK just like on Clickyfied!
+      const targetOrderIds = new Set(targetBatch.orders.map((o) => o.id));
       const parentBatchIds = Array.from(
         new Set(targetBatch.orders.map((o) => o.batchId).filter(Boolean) as string[])
       );
+
       for (const bId of parentBatchIds) {
         try {
-          const { recomputeBatchStatus } = await import("../orders");
-          await recomputeBatchStatus(bId);
-        } catch {
-          // ignore
+          const parentBatch = await prisma.orderBatch.findUnique({
+            where: { id: bId },
+            include: {
+              orders: { select: { id: true, gbAmount: true, amount: true } },
+            },
+          });
+          if (!parentBatch) continue;
+
+          const dispatchedFromThis = parentBatch.orders.filter((o) => targetOrderIds.has(o.id));
+          const remainingInThis = parentBatch.orders.filter((o) => !targetOrderIds.has(o.id));
+
+          if (remainingInThis.length > 0 && dispatchedFromThis.length > 0) {
+            const { nextBatchCode } = await import("../batches");
+            const newBatchCode = await nextBatchCode();
+
+            const newBatch = await prisma.orderBatch.create({
+              data: {
+                batchCode: newBatchCode,
+                userId: parentBatch.userId,
+                network: parentBatch.network,
+                totalRecipients: remainingInThis.length,
+                totalGb: remainingInThis.reduce((s, o) => s + o.gbAmount, 0),
+                totalAmount: remainingInThis.reduce((s, o) => s + o.amount, 0),
+                status: "PENDING",
+              },
+            });
+
+            await prisma.order.updateMany({
+              where: { id: { in: remainingInThis.map((o) => o.id) } },
+              data: { batchId: newBatch.id },
+            });
+
+            await prisma.orderBatch.update({
+              where: { id: bId },
+              data: {
+                totalRecipients: dispatchedFromThis.length,
+                totalGb: dispatchedFromThis.reduce((s, o) => s + o.gbAmount, 0),
+                totalAmount: dispatchedFromThis.reduce((s, o) => s + o.amount, 0),
+              },
+            });
+
+            const { recomputeBatchStatus } = await import("../orders");
+            await recomputeBatchStatus(bId);
+            await recomputeBatchStatus(newBatch.id);
+          } else {
+            const { recomputeBatchStatus } = await import("../orders");
+            await recomputeBatchStatus(bId);
+          }
+        } catch (splitErr) {
+          console.error("Error updating parent batch:", splitErr);
         }
       }
 

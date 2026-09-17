@@ -577,7 +577,8 @@ export function mapClickyfiedStatus(
 
     if (sent >= total) return "SUCCESS";
     if (error >= total) return "FAILED";
-    if (processing > 0 || pending > 0) return "PROCESSING";
+    if (processing > 0) return "PROCESSING";
+    if (pending > 0) return "PENDING";
   }
 
   const s = (rawStatus || "").trim().toLowerCase();
@@ -596,13 +597,101 @@ export function mapClickyfiedStatus(
   if (["cancelled", "canceled"].includes(s)) {
     return "CANCELLED";
   }
-  // When Clickyfied accepts an order into its queue (pending/accepted/submitted/created),
-  // on Tskconnect it has been dispatched to the provider and is in PROCESSING.
+  // If status on Clickyfied is pending/accepted/queued/submitted, status on TSK is strictly PENDING
   if (["pending", "accepted", "submitted", "queued", "created"].includes(s)) {
-    return "PROCESSING";
+    return "PENDING";
   }
 
-  return "PROCESSING";
+  return "PENDING";
+}
+
+/**
+ * Automatically splits any OrderBatch where orders were dispatched across multiple distinct
+ * Clickyfied batches so that each dispatched batch is displayed as its own separate row on TSK!
+ */
+export async function splitMultiDispatchBatches(): Promise<void> {
+  try {
+    const batches = await prisma.orderBatch.findMany({
+      where: {
+        orders: {
+          some: { providerReference: { startsWith: "CLICKYFIED:" } },
+        },
+      },
+      include: {
+        orders: {
+          select: {
+            id: true,
+            providerReference: true,
+            externalReference: true,
+            gbAmount: true,
+            amount: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    for (const b of batches) {
+      const groups = new Map<string, typeof b.orders>();
+      for (const ord of b.orders) {
+        const key = ord.providerReference || ord.externalReference || "pending";
+        const list = groups.get(key) ?? [];
+        list.push(ord);
+        groups.set(key, list);
+      }
+
+      if (groups.size > 1) {
+        let isFirst = true;
+        for (const [key, ords] of groups) {
+          if (isFirst) {
+            await prisma.orderBatch.update({
+              where: { id: b.id },
+              data: {
+                totalRecipients: ords.length,
+                totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
+                totalAmount: ords.reduce((s, o) => s + o.amount, 0),
+              },
+            });
+            const { recomputeBatchStatus } = await import("../orders");
+            await recomputeBatchStatus(b.id);
+            isFirst = false;
+          } else {
+            const { nextBatchCode } = await import("../batches");
+            const sampleRef = ords.find((o) => o.externalReference?.startsWith("CF-BATCH-"))?.externalReference;
+            const newCode = sampleRef || (await nextBatchCode());
+
+            const existing = await prisma.orderBatch.findUnique({
+              where: { batchCode: newCode },
+            });
+
+            const newBatch =
+              existing ??
+              (await prisma.orderBatch.create({
+                data: {
+                  batchCode: newCode,
+                  userId: b.userId,
+                  network: b.network,
+                  totalRecipients: ords.length,
+                  totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
+                  totalAmount: ords.reduce((s, o) => s + o.amount, 0),
+                  status: "PENDING",
+                },
+              }));
+
+            await prisma.order.updateMany({
+              where: { id: { in: ords.map((o) => o.id) } },
+              data: { batchId: newBatch.id },
+            });
+
+            const { recomputeBatchStatus } = await import("../orders");
+            await recomputeBatchStatus(newBatch.id);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[splitMultiDispatchBatches] Error:", err);
+  }
 }
 
 // In-memory set to prevent concurrent requests to the same order
