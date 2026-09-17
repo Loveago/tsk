@@ -74,23 +74,26 @@ export async function POST(request: NextRequest) {
           targetOrder = orders.find((o) => normalizePhoneLast9(o.phoneNumber) === normRep);
         }
 
-        // 3. Match order with an active open delivery report
-        if (!targetOrder) {
+        // 3. In single-order cases, match the order with an active delivery report or the single order
+        if (!targetOrder && orders.length === 1) {
+          targetOrder = orders[0];
+        } else if (!targetOrder && orders.length > 1) {
+          // In multi-entry batches, only match if there is exactly ONE open delivery report across all orders in the batch
           const orderIds = orders.map((o) => o.id);
-          const openRep = await prisma.deliveryReport.findFirst({
+          const openReps = await prisma.deliveryReport.findMany({
             where: {
               orderId: { in: orderIds },
               status: { in: ["OPEN", "INVESTIGATING", "UNDER_REVIEW"] },
             },
-            orderBy: { createdAt: "desc" },
           });
-          if (openRep) {
-            targetOrder = orders.find((o) => o.id === openRep.orderId);
+          if (openReps.length === 1) {
+            targetOrder = orders.find((o) => o.id === openReps[0].orderId);
           }
         }
 
+        // If target order could not be unambiguously identified in a multi-entry batch, do not corrupt other orders
         if (!targetOrder) {
-          targetOrder = orders[0];
+          return NextResponse.json({ received: true, event, skipped: "Unmatched recipient in multi-entry batch" });
         }
 
         // Find the specific report for this target order

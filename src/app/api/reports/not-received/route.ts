@@ -342,32 +342,63 @@ export async function POST(request: NextRequest) {
               const ordStatus = await client.getOrderStatus(key);
               const raw = ordStatus.raw as any;
               const entriesList: any[] = raw?.order?.entries || raw?.entries || [];
-              const phoneNorm = normalizePhoneLast9(order.phoneNumber);
-              const matched = entriesList.find(
-                (e: any) => e.number && normalizePhoneLast9(e.number) === phoneNorm
-              );
-              if (matched && matched.id !== undefined && matched.id !== null) {
-                orderEntryId = !isNaN(Number(matched.id)) ? Number(matched.id) : matched.id;
-                // If Clickyfied returned a different orderId, prefer it
+
+              if (entriesList.length > 0) {
+                // If Clickyfied returned a canonical orderId, prefer it
                 if (raw?.order?.orderId && raw.order.orderId !== clickyfiedOrderId) {
                   clickyfiedOrderId = String(raw.order.orderId);
                 }
-                await prisma.order.update({
-                  where: { id: order.id },
-                  data: {
-                    providerReference: `CLICKYFIED:${clickyfiedOrderId}:${matched.id}`,
+
+                // Find ALL sibling orders in our DB belonging to this batch or Clickyfied order
+                const siblingOrders = await prisma.order.findMany({
+                  where: {
+                    OR: [
+                      { providerReference: `CLICKYFIED:${clickyfiedOrderId}` },
+                      { providerReference: { startsWith: `CLICKYFIED:${clickyfiedOrderId}:` } },
+                      { externalReference: order.externalReference || undefined },
+                      ...(order.batchId ? [{ batchId: order.batchId }] : []),
+                    ],
                   },
+                  select: { id: true, phoneNumber: true, providerReference: true },
                 });
-                break;
+
+                // Update ALL sibling orders with their respective entryId at once
+                for (const sib of siblingOrders) {
+                  const sibNorm = normalizePhoneLast9(sib.phoneNumber);
+                  const matchedEntry = entriesList.find(
+                    (e: any) => e.number && normalizePhoneLast9(e.number) === sibNorm
+                  );
+                  const eId = matchedEntry
+                    ? matchedEntry.orderEntryId ?? matchedEntry.entryId ?? matchedEntry.id ?? matchedEntry._id
+                    : undefined;
+
+                  if (eId !== undefined && eId !== null) {
+                    const cleanEId = !isNaN(Number(eId)) ? Number(eId) : eId;
+                    await prisma.order
+                      .update({
+                        where: { id: sib.id },
+                        data: {
+                          providerReference: `CLICKYFIED:${clickyfiedOrderId}:${cleanEId}`,
+                        },
+                      })
+                      .catch(() => {});
+
+                    if (sib.id === order.id) {
+                      orderEntryId = cleanEId;
+                    }
+                  }
+                }
+
+                if (orderEntryId !== undefined) {
+                  break;
+                }
               }
-              if (entriesList.length > 0) break; // got a response but no matching phone
             } catch (fetchErr: any) {
               if (fetchErr?.status === 429) {
-                throw new Error(
-                  `Rate limited by Clickyfied while looking up entry ID — please try reporting again in 30 seconds`
-                );
+                console.warn(`Rate limit 429 on getOrderStatus while looking up entry ID for "${key}".`);
+              } else {
+                console.warn(`Could not retrieve entryId from Clickyfied using key "${key}":`, fetchErr?.message || fetchErr);
               }
-              console.warn(`Could not retrieve entryId from Clickyfied using key "${key}":`, fetchErr?.message || fetchErr);
             }
           }
         }

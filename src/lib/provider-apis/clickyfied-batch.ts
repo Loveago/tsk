@@ -369,16 +369,37 @@ export async function dispatchClickyfiedMtnBatch(
       const overallStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
       // Check if Clickyfied provided individual entry statuses and entry IDs
-      const returnedEntries: Array<{ id?: string | number; number?: string; status?: string }> =
+      let returnedEntries: Array<{ id?: string | number; orderEntryId?: string | number; entryId?: string | number; number?: string; status?: string }> =
         rawAny?.order?.entries || rawAny?.entries || submitRes.entries || [];
 
       const entryStatusMap = new Map<string, string>();
       const entryIdMap = new Map<string, string | number>();
+
       for (const re of returnedEntries) {
         if (re.number) {
           const norm = normalizePhoneLast9(re.number);
           if (re.status) entryStatusMap.set(norm, re.status);
-          if (re.id !== undefined && re.id !== null) entryIdMap.set(norm, re.id);
+          const eId = re.orderEntryId ?? re.entryId ?? re.id ?? (re as any)._id;
+          if (eId !== undefined && eId !== null) entryIdMap.set(norm, eId);
+        }
+      }
+
+      // If entry IDs were not included in the immediate submit response, query the order details once to get them
+      if (entryIdMap.size === 0 && batchOrderId) {
+        try {
+          const ordDetails = await client.getOrderStatus(batchOrderId);
+          const rawD = ordDetails.raw as any;
+          const freshEntries: any[] = rawD?.order?.entries || rawD?.entries || [];
+          for (const fe of freshEntries) {
+            if (fe.number) {
+              const norm = normalizePhoneLast9(fe.number);
+              if (fe.status) entryStatusMap.set(norm, fe.status);
+              const eId = fe.orderEntryId ?? fe.entryId ?? fe.id ?? fe._id;
+              if (eId !== undefined && eId !== null) entryIdMap.set(norm, eId);
+            }
+          }
+        } catch {
+          // Continue if immediate fetch is not available; poller and report route will also resolve
         }
       }
 
