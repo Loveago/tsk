@@ -147,9 +147,13 @@ export async function POST(request: NextRequest) {
         data: { userId, type: "DEBIT", amount, status: "APPROVED", reference: `order:${order.id}` },
       });
 
-      await changeOrderStatus(order.id, "PROCESSING", "Accepted via API", {
-        id: keyId ?? "api",
-        label: "api",
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: "PENDING",
+          note: "Order accepted via API",
+          changedBy: keyId ? `api_key:${keyId}` : "api",
+        },
       });
 
       if (idemKey) {
@@ -166,7 +170,7 @@ export async function POST(request: NextRequest) {
         const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
         const config = await getProviderRoutingConfig();
         if (shouldAutoDispatch(config)) {
-          dispatchOrder(order.id, { force: true }).catch((err) => {
+          dispatchOrder(order.id).catch((err) => {
             console.error(`Auto-dispatch failed for public v1 order #${order.id}:`, err);
           });
         }

@@ -219,23 +219,7 @@ export async function recomputeBatchStatus(
   const refunded = counts["REFUNDED"] ?? 0;
   const processing = counts["PROCESSING"] ?? 0;
 
-  let next: BatchStatus;
-  if (total === 0) {
-    next = "PENDING";
-  } else if (completed === total) {
-    next = "COMPLETED";
-  } else if (cancelled === total) {
-    next = "CANCELLED";
-  } else if (failed + refunded === total) {
-    next = "FAILED";
-  } else if (processing > 0 || (pending > 0 && completed + failed + refunded + cancelled > 0)) {
-    // In-flight work or mixed in-progress work: PROCESSING
-    next = "PROCESSING";
-  } else if (completed > 0) {
-    next = "COMPLETED";
-  } else {
-    next = "PENDING";
-  }
+  const next = computeBatchStatusFromCounts(counts);
 
   const batch = await client.orderBatch.findUnique({
     where: { id: batchId },
@@ -244,6 +228,33 @@ export async function recomputeBatchStatus(
   if (!batch || batch.status === next) return next;
   await client.orderBatch.update({ where: { id: batchId }, data: { status: next } });
   return next;
+}
+
+/**
+ * Computes OrderBatch status from per-status counts (§24).
+ */
+export function computeBatchStatusFromCounts(
+  counts: Record<string, number>
+): BatchStatus {
+  let total = 0;
+  for (const value of Object.values(counts)) total += value;
+
+  const pending = counts["PENDING"] ?? 0;
+  const completed = counts["SUCCESS"] ?? 0;
+  const failed = counts["FAILED"] ?? 0;
+  const cancelled = counts["CANCELLED"] ?? 0;
+  const refunded = counts["REFUNDED"] ?? 0;
+  const processing = counts["PROCESSING"] ?? 0;
+
+  if (total === 0) return "PENDING";
+  if (completed === total) return "COMPLETED";
+  if (cancelled === total) return "CANCELLED";
+  if (failed + refunded === total) return "FAILED";
+  if (processing > 0 || (pending > 0 && completed + failed + refunded + cancelled > 0)) {
+    return "PROCESSING";
+  }
+  if (completed > 0) return "COMPLETED";
+  return "PENDING";
 }
 
 /**

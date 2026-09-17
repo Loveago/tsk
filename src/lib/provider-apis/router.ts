@@ -617,218 +617,17 @@ export function mapClickyfiedStatus(
 
 /**
  * Automatically splits any OrderBatch where orders were dispatched across multiple distinct
- * Clickyfied batches so that each dispatched batch is displayed as its own separate row on TSK!
+/**
+ * Maintenance & Reconciliation:
+ * Reconciles OrderBatch records, ensuring their recipient counts, total GB, total amount,
+ * and batch status are strictly accurate based on their child orders.
+ * Also cleans up any empty ghost batches (0 orders) left behind.
  * 
- * Crucially: Orders dispatched together in the same Clickyfied batch (e.g. CF-BATCH-000001)
- * remain TOGETHER in one batch, never broken down into single orders.
+ * Crucially: User-created OrderBatches are NEVER split into chunks or modified!
+ * The user sees their submission as one single batch order.
  */
 export async function splitMultiDispatchBatches(): Promise<void> {
   try {
-    // -------------------------------------------------------------------------
-    // 1. HEAL & CONSOLIDATE: Re-group any orders sharing the same Clickyfied batch code
-    // (e.g. CF-BATCH-XXXXXX) that were previously shattered into single-order batches!
-    // -------------------------------------------------------------------------
-    const allDispatchedOrders = await prisma.order.findMany({
-      where: {
-        externalReference: { startsWith: "CF-BATCH-" },
-      },
-      select: {
-        id: true,
-        batchId: true,
-        userId: true,
-        network: true,
-        externalReference: true,
-        gbAmount: true,
-        amount: true,
-        status: true,
-      },
-    });
-
-    if (allDispatchedOrders.length > 0) {
-      const batchCodeMap = new Map<string, typeof allDispatchedOrders>();
-      for (const ord of allDispatchedOrders) {
-        const code = ord.externalReference!;
-        const list = batchCodeMap.get(code) ?? [];
-        list.push(ord);
-        batchCodeMap.set(code, list);
-      }
-
-      for (const [batchCode, ords] of batchCodeMap) {
-        const distinctBatchIds = new Set(ords.map((o) => o.batchId).filter(Boolean) as string[]);
-
-        let canonicalBatch = await prisma.orderBatch.findUnique({
-          where: { batchCode },
-        });
-
-        if (!canonicalBatch) {
-          if (distinctBatchIds.size === 1) {
-            const onlyId = Array.from(distinctBatchIds)[0];
-            canonicalBatch = await prisma.orderBatch
-              .update({
-                where: { id: onlyId },
-                data: { batchCode },
-              })
-              .catch(() => null);
-          }
-          if (!canonicalBatch) {
-            canonicalBatch = await prisma.orderBatch.create({
-              data: {
-                batchCode,
-                userId: ords[0].userId,
-                network: ords[0].network,
-                totalRecipients: ords.length,
-                totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
-                totalAmount: ords.reduce((s, o) => s + o.amount, 0),
-                status: "PROCESSING",
-              },
-            });
-          }
-        }
-
-        // Move all orders belonging to this Clickyfied batch into the single canonical batch
-        const ordersToReassign = ords.filter((o) => o.batchId !== canonicalBatch!.id);
-        if (ordersToReassign.length > 0) {
-          await prisma.order.updateMany({
-            where: { id: { in: ordersToReassign.map((o) => o.id) } },
-            data: { batchId: canonicalBatch.id },
-          });
-        }
-
-        // Update canonical batch totals
-        await prisma.orderBatch.update({
-          where: { id: canonicalBatch.id },
-          data: {
-            totalRecipients: ords.length,
-            totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
-            totalAmount: ords.reduce((s, o) => s + o.amount, 0),
-          },
-        });
-
-        const { recomputeBatchStatus } = await import("../orders");
-        await recomputeBatchStatus(canonicalBatch.id);
-
-        // Delete any empty orphaned batch records left behind from the prior mangled split
-        for (const oldId of distinctBatchIds) {
-          if (oldId !== canonicalBatch.id) {
-            const remainingCount = await prisma.order.count({ where: { batchId: oldId } });
-            if (remainingCount === 0) {
-              await prisma.orderBatch.delete({ where: { id: oldId } }).catch(() => {});
-            } else {
-              await recomputeBatchStatus(oldId);
-            }
-          }
-        }
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // 2. SPLIT: Separate any parent batch that has orders across different Clickyfied batches
-    // or mixed with pending orders, keeping each batch clean and distinct
-    // -------------------------------------------------------------------------
-    const batches = await prisma.orderBatch.findMany({
-      where: {
-        orders: {
-          some: { providerReference: { startsWith: "CLICKYFIED:" } },
-        },
-      },
-      include: {
-        orders: {
-          select: {
-            id: true,
-            providerReference: true,
-            externalReference: true,
-            gbAmount: true,
-            amount: true,
-            status: true,
-          },
-        },
-      },
-    });
-
-    for (const b of batches) {
-      const groups = new Map<string, typeof b.orders>();
-      for (const ord of b.orders) {
-        let batchKey = "pending";
-        if (ord.externalReference && ord.externalReference.startsWith("CF-BATCH-")) {
-          batchKey = ord.externalReference;
-        } else if (ord.providerReference?.startsWith("CLICKYFIED:")) {
-          const parts = ord.providerReference.replace("CLICKYFIED:", "").split(":");
-          batchKey = `CLICKYFIED:${parts[0]}`;
-        }
-        const list = groups.get(batchKey) ?? [];
-        list.push(ord);
-        groups.set(batchKey, list);
-      }
-
-      if (groups.size > 1) {
-        let isFirst = true;
-        for (const [key, ords] of groups) {
-          const sampleRef = ords.find((o) => o.externalReference?.startsWith("CF-BATCH-"))?.externalReference;
-
-          if (isFirst) {
-            const updateData: Record<string, any> = {
-              totalRecipients: ords.length,
-              totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
-              totalAmount: ords.reduce((s, o) => s + o.amount, 0),
-            };
-            if (sampleRef && b.batchCode !== sampleRef) {
-              updateData.batchCode = sampleRef;
-            }
-            await prisma.orderBatch.update({
-              where: { id: b.id },
-              data: updateData,
-            });
-            const { recomputeBatchStatus } = await import("../orders");
-            await recomputeBatchStatus(b.id);
-            isFirst = false;
-          } else {
-            const { nextBatchCode } = await import("../batches");
-            const newCode = sampleRef || (await nextBatchCode());
-
-            let targetBatch = await prisma.orderBatch.findUnique({
-              where: { batchCode: newCode },
-            });
-
-            if (!targetBatch) {
-              targetBatch = await prisma.orderBatch.create({
-                data: {
-                  batchCode: newCode,
-                  userId: b.userId,
-                  network: b.network,
-                  totalRecipients: ords.length,
-                  totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
-                  totalAmount: ords.reduce((s, o) => s + o.amount, 0),
-                  status: "PENDING",
-                },
-              });
-            } else {
-              await prisma.orderBatch.update({
-                where: { id: targetBatch.id },
-                data: {
-                  totalRecipients: ords.length,
-                  totalGb: ords.reduce((s, o) => s + o.gbAmount, 0),
-                  totalAmount: ords.reduce((s, o) => s + o.amount, 0),
-                },
-              });
-            }
-
-            await prisma.order.updateMany({
-              where: { id: { in: ords.map((o) => o.id) } },
-              data: { batchId: targetBatch.id },
-            });
-
-            const { recomputeBatchStatus } = await import("../orders");
-            await recomputeBatchStatus(targetBatch.id);
-          }
-        }
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // 3. RECONCILE & CLEANUP GHOST BATCHES:
-    // If an OrderBatch has 0 actual orders linked to it, delete the ghost batch!
-    // If an OrderBatch has out-of-sync recipient count or totals, reconcile it!
-    // -------------------------------------------------------------------------
     const existingBatches = await prisma.orderBatch.findMany({
       include: {
         _count: { select: { orders: true } },
@@ -838,21 +637,26 @@ export async function splitMultiDispatchBatches(): Promise<void> {
     for (const b of existingBatches) {
       const actualCount = b._count.orders;
       if (actualCount === 0) {
-        // Delete ghost batch with 0 orders so it doesn't show in table with an empty recipients modal
+        // Delete ghost batch with 0 orders so it doesn't show with an empty recipients modal
         await prisma.orderBatch.delete({ where: { id: b.id } }).catch(() => {});
-      } else if (actualCount !== b.totalRecipients) {
+      } else {
         const aggregates = await prisma.order.aggregate({
           where: { batchId: b.id },
           _sum: { gbAmount: true, amount: true },
         });
-        await prisma.orderBatch.update({
-          where: { id: b.id },
-          data: {
-            totalRecipients: actualCount,
-            totalGb: aggregates._sum.gbAmount || 0,
-            totalAmount: aggregates._sum.amount || 0,
-          },
-        });
+        const currentGb = aggregates._sum.gbAmount || 0;
+        const currentAmt = aggregates._sum.amount || 0;
+
+        if (actualCount !== b.totalRecipients || currentGb !== b.totalGb || currentAmt !== b.totalAmount) {
+          await prisma.orderBatch.update({
+            where: { id: b.id },
+            data: {
+              totalRecipients: actualCount,
+              totalGb: currentGb,
+              totalAmount: currentAmt,
+            },
+          });
+        }
         const { recomputeBatchStatus } = await import("../orders");
         await recomputeBatchStatus(b.id);
       }

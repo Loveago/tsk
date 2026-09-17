@@ -581,7 +581,7 @@ export async function POST(request: NextRequest) {
       const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
       const config = await getProviderRoutingConfig();
       if (shouldAutoDispatch(config)) {
-        dispatchOrder(createdOrder.id, { force: true }).catch((err) => {
+        dispatchOrder(createdOrder.id).catch((err) => {
           console.error(`Auto-dispatch failed for dev v1 order #${createdOrder.id}:`, err);
         });
       }
