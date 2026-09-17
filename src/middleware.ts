@@ -34,7 +34,14 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(`https://${MAIN_DOMAIN}/login`);
     }
 
-    // Allow API endpoints, internal assets, and favicon to execute directly
+    // Serve dedicated storefront favicon and app icons for tskstore.net
+    if (pathname === "/favicon.ico" || pathname === "/icon.svg" || pathname === "/apple-icon.png") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/store/icon.svg";
+      return NextResponse.rewrite(url);
+    }
+
+    // Allow API endpoints, internal assets, and static files to execute directly
     if (
       pathname.startsWith("/api") ||
       pathname.startsWith("/_next") ||
@@ -159,9 +166,8 @@ export const config = {
      * Match all request paths except for:
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public files with extensions
+     * - static asset images (png, jpg, jpeg, gif, webp)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
