@@ -799,6 +799,33 @@ export async function syncClickyfiedDeliveryReport(
       return { changed: false };
     }
 
+    // Check if this order shares its providerReference with any other orders in the system
+    // (i.e. legacy multi-entry batch where multiple orders shared 1 providerReference)
+    let isSharedBatchOrder = false;
+    if (report.order.providerReference) {
+      const sharedCount = await prisma.order.count({
+        where: { providerReference: report.order.providerReference },
+      });
+      isSharedBatchOrder = sharedCount > 1;
+    }
+
+    if (isSharedBatchOrder) {
+      const firstReport = await prisma.deliveryReport.findFirst({
+        where: {
+          order: { providerReference: report.order.providerReference },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+
+      // If this report is NOT the first report filed for this legacy multi-entry batch,
+      // do NOT sync from Clickyfied because Clickyfied's report belongs exclusively to the first report.
+      // Subsequent reports for orders in that legacy batch must be reviewed manually.
+      if (firstReport && firstReport.id !== report.id) {
+        return { changed: false };
+      }
+    }
+
     // Identify all possible Clickify order identifier candidates
     const idCandidates: string[] = [];
     if (report.order.providerReference?.startsWith("CLICKYFIED:")) {

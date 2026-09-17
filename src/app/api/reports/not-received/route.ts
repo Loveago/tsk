@@ -315,30 +315,62 @@ export async function POST(request: NextRequest) {
           ? order.providerReference.replace("CLICKYFIED:", "")
           : order.externalReference || `TSK-ORD-${order.id}`;
 
-        const { recordOrderApiLog } = await import("@/lib/order-api-logs");
-        const repRes = await client.reportNotReceived(clickyfiedId);
+        // If this order shares its providerReference with other orders (legacy multi-entry batch),
+        // check if a report was already registered for any order in this batch.
+        let alreadyReportedSharedBatch = false;
+        if (order.providerReference) {
+          const sharedOrders = await prisma.order.findMany({
+            where: { providerReference: order.providerReference },
+            select: { id: true },
+          });
+          if (sharedOrders.length > 1) {
+            const priorReport = await prisma.deliveryReport.findFirst({
+              where: {
+                orderId: { in: sharedOrders.map((o) => o.id) },
+                id: { not: report.id },
+              },
+            });
+            if (priorReport) {
+              alreadyReportedSharedBatch = true;
+            }
+          }
+        }
 
-        await recordOrderApiLog({
-          orderId: order.id,
-          provider: "CLICKYFIED",
-          action: "NOT_RECEIVED",
-          endpoint: `/orders/${encodeURIComponent(String(clickyfiedId))}/not-received`,
-          method: "POST",
-          requestPayload: { clickyfiedId },
-          responsePayload: repRes,
-          statusCode: 200,
-          success: true,
-          providerReference: clickyfiedId,
-        });
+        if (alreadyReportedSharedBatch) {
+          await prisma.deliveryReportEvent.create({
+            data: {
+              reportId: report.id,
+              type: "INVESTIGATION_STARTED",
+              message: `Report queued for admin review. (Order belongs to a legacy batch where a report was already registered on Clickyfied).`,
+              actorLabel: "System",
+            },
+          });
+        } else {
+          const { recordOrderApiLog } = await import("@/lib/order-api-logs");
+          const repRes = await client.reportNotReceived(clickyfiedId);
 
-        await prisma.deliveryReportEvent.create({
-          data: {
-            reportId: report.id,
-            type: "INVESTIGATION_STARTED",
-            message: `Report forwarded to Clickyfied API (Order Ref: ${clickyfiedId})`,
-            actorLabel: "Clickyfied API",
-          },
-        });
+          await recordOrderApiLog({
+            orderId: order.id,
+            provider: "CLICKYFIED",
+            action: "NOT_RECEIVED",
+            endpoint: `/orders/${encodeURIComponent(String(clickyfiedId))}/not-received`,
+            method: "POST",
+            requestPayload: { clickyfiedId },
+            responsePayload: repRes,
+            statusCode: 200,
+            success: true,
+            providerReference: clickyfiedId,
+          });
+
+          await prisma.deliveryReportEvent.create({
+            data: {
+              reportId: report.id,
+              type: "INVESTIGATION_STARTED",
+              message: `Report forwarded to Clickyfied API (Order Ref: ${clickyfiedId})`,
+              actorLabel: "Clickyfied API",
+            },
+          });
+        }
       } catch (err: any) {
         console.error("Failed to forward report to Clickyfied:", err);
         try {
