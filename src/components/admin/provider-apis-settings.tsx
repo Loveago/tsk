@@ -20,6 +20,10 @@ import {
   Sliders,
   Check,
   Activity,
+  Layers,
+  Timer,
+  Gauge,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -49,6 +53,69 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
   const [syncing, setSyncing] = React.useState(false);
   const [testingBigwin, setTestingBigwin] = React.useState(false);
   const [testingClickyfied, setTestingClickyfied] = React.useState(false);
+  const [batchStatus, setBatchStatus] = React.useState<{
+    batchEnabled: boolean;
+    pendingCount: number;
+    totalGb: number;
+    gbThreshold: number;
+    timerMinutes: number;
+    minutesElapsed: number;
+    minutesRemaining: number;
+    thresholdMet: boolean;
+    timerExpired: boolean;
+  } | null>(null);
+  const [loadingBatchStatus, setLoadingBatchStatus] = React.useState(false);
+  const [dispatchingBatch, setDispatchingBatch] = React.useState(false);
+
+  const fetchBatchStatus = React.useCallback(async () => {
+    try {
+      setLoadingBatchStatus(true);
+      const res = await fetch("/api/admin/provider-apis/clickyfied-batch");
+      if (res.ok) {
+        const data = await res.json();
+        setBatchStatus(data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingBatchStatus(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchBatchStatus();
+  }, [fetchBatchStatus]);
+
+  const handleManualBatchDispatch = async () => {
+    if (
+      !window.confirm(
+        `⚠️ WARNING: Immediate Provider Dispatch\n\nAre you sure you want to dispatch all ${batchStatus?.pendingCount ?? 0} pending MTN orders (${batchStatus?.totalGb ?? 0} GB) to Clickyfied right now?\n\nThis will submit orders for live fulfillment and debit your Clickyfied account balance.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setDispatchingBatch(true);
+      const res = await fetch("/api/admin/provider-apis/clickyfied-batch", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        toast(data.error || "Failed to dispatch batch", "error");
+        return;
+      }
+      toast(
+        data.message ||
+          `Successfully dispatched ${data.dispatchedCount} orders (${data.totalGb} GB) to Clickyfied`,
+        "success"
+      );
+      fetchBatchStatus();
+    } catch (err: any) {
+      toast(err?.message || "Network error", "error");
+    } finally {
+      setDispatchingBatch(false);
+    }
+  };
+
   const [testResult, setTestResult] = React.useState<{
     provider: string;
     message: string;
@@ -82,6 +149,9 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
       clickyfied_client_id: s.clickyfied_client_id || DEFAULT_CLICKYFIED_CLIENT_ID,
       clickyfied_mtn_verification_enabled: "true",
       clickyfied_not_received_enabled: "true",
+      clickyfied_batch_enabled: "true",
+      clickyfied_batch_gb_threshold: s.clickyfied_batch_gb_threshold || "100",
+      clickyfied_batch_timer_minutes: s.clickyfied_batch_timer_minutes || "15",
     }));
     toast("Preset applied: MTN → Bigwindata | Telecel & AirtelTigo → Clickyfied", "success");
   };
@@ -100,6 +170,9 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
       clickyfied_client_id: s.clickyfied_client_id || DEFAULT_CLICKYFIED_CLIENT_ID,
       clickyfied_mtn_verification_enabled: "true",
       clickyfied_not_received_enabled: "true",
+      clickyfied_batch_enabled: "true",
+      clickyfied_batch_gb_threshold: s.clickyfied_batch_gb_threshold || "100",
+      clickyfied_batch_timer_minutes: s.clickyfied_batch_timer_minutes || "15",
     }));
     toast("Preset applied: All Networks → Clickyfied (Sandbox/Live)", "success");
   };
@@ -914,6 +987,214 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 }`}
               />
             </button>
+          </div>
+
+          {/* MTN Batch Order Accumulation Settings */}
+          <div className="rounded-xl border border-slate-200 dark:border-white/10 p-4 bg-slate-50/50 dark:bg-slate-800/30 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Layers className="h-4 w-4 text-brand-600" />
+                  MTN Batch Order Accumulation
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Accumulate MTN orders and dispatch in bulk batches rather than singles. Automatically dispatches when accumulated volume reaches the GB threshold OR when the timer expires.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.clickyfied_batch_enabled !== "false"}
+                onClick={() =>
+                  setSettings((s) => ({
+                    ...s,
+                    clickyfied_batch_enabled:
+                      s.clickyfied_batch_enabled === "false" ? "true" : "false",
+                  }))
+                }
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  settings.clickyfied_batch_enabled !== "false"
+                    ? "bg-brand-600"
+                    : "bg-slate-300 dark:bg-slate-700"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                    settings.clickyfied_batch_enabled !== "false"
+                      ? "left-[22px]"
+                      : "left-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {settings.clickyfied_batch_enabled !== "false" && (
+              <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-white/5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* GB Threshold */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                      <Gauge className="h-3.5 w-3.5 text-brand-600" />
+                      Batch Volume Threshold (GB)
+                    </Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      placeholder="100"
+                      value={settings.clickyfied_batch_gb_threshold ?? "100"}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          clickyfied_batch_gb_threshold: e.target.value,
+                        }))
+                      }
+                      className="font-mono text-sm"
+                    />
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {["50", "100", "200", "500"].map((gb) => (
+                        <button
+                          key={gb}
+                          type="button"
+                          onClick={() =>
+                            setSettings((s) => ({ ...s, clickyfied_batch_gb_threshold: gb }))
+                          }
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium border transition ${
+                            (settings.clickyfied_batch_gb_threshold ?? "100") === gb
+                              ? "bg-brand-50 text-brand-700 border-brand-300 dark:bg-brand-950 dark:text-brand-300 dark:border-brand-700"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:border-white/10"
+                          }`}
+                        >
+                          {gb} GB {gb === "100" && "(Default)"}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Dispatches automatically whenever pending MTN volume reaches this amount.
+                    </p>
+                  </div>
+
+                  {/* Timer Interval */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                      <Timer className="h-3.5 w-3.5 text-brand-600" />
+                      Batch Interval Timer (Minutes)
+                    </Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      placeholder="15"
+                      value={settings.clickyfied_batch_timer_minutes ?? "15"}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          clickyfied_batch_timer_minutes: e.target.value,
+                        }))
+                      }
+                      className="font-mono text-sm"
+                    />
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {["5", "10", "15", "30", "60"].map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() =>
+                            setSettings((s) => ({ ...s, clickyfied_batch_timer_minutes: mins }))
+                          }
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium border transition ${
+                            (settings.clickyfied_batch_timer_minutes ?? "15") === mins
+                              ? "bg-brand-50 text-brand-700 border-brand-300 dark:bg-brand-950 dark:text-brand-300 dark:border-brand-700"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:border-white/10"
+                          }`}
+                        >
+                          {mins}m {mins === "15" && "(Default)"}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Dispatches all accumulated MTN orders when this timer window expires.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Live Queue Monitor Widget */}
+                <div className="rounded-xl border border-slate-200 dark:border-white/10 p-3.5 bg-white dark:bg-slate-900/60 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-brand-600" />
+                      Live MTN Batch Queue Status
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchBatchStatus}
+                      disabled={loadingBatchStatus}
+                      className="h-7 text-[11px] gap-1 px-2"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${loadingBatchStatus ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <div className="text-[10px] text-slate-500">Pending Orders</div>
+                      <div className="text-base font-bold text-slate-900 dark:text-white">
+                        {batchStatus?.pendingCount ?? 0}
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <div className="text-[10px] text-slate-500">Accumulated GB</div>
+                      <div className="text-base font-bold text-slate-900 dark:text-white">
+                        {batchStatus?.totalGb ?? 0}{" "}
+                        <span className="text-[10px] font-normal text-slate-500">
+                          / {batchStatus?.gbThreshold ?? settings.clickyfied_batch_gb_threshold ?? 100} GB
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <div className="text-[10px] text-slate-500">Timer Countdown</div>
+                      <div className="text-base font-bold text-slate-900 dark:text-white">
+                        {batchStatus ? (
+                          batchStatus.minutesRemaining > 0 ? (
+                            `${batchStatus.minutesRemaining}m left`
+                          ) : (
+                            <span className="text-amber-600 dark:text-amber-400 text-xs">Ready</span>
+                          )
+                        ) : (
+                          "..."
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-slate-500">
+                      Auto-trigger is active via both volume threshold and periodic poller.
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleManualBatchDispatch}
+                      disabled={(batchStatus?.pendingCount ?? 0) === 0 || dispatchingBatch}
+                      className="h-7 text-xs gap-1 bg-amber-600 hover:bg-amber-700 text-white font-medium"
+                    >
+                      {dispatchingBatch ? (
+                        <>
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                          <span>Dispatching...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-3 w-3" />
+                          <span>Dispatch Queue Now</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

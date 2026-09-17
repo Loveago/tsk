@@ -368,6 +368,22 @@ export async function dispatchOrder(
       };
     }
 
+    // Check if MTN Batching is enabled for Clickyfied
+    const isMtn = (order.network || "").toUpperCase().trim().startsWith("MTN");
+    if (isMtn && !options.force) {
+      const { getClickyfiedBatchConfig, checkAndTriggerMtnBatch } = await import("./clickyfied-batch");
+      const batchConfig = await getClickyfiedBatchConfig();
+      if (batchConfig.enabled) {
+        // Order accumulates in PENDING. Check if volume threshold (e.g. 100 GB) is met.
+        const triggerRes = await checkAndTriggerMtnBatch("THRESHOLD");
+        return {
+          success: true,
+          provider: "CLICKYFIED",
+          status: triggerRes.triggered ? "PROCESSING" : "PENDING",
+        };
+      }
+    }
+
     const client = new ClickyfiedClient(config.clickyfied);
     const clickyfiedStartTime = Date.now();
     let submitPayload: any = null;
@@ -958,6 +974,14 @@ export async function dispatchOrdersBatch(orderIds: number[]): Promise<{
         result: { success: false, provider: "MANUAL", error: err?.message || "Internal error" },
       });
     }
+  }
+
+  // Trigger threshold check if pending MTN orders accumulated >= threshold
+  try {
+    const { checkAndTriggerMtnBatch } = await import("./clickyfied-batch");
+    await checkAndTriggerMtnBatch("THRESHOLD");
+  } catch {
+    // Ignore trigger check errors in background
   }
 
   return {

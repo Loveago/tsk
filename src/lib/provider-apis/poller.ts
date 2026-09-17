@@ -77,6 +77,14 @@ export function startProviderSyncPoller() {
           // continue
         }
       }
+
+      // Check Clickyfied MTN Batch timer window trigger
+      try {
+        const { checkAndTriggerMtnBatch } = await import("./clickyfied-batch");
+        await checkAndTriggerMtnBatch("TIMER");
+      } catch (batchErr) {
+        // Ignore background transient errors
+      }
     } catch {
       // Ignore background transient errors
     } finally {
