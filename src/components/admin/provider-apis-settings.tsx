@@ -61,6 +61,10 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
     timerMinutes: number;
     minutesElapsed: number;
     minutesRemaining: number;
+    currentBatchCount: number;
+    currentBatchGb: number;
+    nextBatchCount: number;
+    nextBatchGb: number;
     thresholdMet: boolean;
     timerExpired: boolean;
   } | null>(null);
@@ -1168,9 +1172,28 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                     </div>
                   </div>
 
+                  {batchStatus && (batchStatus.nextBatchCount > 0 || batchStatus.currentBatchGb > 0) && (
+                    <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 text-xs space-y-1">
+                      <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                        <span>Current Batch Limit:</span>
+                        <span className="font-semibold text-brand-600 dark:text-brand-400">
+                          {batchStatus.currentBatchCount} order(s) • {batchStatus.currentBatchGb} / {batchStatus.gbThreshold} GB
+                        </span>
+                      </div>
+                      {batchStatus.nextBatchCount > 0 && (
+                        <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-white/5">
+                          <span>Next Batch Queue:</span>
+                          <span className="font-semibold text-amber-600 dark:text-amber-400">
+                            +{batchStatus.nextBatchCount} order(s) • {batchStatus.nextBatchGb} GB
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-slate-500">
-                      Auto-trigger is active via both volume threshold and periodic poller.
+                      Dispatched batches are strictly capped at {settings.clickyfied_batch_gb_threshold ?? 100} GB. Statuses mirror Clickyfied (pending, processing, processed).
                     </span>
                     <Button
                       type="button"

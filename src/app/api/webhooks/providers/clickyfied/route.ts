@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { changeOrderStatus } from "@/lib/orders";
 import { recordAudit } from "@/lib/audit";
-import { mapClickyfiedStatus } from "@/lib/provider-apis/router";
+import { mapClickyfiedStatus, normalizePhoneLast9 } from "@/lib/provider-apis/router";
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,11 +23,11 @@ export async function POST(request: NextRequest) {
       payload?.externalReference;
     const externalRef = payload?.externalReference || payload?.reference;
 
-    // Search for order in our database
-    let order = null;
+    // Search for orders in our database (single order or batch)
+    let orders: any[] = [];
     const searchKeys = [orderId, externalRef].filter(Boolean).map(String);
     if (searchKeys.length > 0) {
-      order = await prisma.order.findFirst({
+      orders = await prisma.order.findMany({
         where: {
           OR: [
             ...searchKeys.map((k) => ({ providerReference: `CLICKYFIED:${k}` })),
@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+    const order = orders[0] ?? null;
 
     // -----------------------------------------------------------------------
     // Handle Delivery Report Events (Not Received Flow)
@@ -179,31 +180,53 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
     // Handle Order Status Changed Events
     // -----------------------------------------------------------------------
-    if (order) {
+    if (orders.length > 0) {
       const summary = payload?.order?.entrySummary || payload?.entrySummary;
       const rawStatus =
         payload?.order?.status ||
         payload?.status ||
         (event === "order.accepted" ? "pending" : "");
+      const processedAt = payload?.order?.processedAt || payload?.processedAt;
+      const overallTargetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
-      const targetStatus = mapClickyfiedStatus(rawStatus, summary);
+      // Check if per-entry status list is provided in webhook payload
+      const rawEntries: Array<{ number?: string; currentStatus?: string; status?: string }> =
+        payload?.entries || payload?.order?.entries || [];
 
-      if (targetStatus && targetStatus !== order.status) {
-        await changeOrderStatus(
-          order.id,
-          targetStatus,
-          payload?.failureReason || payload?.notes || `Updated via Clickyfied Callback: ${rawStatus || targetStatus}`,
-          { id: "system", label: "Clickyfied Callback" },
-          { force: true }
-        );
+      const entryStatusMap = new Map<string, string>();
+      for (const re of rawEntries) {
+        const ph = normalizePhoneLast9(re.number);
+        const st = re.currentStatus || re.status;
+        if (ph && st) {
+          entryStatusMap.set(ph, st);
+        }
+      }
 
-        await recordAudit({
-          userId: order.userId,
-          actorLabel: "Clickyfied Callback",
-          action: "order.callback_update",
-          target: `order:${order.id}`,
-          newValue: JSON.stringify({ event, status: targetStatus, orderId }),
-        });
+      for (const ord of orders) {
+        const entryStatus = entryStatusMap.get(normalizePhoneLast9(ord.phoneNumber));
+        const targetStatus = entryStatus
+          ? mapClickyfiedStatus(entryStatus)
+          : overallTargetStatus;
+
+        if (targetStatus && targetStatus !== ord.status) {
+          await changeOrderStatus(
+            ord.id,
+            targetStatus,
+            payload?.failureReason ||
+              payload?.notes ||
+              `Updated via Clickyfied Callback: ${entryStatus || rawStatus || targetStatus}`,
+            { id: "system", label: "Clickyfied Callback" },
+            { force: true }
+          );
+
+          await recordAudit({
+            userId: ord.userId,
+            actorLabel: "Clickyfied Callback",
+            action: "order.callback_update",
+            target: `order:${ord.id}`,
+            newValue: JSON.stringify({ event, status: targetStatus, orderId, entryStatus }),
+          });
+        }
       }
     }
 

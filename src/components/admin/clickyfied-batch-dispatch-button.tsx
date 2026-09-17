@@ -24,6 +24,12 @@ interface BatchStatus {
   lastDispatchedAt: string | null;
   minutesElapsed: number;
   minutesRemaining: number;
+  batchEnabled_?: boolean;
+  clickyfiedEnabled: boolean;
+  currentBatchCount: number;
+  currentBatchGb: number;
+  nextBatchCount: number;
+  nextBatchGb: number;
   thresholdMet: boolean;
   timerExpired: boolean;
 }
@@ -145,10 +151,10 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
               <span>WARNING: Immediate Provider Dispatch</span>
             </div>
             <p>
-              This action will package all queued <strong>pending MTN orders</strong> into Clickyfied batch orders (up to 100 entries each) and immediately transmit them to Clickyfied for live fulfillment.
+              This action packages queued <strong>pending MTN orders</strong> into Clickyfied batches capped at <strong>{threshold} GB</strong> and up to 100 entries per submission.
             </p>
             <p className="text-[11px] opacity-90">
-              Once submitted, your Clickyfied account balance will be charged and orders will move to <strong>PROCESSING</strong>.
+              Order status on Tskconnect will mirror Clickyfied (pending, processing, or processed).
             </p>
           </div>
 
@@ -190,27 +196,52 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
             </div>
           </div>
 
+          {/* Current Batch vs Next Batch Overflow Breakdown */}
+          {status && (status.nextBatchCount > 0 || status.currentBatchGb > 0) && (
+            <div className="rounded-xl border border-slate-200 dark:border-white/10 p-3 bg-slate-50 dark:bg-white/5 text-xs space-y-1">
+              <div className="flex items-center justify-between font-medium text-slate-800 dark:text-slate-200">
+                <span>Current Batch (to dispatch):</span>
+                <span className="font-semibold text-brand-600 dark:text-brand-400">
+                  {status.currentBatchCount} order(s) • {status.currentBatchGb} GB
+                </span>
+              </div>
+              {status.nextBatchCount > 0 && (
+                <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-white/5">
+                  <span>Rolled over into Next Batch:</span>
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                    +{status.nextBatchCount} order(s) • {status.nextBatchGb} GB
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Progress towards 100 GB threshold */}
           <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-white/5 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <Gauge className="h-3.5 w-3.5 text-brand-600" />
-                Volume Threshold ({threshold} GB)
+                Current Batch Limit ({threshold} GB)
               </span>
               <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
-                {Math.min(100, Math.round((totalGb / (threshold || 1)) * 100))}%
+                {Math.min(100, Math.round(((status?.currentBatchGb ?? totalGb) / (threshold || 1)) * 100))}%
               </span>
             </div>
             <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
               <div
                 className={`h-full transition-all duration-300 ${
-                  totalGb >= threshold ? "bg-emerald-500" : "bg-brand-600"
+                  (status?.currentBatchGb ?? totalGb) >= threshold ? "bg-emerald-500" : "bg-brand-600"
                 }`}
-                style={{ width: `${Math.min(100, Math.round((totalGb / (threshold || 1)) * 100))}%` }}
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.round(((status?.currentBatchGb ?? totalGb) / (threshold || 1)) * 100)
+                  )}%`,
+                }}
               />
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
-              <span>Target: Clickyfied API</span>
+              <span>Limit: max {threshold} GB per batch</span>
               <span>Chunk size: max 100 entries</span>
             </div>
           </div>

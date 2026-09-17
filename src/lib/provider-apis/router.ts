@@ -531,6 +531,16 @@ export async function dispatchOrder(
 }
 
 /**
+ * Normalizes a Ghanaian phone number to its last 9 digits for robust matching across
+ * international (+233), national (0), and plain formats.
+ */
+export function normalizePhoneLast9(phone: string | null | undefined): string {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 9 ? digits.slice(-9) : digits;
+}
+
+/**
  * Maps Clickyfied statuses and entry summaries to Tskconnect internal order statuses:
  * - Clickify pending / accepted / submitted / queued -> "PENDING"
  * - Clickify processing / in_progress / sending -> "PROCESSING"
@@ -647,35 +657,77 @@ export async function syncClickyfiedOrder(
     const rawStatus = rawAny?.order?.status || res.status || rawAny?.status;
     const processedAt = rawAny?.order?.processedAt || rawAny?.processedAt;
 
-    const targetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
+    const overallTargetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
-    if (targetStatus && targetStatus !== order.status) {
-      if (targetStatus === "FAILED") {
-        await recordOrderApiLog({
-          orderId: order.id,
-          provider: "CLICKYFIED",
-          action: "SYNC_ORDER",
-          endpoint: `${config.clickyfied.baseUrl || DEFAULT_CLICKYFIED_SANDBOX_URL}/api/public/v1/orders/${providerId}`,
-          method: "GET",
-          statusCode: 200,
-          success: false,
-          errorMessage: `Order marked as failed by Clickyfied (Status: ${rawStatus})`,
-          responsePayload: rawAny,
-          providerReference: order.providerReference,
-        });
+    // Find all sister orders in our database that belong to this Clickyfied batch
+    const linkedOrders = await prisma.order.findMany({
+      where: {
+        OR: [
+          { providerReference: `CLICKYFIED:${providerId}` },
+          { externalReference: rawAny?.order?.externalReference || undefined },
+          { id: order.id },
+        ],
+      },
+    });
+
+    const entriesList: Array<{ number?: string; status?: string }> =
+      rawAny?.order?.entries || rawAny?.entries || [];
+
+    const entryMap = new Map<string, string>();
+    for (const e of entriesList) {
+      if (e.number && e.status) {
+        entryMap.set(normalizePhoneLast9(e.number), e.status);
       }
-
-      await changeOrderStatus(
-        order.id,
-        targetStatus,
-        `Synced with Clickyfied (${rawStatus || targetStatus})`,
-        { id: "system", label: actorLabel },
-        { force: true }
-      );
-      return { changed: true, previousStatus: order.status, newStatus: targetStatus };
     }
 
-    return { changed: false, newStatus: order.status };
+    let thisOrderChanged = false;
+    let thisOrderNewStatus = order.status;
+    const thisOrderPreviousStatus = order.status;
+
+    for (const ord of linkedOrders) {
+      lastCheckedOrders.set(ord.id, now);
+
+      const entryStatus = entryMap.get(normalizePhoneLast9(ord.phoneNumber));
+      const targetStatus = entryStatus
+        ? mapClickyfiedStatus(entryStatus)
+        : overallTargetStatus;
+
+      if (targetStatus && targetStatus !== ord.status) {
+        if (targetStatus === "FAILED") {
+          await recordOrderApiLog({
+            orderId: ord.id,
+            provider: "CLICKYFIED",
+            action: "SYNC_ORDER",
+            endpoint: `${config.clickyfied.baseUrl || DEFAULT_CLICKYFIED_SANDBOX_URL}/api/public/v1/orders/${providerId}`,
+            method: "GET",
+            statusCode: 200,
+            success: false,
+            errorMessage: `Order marked as failed by Clickyfied (Status: ${entryStatus || rawStatus})`,
+            responsePayload: rawAny,
+            providerReference: ord.providerReference,
+          });
+        }
+
+        await changeOrderStatus(
+          ord.id,
+          targetStatus,
+          `Synced with Clickyfied (${entryStatus || rawStatus || targetStatus})`,
+          { id: "system", label: actorLabel },
+          { force: true }
+        );
+
+        if (ord.id === order.id) {
+          thisOrderChanged = true;
+          thisOrderNewStatus = targetStatus;
+        }
+      }
+    }
+
+    return {
+      changed: thisOrderChanged,
+      previousStatus: thisOrderPreviousStatus,
+      newStatus: thisOrderNewStatus,
+    };
   } catch (err: any) {
     // If rate limited by Clickify (429), silently return unchanged without throwing
     if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("Polling too frequently")) {
