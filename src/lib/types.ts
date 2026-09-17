@@ -372,14 +372,14 @@ export const BATCH_STATUS_META: Record<string, { label: string; className: strin
 
 export const DELIVERY_REPORT_STATUS_META: Record<DeliveryReportStatus, { label: string; className: string; dot: string }> = {
   OPEN: {
-    label: "OPEN",
+    label: "UNDER REVIEW",
     className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
     dot: "bg-amber-500",
   },
   UNDER_REVIEW: {
     label: "UNDER REVIEW",
-    className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
-    dot: "bg-violet-500",
+    className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+    dot: "bg-amber-500",
   },
   INVESTIGATING: {
     label: "INVESTIGATING",
@@ -387,9 +387,14 @@ export const DELIVERY_REPORT_STATUS_META: Record<DeliveryReportStatus, { label: 
     dot: "bg-blue-500",
   },
   DELIVERED: {
-    label: "DELIVERED",
-    className: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20",
-    dot: "bg-teal-500",
+    label: "CONFIRM SENT",
+    className: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20",
+    dot: "bg-sky-500",
+  },
+  CONFIRM_SENT: {
+    label: "CONFIRM SENT",
+    className: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20",
+    dot: "bg-sky-500",
   },
   RESOLVED: {
     label: "RESOLVED",
@@ -398,13 +403,8 @@ export const DELIVERY_REPORT_STATUS_META: Record<DeliveryReportStatus, { label: 
   },
   REFUNDED: {
     label: "REFUNDED",
-    className: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20",
-    dot: "bg-cyan-500",
-  },
-  CONFIRM_SENT: {
-    label: "CONFIRM SENT",
-    className: "bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20",
-    dot: "bg-green-500",
+    className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20",
+    dot: "bg-purple-500",
   },
   REJECTED: {
     label: "REJECTED",

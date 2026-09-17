@@ -47,8 +47,10 @@ export async function GET(request: NextRequest) {
       if (status) {
         if (status === "UNDER_REVIEW" || status === "REVIEW") {
           reportWhere.status = { in: ["OPEN", "UNDER_REVIEW", "INVESTIGATING"] };
+        } else if (status === "CONFIRM_SENT" || status === "DELIVERED") {
+          reportWhere.status = { in: ["CONFIRM_SENT", "DELIVERED"] };
         } else if (status === "RESOLVED") {
-          reportWhere.status = { in: ["RESOLVED", "DELIVERED", "CONFIRM_SENT"] };
+          reportWhere.status = "RESOLVED";
         } else if (status === "REFUNDED") {
           reportWhere.status = "REFUNDED";
         } else if (["OPEN", "UNDER_REVIEW", "INVESTIGATING", "DELIVERED", "RESOLVED", "REFUNDED", "CONFIRM_SENT", "REJECTED"].includes(status)) {
@@ -97,9 +99,10 @@ export async function GET(request: NextRequest) {
         } catch {}
       }
 
-      const [underReview, resolved, refunded] = await Promise.all([
+      const [underReview, resolved, confirmSent, refunded] = await Promise.all([
         prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["OPEN", "UNDER_REVIEW", "INVESTIGATING"] } } }),
-        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["RESOLVED", "DELIVERED", "CONFIRM_SENT"] } } }),
+        prisma.deliveryReport.count({ where: { userId: user.id, status: "RESOLVED" } }),
+        prisma.deliveryReport.count({ where: { userId: user.id, status: { in: ["CONFIRM_SENT", "DELIVERED"] } } }),
         prisma.deliveryReport.count({ where: { userId: user.id, status: "REFUNDED" } }),
       ]);
       return NextResponse.json({
@@ -108,10 +111,12 @@ export async function GET(request: NextRequest) {
           total,
           underReview,
           resolved,
+          confirmSent,
+          delivered: confirmSent,
           refunded,
           open: underReview,
           investigating: 0,
-          closed: resolved + refunded,
+          closed: resolved + confirmSent + refunded,
         },
         total,
         page,

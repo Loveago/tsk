@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
           const newStatus = isFailedOrRefunded
             ? "REFUNDED"
             : event === "report.not_received.confirmed_sent" || ["confirmed_sent", "delivered"].includes(rawStatus)
-            ? "DELIVERED"
+            ? "CONFIRM_SENT"
             : rawStatus === "rejected" || rawStatus === "cancelled"
             ? "REJECTED"
             : "RESOLVED";
@@ -245,8 +245,8 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // If confirmed delivered on Clickyfied, restore order status to SUCCESS if it was previously marked FAILED
-          if (newStatus === "DELIVERED" && targetOrder && targetOrder.status === "FAILED") {
+          // If confirmed sent on Clickyfied, restore order status to SUCCESS if it was previously marked FAILED
+          if (newStatus === "CONFIRM_SENT" && targetOrder && targetOrder.status === "FAILED") {
             try {
               await changeOrderStatus(
                 targetOrder.id,
@@ -274,7 +274,7 @@ export async function POST(request: NextRequest) {
           await prisma.deliveryReportEvent.create({
             data: {
               reportId: report.id,
-              type: newStatus === "DELIVERED" ? "MARKED_DELIVERED" : newStatus === "REFUNDED" ? "REFUND" : "RESOLVED",
+              type: newStatus === "CONFIRM_SENT" ? "MARKED_DELIVERED" : newStatus === "REFUNDED" ? "REFUND" : "RESOLVED",
               message: `Clickyfied report update: ${newStatus}. Notes: ${adminNotes || "None"}`,
               actorLabel: "Clickyfied API",
             },

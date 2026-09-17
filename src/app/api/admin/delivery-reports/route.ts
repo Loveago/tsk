@@ -34,7 +34,15 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get("q");
 
     const where: Record<string, unknown> = {};
-    if (status) where.status = status;
+    if (status) {
+      if (status === "CONFIRM_SENT" || status === "DELIVERED") {
+        where.status = { in: ["CONFIRM_SENT", "DELIVERED"] };
+      } else if (status === "UNDER_REVIEW" || status === "OPEN") {
+        where.status = { in: ["UNDER_REVIEW", "OPEN", "INVESTIGATING"] };
+      } else {
+        where.status = status;
+      }
+    }
     if (network) where.order = { is: { network } };
     if (q) {
       const orderId = Number(q.replace(/^CF-/i, "")) - 10000;
@@ -87,10 +95,13 @@ export async function GET(request: NextRequest) {
 
     const stats: Record<string, number> = {};
     for (const row of byStatus) stats[row.status] = row._count._all;
+    const confirmSentCombined = (stats["CONFIRM_SENT"] ?? 0) + (stats["DELIVERED"] ?? 0);
+    stats["CONFIRM_SENT"] = confirmSentCombined;
+    stats["DELIVERED"] = confirmSentCombined;
 
-    // On-demand sync for open or delivered reports in the admin queue (so provider refunds update immediately)
+    // On-demand sync for open reports in the admin queue (so provider updates sync immediately)
     const syncableReports = data.filter((r) =>
-      ["OPEN", "UNDER_REVIEW", "INVESTIGATING", "DELIVERED"].includes(r.status)
+      ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status)
     );
     if (syncableReports.length > 0) {
       try {

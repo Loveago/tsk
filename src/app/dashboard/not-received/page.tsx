@@ -9,6 +9,7 @@ import { orderCode } from "@/lib/utils";
 import { deliveryReportCode, formatDateTime } from "@/lib/types";
 import {
   CheckCircle2,
+  CheckCheck,
   ClipboardList,
   Clock,
   Eye,
@@ -38,6 +39,7 @@ interface MyReportRow {
 interface Stats {
   total: number;
   underReview?: number;
+  confirmSent?: number;
   resolved?: number;
   refunded?: number;
   open?: number;
@@ -51,7 +53,7 @@ const statusInputCls =
 export default function NotReceivedPage() {
   const { toast } = useToast();
   const [myReports, setMyReports] = React.useState<MyReportRow[]>([]);
-  const [myStats, setMyStats] = React.useState<Stats>({ total: 0, underReview: 0, resolved: 0, refunded: 0 });
+  const [myStats, setMyStats] = React.useState<Stats>({ total: 0, underReview: 0, confirmSent: 0, resolved: 0, refunded: 0 });
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
   const [page, setPage] = React.useState(1);
@@ -69,7 +71,7 @@ export default function NotReceivedPage() {
       const res = await fetch(`/api/reports/not-received?${params}`);
       const json = await res.json();
       setMyReports(json.reports ?? []);
-      setMyStats(json.stats ?? { total: 0, underReview: 0, resolved: 0, refunded: 0 });
+      setMyStats(json.stats ?? { total: 0, underReview: 0, confirmSent: 0, resolved: 0, refunded: 0 });
       setTotal(json.total ?? 0);
       setPages(json.pages ?? 1);
     } catch {
@@ -87,8 +89,9 @@ export default function NotReceivedPage() {
   const tiles = [
     { label: "Total Reports", value: String(myStats.total), icon: ClipboardList, cls: "text-slate-400" },
     { label: "Under Review", value: String(myStats.underReview ?? myStats.open ?? 0), icon: Clock, cls: "text-amber-500" },
-    { label: "Resolved", value: String(myStats.resolved ?? myStats.closed ?? 0), icon: CheckCircle2, cls: "text-emerald-500" },
-    { label: "Refunded", value: String(myStats.refunded ?? 0), icon: RotateCcw, cls: "text-cyan-500" },
+    { label: "Confirm Sent", value: String(myStats.confirmSent ?? 0), icon: CheckCheck, cls: "text-sky-500" },
+    { label: "Resolved", value: String(myStats.resolved ?? 0), icon: CheckCircle2, cls: "text-emerald-500" },
+    { label: "Refunded", value: String(myStats.refunded ?? 0), icon: RotateCcw, cls: "text-purple-500" },
   ];
 
   return (
@@ -107,7 +110,7 @@ export default function NotReceivedPage() {
       </div>
 
       {/* Stats bar */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {tiles.map((t) => (
           <div
             key={t.label}
@@ -152,6 +155,7 @@ export default function NotReceivedPage() {
             >
               <option value="">All Status</option>
               <option value="UNDER_REVIEW">Under Review</option>
+              <option value="CONFIRM_SENT">Confirm Sent</option>
               <option value="RESOLVED">Resolved</option>
               <option value="REFUNDED">Refunded</option>
             </select>

@@ -29,7 +29,7 @@ export function StatusBadge({
   );
 }
 
-/** Badge for Not Received report statuses (OPEN | INVESTIGATING | DELIVERED | RESOLVED | REJECTED). */
+/** Badge for Not Received report statuses (OPEN | UNDER_REVIEW | INVESTIGATING | CONFIRM_SENT | DELIVERED | RESOLVED | REFUNDED | REJECTED). */
 export function DeliveryReportStatusBadge({
   status,
   className,
@@ -37,7 +37,19 @@ export function DeliveryReportStatusBadge({
   status: DeliveryReportStatus | string;
   className?: string;
 }) {
-  const meta = DELIVERY_REPORT_STATUS_META[status as DeliveryReportStatus];
+  const normKey = String(status || "")
+    .toUpperCase()
+    .trim()
+    .replace(/\s+/g, "_");
+
+  const meta =
+    DELIVERY_REPORT_STATUS_META[normKey as DeliveryReportStatus] ||
+    (normKey === "CONFIRMED_SENT" || normKey === "CONFIRMED" || normKey === "SENT"
+      ? DELIVERY_REPORT_STATUS_META.CONFIRM_SENT
+      : normKey === "REFUND"
+      ? DELIVERY_REPORT_STATUS_META.REFUNDED
+      : undefined);
+
   if (!meta) {
     return (
       <Badge variant="muted" className={className}>

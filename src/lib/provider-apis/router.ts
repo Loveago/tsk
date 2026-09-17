@@ -1141,17 +1141,22 @@ export async function syncClickyfiedDeliveryReport(
       ));
 
     let newStatus = report.status;
-    // An already DELIVERED report should never be downgraded to REFUNDED from an unmatched report
-    if (report.status === "DELIVERED" && !reportBelongsToOrder) {
-      newStatus = "DELIVERED";
+    const isAlreadyDelivered = report.status === "DELIVERED" || report.status === "CONFIRM_SENT";
+    // An already confirmed sent/delivered report should never be downgraded to REFUNDED from an unmatched report
+    if (isAlreadyDelivered && !reportBelongsToOrder) {
+      newStatus = report.status;
     } else if (isFailedOrRefunded) {
       newStatus = "REFUNDED";
+    } else if (rawStatus === "confirmed_sent" || resolutionStr === "confirmed_sent") {
+      newStatus = "CONFIRM_SENT";
+    } else if (rawStatus === "resolved" || resolutionStr === "resolved") {
+      newStatus = "RESOLVED";
     } else if (isReportDelivered || (phoneEntryDelivered && !isReportRefunded)) {
-      newStatus = "DELIVERED";
+      newStatus = "CONFIRM_SENT";
     } else if (["resolved", "completed"].includes(rawStatus) && reportBelongsToOrder) {
       newStatus = isReportRefunded ? "REFUNDED" : "RESOLVED";
     } else if (["closed"].includes(rawStatus) && reportBelongsToOrder) {
-      newStatus = isReportRefunded ? "REFUNDED" : isReportDelivered ? "DELIVERED" : "RESOLVED";
+      newStatus = isReportRefunded ? "REFUNDED" : isReportDelivered ? "CONFIRM_SENT" : "RESOLVED";
     } else if (["pending_resolution", "pending", "investigating"].includes(rawStatus) && reportBelongsToOrder) {
       newStatus = "INVESTIGATING";
     }
@@ -1209,7 +1214,7 @@ export async function syncClickyfiedDeliveryReport(
                 proofImageUploadedBy: "Clickyfied API",
               }
             : {}),
-          ...(newStatus === "RESOLVED" || newStatus === "DELIVERED" || newStatus === "REFUNDED"
+          ...(newStatus === "RESOLVED" || newStatus === "DELIVERED" || newStatus === "CONFIRM_SENT" || newStatus === "REFUNDED"
             ? {
                 resolvedAt: resolutionDate || report.resolvedAt || new Date(),
                 resolvedBy: report.resolvedBy || "Clickyfied API",
@@ -1233,8 +1238,8 @@ export async function syncClickyfiedDeliveryReport(
         }
       }
 
-      // If report is DELIVERED and order was erroneously marked FAILED, restore order to SUCCESS
-      if (newStatus === "DELIVERED" && report.order.id && report.order.status === "FAILED") {
+      // If report is CONFIRM_SENT / DELIVERED and order was erroneously marked FAILED, restore order to SUCCESS
+      if ((newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED") && report.order.id && report.order.status === "FAILED") {
         try {
           await changeOrderStatus(
             report.order.id,
@@ -1263,7 +1268,7 @@ export async function syncClickyfiedDeliveryReport(
         await prisma.deliveryReportEvent.create({
           data: {
             reportId: report.id,
-            type: newStatus === "DELIVERED" ? "MARKED_DELIVERED" : newStatus === "REFUNDED" ? "REFUND" : "RESOLVED",
+            type: (newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED") ? "MARKED_DELIVERED" : newStatus === "REFUNDED" ? "REFUND" : "RESOLVED",
             message: `Clickyfied report update: ${newStatus}. Notes: ${adminNotes || "None"}`,
             actorLabel,
           },
