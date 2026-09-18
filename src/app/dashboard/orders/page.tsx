@@ -675,13 +675,6 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {(b.status === "COMPLETED" || b.completedAt) && (
-                  <p className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="h-3 w-3 shrink-0" />
-                    Delivered: {formatDateTime(b.completedAt ?? b.updatedAt ?? b.createdAt)}
-                  </p>
-                )}
-
                 <div className="mt-2.5 flex items-center justify-end gap-1 text-[11px] font-medium text-brand-600 dark:text-brand-400">
                   View details <ChevronRight className="h-3 w-3" />
                 </div>
@@ -717,12 +710,6 @@ export default function OrdersPage() {
                           {b.batchCode}
                         </p>
                         <p className="mt-0.5 text-xs text-slate-400">Sent: {formatDateTime(b.createdAt)}</p>
-                        {(b.status === "COMPLETED" || b.completedAt) && (
-                          <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                            <CheckCircle2 className="h-3 w-3 shrink-0" />
-                            Delivered: {formatDateTime(b.completedAt ?? b.updatedAt ?? b.createdAt)}
-                          </p>
-                        )}
                       </td>
                       <td className="px-4 py-3.5">
                         <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
