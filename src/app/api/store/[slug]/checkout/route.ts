@@ -39,6 +39,9 @@ export async function POST(
     if (!storefront || storefront.status !== "ENABLED") {
       return apiError(404, "Store not found");
     }
+    if (!storefront.isActive) {
+      return apiError(400, "This store is temporarily paused by the owner and not accepting orders at this time.");
+    }
     if (!(await isPaystackConfigured())) {
       return apiError(503, "Online payment is not available right now.");
     }

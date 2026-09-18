@@ -47,6 +47,7 @@ export default async function AdminStorefrontsPage() {
           slug: s.slug,
           name: s.name,
           status: s.status,
+          isActive: s.isActive,
           owner: `${s.user.name} (${s.user.email})`,
         }))}
         candidates={candidates.map((u) => ({ id: u.id, label: `${u.name} (${u.email})` }))}

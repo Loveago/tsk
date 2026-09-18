@@ -9,6 +9,7 @@ interface StorefrontRow {
   slug: string;
   name: string;
   status: string;
+  isActive?: boolean;
   owner: string;
 }
 interface Candidate {
@@ -329,9 +330,16 @@ export function AdminStorefrontPanel({
                   <span className="ml-2 text-slate-400">{s.name}</span>
                 </td>
                 <td className="px-4 py-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s.status === "ENABLED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : s.status === "SUSPENDED" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" : s.status === "PENDING" ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" : s.status === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-slate-100 text-slate-500 dark:bg-white/10"}`}>
-                    {s.status}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s.status === "ENABLED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : s.status === "SUSPENDED" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" : s.status === "PENDING" ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" : s.status === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-slate-100 text-slate-500 dark:bg-white/10"}`}>
+                      {s.status}
+                    </span>
+                    {s.status === "ENABLED" && s.isActive === false && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                        Paused by user
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-2">
                   {s.status === "ENABLED" ? (

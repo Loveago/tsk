@@ -36,6 +36,9 @@ export async function PATCH(request: NextRequest) {
         whatsapp: input.supportPhone || null,
         contactText: input.contactText || null,
         whatsappLabel: input.whatsappLabel || null,
+        ...(input.isActive !== undefined && storefront.status === "ENABLED"
+          ? { isActive: input.isActive }
+          : {}),
       },
     });
     return NextResponse.json({ storefront: updated });

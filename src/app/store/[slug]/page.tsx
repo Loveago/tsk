@@ -36,6 +36,47 @@ export default async function PublicStorePage({
     );
   }
 
+  if (!storefront.isActive) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 sm:p-12 shadow-sm dark:border-slate-800 dark:bg-[#111a2c]">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-500/15">
+            <Clock className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+          </div>
+          <span className="mt-6 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            Store Taking a Break
+          </span>
+          <h1 className="mt-4 font-serif text-3xl font-bold text-slate-900 sm:text-4xl dark:text-white">
+            {storefront.name} is Temporarily Paused
+          </h1>
+          <p className="mt-3 text-sm text-slate-600 sm:text-base dark:text-slate-300">
+            {storefront.description || "The store owner has temporarily paused new orders. Please check back shortly."}
+          </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href={storeHref(slug, "track")}
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-yellow-300 px-6 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/20 transition-colors hover:bg-yellow-400"
+            >
+              <Clock className="h-4 w-4" />
+              Track existing order
+            </Link>
+            {storefront.whatsapp && (
+              <a
+                href={`https://wa.me/233${storefront.whatsapp.replace(/^0/, "").replace(/\D/g, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+              >
+                Chat on WhatsApp
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const products = await prisma.storefrontProduct.findMany({
     where: { storefrontId: storefront.id, isActive: true, dataPackage: { active: true } },
     include: { dataPackage: true },

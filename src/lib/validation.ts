@@ -351,6 +351,10 @@ export const settingsSchema = z.object({
 export const pricingProfileUpdateSchema = pricingProfileSchema;
 
 // ---------- Storefront ----------
+export const storefrontStatusToggleSchema = z.object({
+  isActive: z.boolean(),
+});
+
 export const storefrontSettingsSchema = z.object({
   storeName: z.string().min(2).max(60),
   description: z.string().max(600).optional().or(z.literal("")),
@@ -359,6 +363,7 @@ export const storefrontSettingsSchema = z.object({
   supportPhone: z.string().max(40).optional().or(z.literal("")),
   contactText: z.string().max(160).optional().or(z.literal("")),
   whatsappLabel: z.string().max(40).optional().or(z.literal("")),
+  isActive: z.boolean().optional(),
 });
 
 /** User-side store application: store name, contact number, and WhatsApp group link are mandatory. */

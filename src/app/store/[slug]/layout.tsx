@@ -28,6 +28,7 @@ export default async function StoreLayout({
       contactText: true,
       whatsappLabel: true,
       status: true,
+      isActive: true,
     },
   });
 
@@ -36,14 +37,16 @@ export default async function StoreLayout({
     return <div className="min-h-screen bg-[#e9ebf5] dark:bg-[#0a101e]">{children}</div>;
   }
 
-  const rows = await prisma.dataPackage.findMany({
-    where: {
-      active: true,
-      storefrontProducts: { some: { storefrontId: storefront.id, isActive: true } },
-    },
-    select: { network: true },
-    distinct: ["network"],
-  });
+  const rows = storefront.isActive
+    ? await prisma.dataPackage.findMany({
+        where: {
+          active: true,
+          storefrontProducts: { some: { storefrontId: storefront.id, isActive: true } },
+        },
+        select: { network: true },
+        distinct: ["network"],
+      })
+    : [];
   const networks = rows
     .map((r) => r.network as NetworkProvider)
     .sort((a, b) => NETWORK_ORDER.indexOf(a) - NETWORK_ORDER.indexOf(b));

@@ -8,11 +8,13 @@ import {
   Clock,
   TrendingUp,
   Hourglass,
+  PauseCircle,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { requireActiveStorefront, ensureWallet, fromPesewas, storefrontOrderCode } from "@/lib/storefront";
 import { CopyShareButtons } from "@/components/storefront/copy-share-buttons";
+import { StoreStatusToggle } from "@/components/storefront/store-status-toggle";
 
 const ORDER_BADGES: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
@@ -82,11 +84,19 @@ export default async function StorefrontOverviewPage() {
     {
       label: "Completed sales",
       value: String(completedCount),
-      hint: storefront.status === "ENABLED" ? "Store is live and accepting orders" : "Sales paused by admin",
+      hint:
+        storefront.status !== "ENABLED"
+          ? "Sales paused by admin"
+          : storefront.isActive
+          ? "Store is live and accepting orders"
+          : "Store is paused by you",
       icon: TrendingUp,
       accent: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
     },
   ];
+
+  const isLive = storefront.status === "ENABLED" && storefront.isActive;
+  const isUserPaused = storefront.status === "ENABLED" && !storefront.isActive;
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -101,13 +111,15 @@ export default async function StorefrontOverviewPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">{storefront.name}</h1>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    storefront.status === "ENABLED"
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    isLive
                       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                      : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+                      : isUserPaused
+                      ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+                      : "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
                   }`}
                 >
-                  {storefront.status === "ENABLED" ? "Live" : storefront.status}
+                  {isLive ? "Live" : isUserPaused ? "Paused" : storefront.status}
                 </span>
               </div>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -127,7 +139,12 @@ export default async function StorefrontOverviewPage() {
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <StoreStatusToggle
+              initialActive={storefront.isActive}
+              storeStatus={storefront.status}
+              variant="compact"
+            />
             <Link
               href="/dashboard/storefront/products"
               className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500"
@@ -143,6 +160,17 @@ export default async function StorefrontOverviewPage() {
           </div>
         </div>
       </header>
+
+      {isUserPaused && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <div className="flex items-center gap-3">
+            <PauseCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <p>
+              <strong>Your storefront is currently paused.</strong> Visitors to your store link cannot purchase bundles until you re-enable it.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

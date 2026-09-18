@@ -389,6 +389,7 @@ model Storefront {
   payoutNumber   String?
   payoutAccountName String?
   status      String   @default("NOT_ENABLED") // NOT_ENABLED | PENDING | ENABLED | SUSPENDED | REJECTED
+  isActive    Boolean  @default(true) // Reseller toggle: open or temporarily pause storefront
   // Editable contact widget copy (§11): floating WhatsApp bubble + button labels
   contactText   String? // e.g. "Need help? Chat with us on WhatsApp"
   whatsappLabel String? // e.g. "Need help?" (drawer/menu button label)

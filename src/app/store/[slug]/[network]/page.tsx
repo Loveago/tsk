@@ -33,6 +33,33 @@ export default async function NetworkPage({
     );
   }
 
+  if (!storefront.isActive) {
+    return (
+      <div className="mx-auto max-w-xl px-4 py-16 text-center">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-[#111a2c]">
+          <h2 className="font-serif text-2xl font-bold text-slate-900 dark:text-white">Store Temporarily Paused</h2>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {storefront.name} is not accepting new orders at this time.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link
+              href={storeHref(slug)}
+              className="inline-flex h-10 items-center rounded-full bg-yellow-300 px-5 text-sm font-bold text-slate-900 transition-colors hover:bg-yellow-400"
+            >
+              Back to store
+            </Link>
+            <Link
+              href={storeHref(slug, "track")}
+              className="inline-flex h-10 items-center rounded-full border border-slate-200 bg-white px-5 text-sm font-bold text-slate-900 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-white/10 dark:text-white"
+            >
+              Track order
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const products = await prisma.storefrontProduct.findMany({
     where: { storefrontId: storefront.id, isActive: true, dataPackage: { active: true, network } },
     include: { dataPackage: true },

@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { requireActiveStorefront } from "@/lib/storefront";
 import { StorefrontSettingsForm } from "./settings-form";
+import { StoreStatusToggle } from "@/components/storefront/store-status-toggle";
 
 export default async function StorefrontSettingsPage() {
   const user = await requireUser();
@@ -11,10 +12,15 @@ export default async function StorefrontSettingsPage() {
       <header>
         <h1 className="text-xl font-bold text-slate-900 dark:text-white">Storefront Settings</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Public store profile and mobile money payout account. Your store address is{" "}
+          Public store profile, store availability, and mobile money payout account. Your store address is{" "}
           <span className="font-semibold text-violet-600 dark:text-violet-400">{storefrontDomain}/{storefront.slug}</span>.
         </p>
       </header>
+      <StoreStatusToggle
+        initialActive={storefront.isActive}
+        storeStatus={storefront.status}
+        variant="card"
+      />
       <StorefrontSettingsForm
         initial={{
           name: storefront.name,
