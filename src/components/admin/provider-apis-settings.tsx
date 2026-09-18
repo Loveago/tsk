@@ -24,8 +24,10 @@ import {
   Timer,
   Gauge,
   Clock,
+  Receipt,
 } from "lucide-react";
 import Link from "next/link";
+import { ClickyfiedBillingChecker } from "@/components/admin/clickyfied-billing-checker";
 import {
   DEFAULT_BIGWINDATA_API_KEY,
   DEFAULT_BIGWINDATA_BASE_URL,
@@ -772,6 +774,18 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
               type="button"
               variant="outline"
               size="sm"
+              onClick={() => {
+                document.getElementById("clickyfied-billing-section")?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="text-xs border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300 hover:bg-amber-50"
+            >
+              <Receipt className="h-3.5 w-3.5 mr-1" />
+              Check Daily Bill
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => testSingleOrder("CLICKYFIED")}
               className="text-xs border-indigo-300 text-indigo-700 dark:border-indigo-700 dark:text-indigo-300 hover:bg-indigo-50"
             >
@@ -1218,6 +1232,11 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 </div>
               </div>
             )}
+
+            {/* Action 8: Daily Billing Checker */}
+            <div id="clickyfied-billing-section" className="pt-4 border-t border-slate-200 dark:border-white/5">
+              <ClickyfiedBillingChecker />
+            </div>
           </div>
         </div>
       </div>

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     if (action === "test_clickyfied_billing") {
       const client = new ClickyfiedClient(config.clickyfied);
-      const billing = await client.getCurrentBilling();
+      const billing = await client.getCurrentBilling(body.date);
       return NextResponse.json({ success: true, billing });
     }
 
