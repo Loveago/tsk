@@ -289,22 +289,18 @@ export function AppShell({
 
           {/* Desktop Available Balance & Subtle Top Up (User Dashboard) */}
           {!admin && (
-            <div className="hidden sm:flex items-center gap-2 rounded-full border border-slate-200/80 bg-slate-100/80 pl-2.5 pr-1.5 py-1 text-xs dark:border-white/10 dark:bg-white/5">
+            <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-slate-50 px-1 py-1 text-xs dark:border-white/10 dark:bg-white/5">
               <Link
                 href="/dashboard/billing"
-                className="flex items-center gap-1.5 transition-colors hover:text-brand-600 dark:hover:text-brand-400"
+                className="flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-white/10"
                 title="View wallet & billing"
               >
-                <Wallet className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Balance:</span>
-                <span className="font-bold text-slate-900 dark:text-white tabular-nums">
-                  {formatGHS(balance)}
-                </span>
+                <Wallet className="h-3.5 w-3.5 shrink-0 text-brand-600 dark:text-brand-400" />
+                <span className="font-bold tabular-nums text-slate-900 dark:text-white">{formatGHS(balance)}</span>
               </Link>
-              <div className="h-3.5 w-px bg-slate-200 dark:bg-white/10" />
               <Link
                 href="/dashboard/billing"
-                className="inline-flex items-center gap-1 rounded-full border border-brand-500/20 bg-brand-500/10 px-2.5 py-0.5 text-[11px] font-bold text-brand-600 transition hover:bg-brand-500/20 active:scale-95 dark:border-brand-400/30 dark:bg-brand-500/15 dark:text-brand-300 dark:hover:bg-brand-500/25"
+                className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-brand-700 active:scale-95 dark:bg-brand-500 dark:hover:bg-brand-600"
                 title="Top up wallet balance"
               >
                 <Plus className="h-3 w-3 stroke-[2.5]" />
