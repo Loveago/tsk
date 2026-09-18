@@ -125,7 +125,7 @@ export default async function StorefrontOrderPage({
     order.underlyingOrder &&
     (order.underlyingOrder.status === "PENDING" || order.underlyingOrder.status === "PROCESSING") &&
     order.underlyingOrder.providerReference?.startsWith("CLICKYFIED:") &&
-    Date.now() - new Date(order.underlyingOrder.updatedAt).getTime() > 15000
+    Date.now() - new Date(order.underlyingOrder.updatedAt).getTime() > 120000
   ) {
     try {
       const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");

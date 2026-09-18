@@ -420,45 +420,52 @@ export async function GET(request: NextRequest) {
       prisma.order.count({ where }),
     ]);
 
-    // On-demand sync for in-flight Clickyfied orders on this page (throttled to orders updated >15s ago)
-    const inFlightClickyfied = data.filter(
-      (o) =>
-        (o.status === "PENDING" || o.status === "PROCESSING") &&
-        o.providerReference?.startsWith("CLICKYFIED:") &&
-        Date.now() - new Date(o.updatedAt).getTime() > 15000
-    );
+    // On-demand sync for in-flight Clickyfied orders on this page (throttled to 120s and poller enabled)
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_sync_poller_enabled" },
+    });
+    const pollerEnabled = pollerSetting?.value !== "false";
 
-    if (inFlightClickyfied.length > 0) {
-      try {
-        const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
-        await Promise.allSettled(
-          inFlightClickyfied.slice(0, 5).map(async (o) => {
-            const res = await syncClickyfiedOrder(o, "User Dashboard Sync");
-            if (res.changed && res.newStatus) {
-              o.status = res.newStatus;
-            }
-          })
-        );
-      } catch (syncErr) {
-        console.error("On-demand orders sync error:", syncErr);
+    if (pollerEnabled) {
+      const inFlightClickyfied = data.filter(
+        (o) =>
+          (o.status === "PENDING" || o.status === "PROCESSING") &&
+          o.providerReference?.startsWith("CLICKYFIED:") &&
+          Date.now() - new Date(o.updatedAt).getTime() > 120000
+      );
+
+      if (inFlightClickyfied.length > 0) {
+        try {
+          const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+          await Promise.allSettled(
+            inFlightClickyfied.slice(0, 5).map(async (o) => {
+              const res = await syncClickyfiedOrder(o, "User Dashboard Sync");
+              if (res.changed && res.newStatus) {
+                o.status = res.newStatus;
+              }
+            })
+          );
+        } catch (syncErr) {
+          console.error("On-demand orders sync error:", syncErr);
+        }
       }
-    }
 
-    // On-demand sync for open delivery reports on this page
-    const ordersWithOpenReports = data.filter(
-      (o: any) =>
-        o.deliveryReports?.some((r: any) => ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status)) &&
-        (o.providerReference?.startsWith("CLICKYFIED:") || o.externalReference)
-    );
+      // On-demand sync for open delivery reports on this page (throttled to 120s)
+      const ordersWithOpenReports = data.filter(
+        (o: any) =>
+          o.deliveryReports?.some((r: any) => ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status)) &&
+          (o.providerReference?.startsWith("CLICKYFIED:") || o.externalReference) &&
+          Date.now() - new Date(o.updatedAt).getTime() > 120000
+      );
 
-    if (ordersWithOpenReports.length > 0) {
-      try {
-        const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
-        await Promise.allSettled(
-          ordersWithOpenReports.slice(0, 5).map(async (o: any) => {
-            const rep = o.deliveryReports?.find((r: any) =>
-              ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status)
-            );
+      if (ordersWithOpenReports.length > 0) {
+        try {
+          const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+          await Promise.allSettled(
+            ordersWithOpenReports.slice(0, 5).map(async (o: any) => {
+              const rep = o.deliveryReports?.find((r: any) =>
+                ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status)
+              );
             if (rep) {
               const res = await syncClickyfiedDeliveryReport(rep.id, "Orders Page View Sync");
               if (res.changed) {
@@ -486,6 +493,7 @@ export async function GET(request: NextRequest) {
         console.error("On-demand orders delivery report sync error:", repSyncErr);
       }
     }
+  }
 
     // Queue positions across the user's pending/processing orders
     const queueRows = await prisma.order.findMany({

@@ -676,8 +676,14 @@ export async function splitMultiDispatchBatches(): Promise<void> {
 
 // In-memory set to prevent concurrent requests to the same order
 const syncingOrders = new Set<number>();
-// Cache of last checked timestamp per order to respect Clickify rate limit (32s)
+// Cache of last checked timestamp per order to respect Clickify rate limit (120s)
 const lastCheckedOrders = new Map<number, number>();
+// Cache of last checked timestamp per provider batch/order ID to avoid duplicate batch hits (120s)
+const lastCheckedProviderBatches = new Map<string, number>();
+// Cache of last checked timestamp per delivery report (120s)
+const lastCheckedReports = new Map<string, number>();
+
+export const CLICKYFIED_POLL_INTERVAL_MS = 120_000; // 120 seconds (2 minutes)
 
 /**
  * Synchronizes an order's status with Clickyfied provider API.
@@ -699,9 +705,19 @@ export async function syncClickyfiedOrder(
     return { changed: false };
   }
 
+  // If poller is disabled in settings, do NOT perform automated background or on-demand sync
+  if (!options.forceCheck) {
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_sync_poller_enabled" },
+    });
+    if (pollerSetting && pollerSetting.value === "false") {
+      return { changed: false };
+    }
+  }
+
   const now = Date.now();
   const lastChecked = lastCheckedOrders.get(orderId) || 0;
-  if (!options.forceCheck && now - lastChecked < 32000) {
+  if (!options.forceCheck && now - lastChecked < CLICKYFIED_POLL_INTERVAL_MS) {
     return { changed: false };
   }
 
@@ -726,7 +742,15 @@ export async function syncClickyfiedOrder(
     const [providerId, orderEntryId] = rawRef.split(":");
     if (!providerId) return { changed: false };
 
+    // Batch deduplication: If this exact providerId was already queried within 120s, skip duplicate request
+    const lastCheckedBatch = lastCheckedProviderBatches.get(providerId) || 0;
+    if (!options.forceCheck && now - lastCheckedBatch < CLICKYFIED_POLL_INTERVAL_MS) {
+      lastCheckedOrders.set(orderId, now);
+      return { changed: false };
+    }
+
     lastCheckedOrders.set(orderId, now);
+    lastCheckedProviderBatches.set(providerId, now);
 
     const config = await getProviderRoutingConfig();
     const client = new ClickyfiedClient(config.clickyfied);
@@ -881,10 +905,25 @@ export async function syncClickyfiedDeliveryReport(
 
     if (!report || !report.order) return { changed: false };
 
-    // If report is already REFUNDED, no further sync needed
-    if (report.status === "REFUNDED") {
+    // If report is already in terminal state, no further provider sync needed
+    if (["REFUNDED", "RESOLVED", "DELIVERED", "REJECTED"].includes(report.status)) {
       return { changed: false };
     }
+
+    // If poller is disabled in settings, do NOT perform automated background sync
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_sync_poller_enabled" },
+    });
+    if (pollerSetting && pollerSetting.value === "false") {
+      return { changed: false };
+    }
+
+    // 120-second throttle per delivery report
+    const lastCheckedRep = lastCheckedReports.get(reportId) || 0;
+    if (Date.now() - lastCheckedRep < CLICKYFIED_POLL_INTERVAL_MS) {
+      return { changed: false };
+    }
+    lastCheckedReports.set(reportId, Date.now());
 
     // Parse provider order ID and entry ID
     let providerOrderId = "";

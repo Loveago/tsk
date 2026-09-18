@@ -5,13 +5,14 @@ let isPolling = false;
 
 /**
  * Self-scheduling background poller for in-flight Clickyfied orders and open delivery reports.
- * Automatically synchronizes pending/processing orders and reports with Clickify every 25 seconds.
+ * Automatically synchronizes pending/processing orders and reports with Clickify every 120 seconds (2 minutes).
+ * If there is nothing to poll, it completely skips any provider communication.
  */
 export function startProviderSyncPoller() {
   if (typeof window !== "undefined") return;
 
   // In PM2 cluster mode, only instance 0 should run background polling loops
-  const instanceId = process.env.NODE_APP_INSTANCE;
+  const instanceId = process.env.pm_id ?? process.env.NODE_APP_INSTANCE;
   if (instanceId !== undefined && instanceId !== "" && instanceId !== "0") {
     console.log(`[ProviderSyncPoller] Skipping poller initialization on PM2 cluster worker #${instanceId}`);
     return;
@@ -23,13 +24,13 @@ export function startProviderSyncPoller() {
   }
   g.__providerSyncPollerStarted = true;
 
-  console.log("[ProviderSyncPoller] Automated background status poller initialized.");
+  console.log("[ProviderSyncPoller] Automated background status poller initialized (120s interval).");
 
   const poll = async () => {
     if (isPolling) return;
     isPolling = true;
     try {
-      // Check if automated poller is enabled in system settings (default: true)
+      // 1. Check if automated poller is enabled in system settings (default: true)
       const setting = await prisma.systemSetting.findUnique({
         where: { key: "provider_sync_poller_enabled" },
       });
@@ -37,47 +38,58 @@ export function startProviderSyncPoller() {
         return;
       }
 
-      // Respect Clickify 30s rate limit (check orders last updated >= 32 seconds ago)
-      const thirtyTwoSecsAgo = new Date(Date.now() - 32 * 1000);
+      // 2. Strict 120s rate limit: only check orders last updated >= 120 seconds ago
+      const twoMinutesAgo = new Date(Date.now() - 120 * 1000);
 
-      // Sync ALL in-flight Clickyfied orders (PENDING or PROCESSING) so status mirrors Clickyfied exactly
+      // Find in-flight Clickyfied orders (PENDING or PROCESSING)
       const inFlightOrders = await prisma.order.findMany({
         where: {
           status: { in: ["PENDING", "PROCESSING"] },
           providerReference: { startsWith: "CLICKYFIED:" },
-          updatedAt: { lte: thirtyTwoSecsAgo },
+          updatedAt: { lte: twoMinutesAgo },
         },
         take: 20,
         orderBy: { updatedAt: "asc" },
       });
 
-      for (const order of inFlightOrders) {
-        try {
-          await syncClickyfiedOrder(order, "Automatic Background Poller");
-        } catch {
-          // continue
-        }
-      }
-
-      // Also sync open or unproven delivery reports on Clickify orders
-      const fifteenSecsAgo = new Date(Date.now() - 15 * 1000);
+      // Find active open delivery reports on Clickify orders (only truly unresolved reports)
       const openReports = await prisma.deliveryReport.findMany({
         where: {
-          OR: [
-            { status: { in: ["OPEN", "INVESTIGATING", "UNDER_REVIEW"] } },
-            { proofImageMime: null, status: { in: ["RESOLVED", "DELIVERED"] } },
-          ],
+          status: { in: ["OPEN", "INVESTIGATING", "UNDER_REVIEW"] },
           order: {
             OR: [
               { providerReference: { startsWith: "CLICKYFIED:" } },
               { externalReference: { not: null } },
             ],
           },
-          updatedAt: { lte: fifteenSecsAgo },
+          updatedAt: { lte: twoMinutesAgo },
         },
-        take: 15,
+        take: 10,
         orderBy: { updatedAt: "asc" },
       });
+
+      // CRITICAL: If there is nothing in-flight and no open reports, do NOT poll anything!
+      if (inFlightOrders.length === 0 && openReports.length === 0) {
+        return;
+      }
+
+      // Deduplicate by provider reference so we don't query the same Clickyfied batch multiple times
+      const seenProviderIds = new Set<string>();
+      for (const order of inFlightOrders) {
+        try {
+          const rawRef = order.providerReference?.replace("CLICKYFIED:", "").trim();
+          const [providerId] = (rawRef || "").split(":");
+          if (providerId) {
+            if (seenProviderIds.has(providerId)) {
+              continue;
+            }
+            seenProviderIds.add(providerId);
+          }
+          await syncClickyfiedOrder(order, "Automatic Background Poller");
+        } catch {
+          // continue
+        }
+      }
 
       for (const rep of openReports) {
         try {
@@ -101,7 +113,7 @@ export function startProviderSyncPoller() {
     }
   };
 
-  // Run initial poll after 3 seconds, then recurring every 15 seconds
-  setTimeout(poll, 3000);
-  setInterval(poll, 15000);
+  // Run initial poll after 30 seconds, then recurring every 120 seconds (2 minutes)
+  setTimeout(poll, 30000);
+  setInterval(poll, 120000);
 }

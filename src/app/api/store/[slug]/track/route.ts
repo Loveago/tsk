@@ -123,7 +123,7 @@ export async function POST(
           if (
             (o.underlyingOrder.status === "PENDING" || o.underlyingOrder.status === "PROCESSING") &&
             o.underlyingOrder.providerReference?.startsWith("CLICKYFIED:") &&
-            Date.now() - new Date(o.underlyingOrder.updatedAt).getTime() > 15000
+            Date.now() - new Date(o.underlyingOrder.updatedAt).getTime() > 120000
           ) {
             try {
               const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");

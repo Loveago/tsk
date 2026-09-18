@@ -52,13 +52,20 @@ export async function GET(
       }),
     ]);
 
-    // On-demand sync for in-flight Clickyfied orders in this batch
-    const inFlight = orders.filter(
-      (o) =>
-        (o.status === "PENDING" || o.status === "PROCESSING") &&
-        o.providerReference?.startsWith("CLICKYFIED:") &&
-        Date.now() - new Date(o.updatedAt).getTime() > 30000
-    );
+    // On-demand sync for in-flight Clickyfied orders in this batch (throttled to 120s and poller enabled)
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_sync_poller_enabled" },
+    });
+    const pollerEnabled = pollerSetting?.value !== "false";
+
+    const inFlight = pollerEnabled
+      ? orders.filter(
+          (o) =>
+            (o.status === "PENDING" || o.status === "PROCESSING") &&
+            o.providerReference?.startsWith("CLICKYFIED:") &&
+            Date.now() - new Date(o.updatedAt).getTime() > 120000
+        )
+      : [];
 
     if (inFlight.length > 0) {
       try {

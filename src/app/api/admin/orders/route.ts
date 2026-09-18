@@ -59,27 +59,34 @@ export async function GET(request: NextRequest) {
       prisma.order.count({ where }),
     ]);
 
-    // On-demand sync for in-flight Clickyfied orders on this page (throttled to orders updated >15s ago)
-    const inFlightClickyfied = data.filter(
-      (o) =>
-        (o.status === "PENDING" || o.status === "PROCESSING") &&
-        o.providerReference?.startsWith("CLICKYFIED:") &&
-        Date.now() - new Date(o.updatedAt).getTime() > 15000
-    );
+    // On-demand sync for in-flight Clickyfied orders on this page (throttled to 120s and poller enabled)
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_sync_poller_enabled" },
+    });
+    const pollerEnabled = pollerSetting?.value !== "false";
 
-    if (inFlightClickyfied.length > 0) {
-      try {
-        const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
-        await Promise.allSettled(
-          inFlightClickyfied.slice(0, 5).map(async (o) => {
-            const res = await syncClickyfiedOrder(o, "Admin Orders View Sync");
-            if (res.changed && res.newStatus) {
-              o.status = res.newStatus;
-            }
-          })
-        );
-      } catch (syncErr) {
-        console.error("Admin on-demand orders sync error:", syncErr);
+    if (pollerEnabled) {
+      const inFlightClickyfied = data.filter(
+        (o) =>
+          (o.status === "PENDING" || o.status === "PROCESSING") &&
+          o.providerReference?.startsWith("CLICKYFIED:") &&
+          Date.now() - new Date(o.updatedAt).getTime() > 120000
+      );
+
+      if (inFlightClickyfied.length > 0) {
+        try {
+          const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+          await Promise.allSettled(
+            inFlightClickyfied.slice(0, 5).map(async (o) => {
+              const res = await syncClickyfiedOrder(o, "Admin Orders View Sync");
+              if (res.changed && res.newStatus) {
+                o.status = res.newStatus;
+              }
+            })
+          );
+        } catch (syncErr) {
+          console.error("Admin on-demand orders sync error:", syncErr);
+        }
       }
     }
 

@@ -54,15 +54,20 @@ export async function GET(request: NextRequest) {
       .filter((b) => b.status === "PROCESSING" || b.status === "PENDING")
       .map((b) => b.id);
 
-    if (inFlightBatchIds.length > 0) {
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_sync_poller_enabled" },
+    });
+    const pollerEnabled = pollerSetting?.value !== "false";
+
+    if (pollerEnabled && inFlightBatchIds.length > 0) {
       try {
-        const thirtyTwoSecsAgo = new Date(Date.now() - 32 * 1000);
+        const twoMinutesAgo = new Date(Date.now() - 120 * 1000);
         const inFlightOrders = await prisma.order.findMany({
           where: {
             batchId: { in: inFlightBatchIds },
             status: { in: ["PENDING", "PROCESSING"] },
             providerReference: { startsWith: "CLICKYFIED:" },
-            updatedAt: { lte: thirtyTwoSecsAgo },
+            updatedAt: { lte: twoMinutesAgo },
           },
           take: 20,
           select: { id: true, status: true, providerReference: true, updatedAt: true },

@@ -438,11 +438,11 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                     : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
                 }`}
               >
-                {settings.provider_sync_poller_enabled !== "false" ? "Active (Every 25s)" : "Paused"}
+                {settings.provider_sync_poller_enabled !== "false" ? "Active (Every 120s)" : "Paused"}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xl leading-relaxed">
-              When <strong>ON</strong>, the server automatically queries Clickify every 25 seconds for in-flight orders and syncs their status to Completed or Failed. Turn <strong>OFF</strong> if you want to pause polling and rely strictly on callbacks and manual sync.
+              When <strong>ON</strong>, the server automatically queries Clickify every 120 seconds (2 minutes) for in-flight orders and syncs their status. If there are no in-flight orders or reports to poll, it skips polling entirely. Turn <strong>OFF</strong> if you want to pause polling and rely strictly on callbacks and manual sync.
             </p>
           </div>
           <button
