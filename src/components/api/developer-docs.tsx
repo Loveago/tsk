@@ -10,6 +10,7 @@ export function DeveloperDocs() {
   const { toast } = useToast();
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [langTab, setLangTab] = React.useState<"curl" | "javascript" | "nodejs" | "python" | "php">("curl");
+  const [verifyLangTab, setVerifyLangTab] = React.useState<"curl" | "javascript" | "python">("curl");
   const [origin, setOrigin] = React.useState<string>(() => {
     if (typeof window !== "undefined") {
       return window.location.origin;
@@ -33,6 +34,42 @@ export function DeveloperDocs() {
   const effectiveOrigin = origin || (typeof window !== "undefined" ? window.location.origin : "");
   const apiBaseUrl = effectiveOrigin ? `${effectiveOrigin}/v1` : "/v1";
   const ordersEndpoint = effectiveOrigin ? `${effectiveOrigin}/v1/orders` : "/v1/orders";
+  const verifyEndpoint = effectiveOrigin ? `${effectiveOrigin}/v1/numbers/verify` : "/v1/numbers/verify";
+
+  const curlVerifyExample = `curl -X POST "${verifyEndpoint}" \\
+  -H "Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "numbers": ["0241234567", "0201234567", "0549999999"]
+  }'`;
+
+  const jsVerifyExample = `const response = await fetch("${verifyEndpoint}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    numbers: ["0241234567", "0201234567", "0549999999"]
+  })
+});
+
+const data = await response.json();
+console.log(data);`;
+
+  const pythonVerifyExample = `import requests
+
+url = "${verifyEndpoint}"
+headers = {
+    "Authorization": "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+    "Content-Type": "application/json"
+}
+payload = {
+    "numbers": ["0241234567", "0201234567", "0549999999"]
+}
+
+response = requests.post(url, json=payload, headers=headers)
+print(response.json())`;
 
   const curlOrderExample = `curl -X POST "${ordersEndpoint}" \\
   -H "Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx" \\
@@ -397,6 +434,12 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
                 <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Trigger test webhook ping to verify listener</td>
               </tr>
               <tr>
+                <td className="py-2.5 font-bold text-blue-600">POST / GET</td>
+                <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">/v1/numbers/verify</td>
+                <td className="py-2.5 text-slate-500">numbers:verify</td>
+                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Pre-check if phone numbers are verified before ordering (batch up to 100)</td>
+              </tr>
+              <tr>
                 <td className="py-2.5 font-bold text-emerald-600">GET</td>
                 <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">/v1/status</td>
                 <td className="py-2.5 text-slate-500">None (Public)</td>
@@ -404,6 +447,115 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Pre-Order Number Verification */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-blue-500/10 px-2 py-0.5 font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
+                POST / GET
+              </span>
+              <h3 className="text-base font-bold">Number Verification</h3>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              /v1/numbers/verify • Required Scope: <code className="font-mono text-slate-700 dark:text-slate-300">numbers:verify</code>
+            </p>
+          </div>
+          <div className="w-full sm:w-auto sm:max-w-xs">
+            <ScrollableTabs
+              tabs={[
+                { key: "curl", label: "cURL" },
+                { key: "javascript", label: "JavaScript" },
+                { key: "python", label: "Python" },
+              ]}
+              activeTab={verifyLangTab}
+              onChange={(k) => setVerifyLangTab(k as any)}
+            />
+          </div>
+        </div>
+
+        <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
+          Pre-check Ghanaian phone numbers against our verified database <strong>before placing an order</strong> to prevent rejected transactions:
+        </p>
+
+        <ul className="mt-2 space-y-1.5 text-xs text-slate-500 dark:text-slate-400 list-disc list-inside">
+          <li><strong>MTN:</strong> Verified against the active database. When number verification is enforced, unverified MTN numbers cannot be ordered.</li>
+          <li><strong>Telecel & AirtelTigo:</strong> Pre-verification is not required. Valid numbers automatically return <code className="font-mono">verified: true</code> and <code className="font-mono">canOrder: true</code>.</li>
+          <li><strong>Sandbox Mode:</strong> When using test keys (<code className="font-mono">ck_test_...</code>), all valid numbers return <code className="font-mono">verified: true</code>.</li>
+          <li><strong>Batch Verification:</strong> Check up to 100 phone numbers in a single POST request (array or single string), or query via GET <code className="font-mono">?number=...</code> or <code className="font-mono">?numbers=...</code>.</li>
+        </ul>
+
+        <div className="relative mt-4">
+          <pre className="overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+            {verifyLangTab === "curl" && curlVerifyExample}
+            {verifyLangTab === "javascript" && jsVerifyExample}
+            {verifyLangTab === "python" && pythonVerifyExample}
+          </pre>
+          <button
+            onClick={() =>
+              copy(
+                "verify-code",
+                verifyLangTab === "curl"
+                  ? curlVerifyExample
+                  : verifyLangTab === "javascript"
+                  ? jsVerifyExample
+                  : pythonVerifyExample
+              )
+            }
+            className="absolute right-3 top-3 rounded-lg bg-white/10 p-2 text-slate-300 hover:bg-white/20"
+            title="Copy verification code"
+          >
+            {copiedId === "verify-code" ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-slate-500">Example JSON Response (HTTP 200 OK):</p>
+          <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+{`{
+  "success": true,
+  "data": {
+    "verified": ["0241234567", "0201234567"],
+    "unverified": ["0549999999"],
+    "invalid": [],
+    "results": [
+      {
+        "number": "0241234567",
+        "network": "MTN",
+        "valid": true,
+        "verified": true,
+        "canOrder": true
+      },
+      {
+        "number": "0201234567",
+        "network": "TELECEL",
+        "valid": true,
+        "verified": true,
+        "canOrder": true,
+        "note": "TELECEL numbers do not require pre-verification"
+      },
+      {
+        "number": "0549999999",
+        "network": "MTN",
+        "valid": true,
+        "verified": false,
+        "canOrder": false,
+        "note": "This MTN number is not in our verified database. Ordering will be rejected until it is verified."
+      }
+    ],
+    "summary": {
+      "total": 3,
+      "verified": 2,
+      "unverified": 1,
+      "invalid": 0
+    }
+  },
+  "requestId": "req_a1b2c3d4"
+}`}
+          </pre>
         </div>
       </div>
 

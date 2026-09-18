@@ -75,7 +75,7 @@ export function DeveloperSettingsPanel({ application, onNavigateTab }: Developer
             </h4>
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {(application?.allowedScopes || "networks:read,packages:read,orders:create,orders:read,orders:status,balance:read,webhooks:read,webhooks:manage")
+            {(application?.allowedScopes || "networks:read,packages:read,orders:create,orders:read,orders:status,balance:read,webhooks:read,webhooks:manage,numbers:verify")
               .split(",")
               .map((s: string) => (
                 <span

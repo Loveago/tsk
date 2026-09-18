@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         keyPrefix: generated.prefix,
         keyHash: generated.keyHash,
         status: "ACTIVE",
-        scopes: application?.allowedScopes || "networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage",
+        scopes: application?.allowedScopes || "networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage,numbers:verify",
         rateLimitPerMin: application?.rateLimitPerMin || 60,
         dailyLimit: application?.dailyRequestLimit || 5000,
         allowedIps: application?.ipRestrictions || null,

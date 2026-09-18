@@ -1,4 +1,5 @@
 import type { ClickyfiedConfig, NumberVerificationResult } from "./types";
+import { normalizeGhanaPhoneNumber } from "@/lib/phone-utils";
 
 export const DEFAULT_CLICKYFIED_SANDBOX_URL = "https://sandbox.clickyfied4u.com";
 export const DEFAULT_CLICKYFIED_PROD_URL = "https://www.clickyfied4u.com";
@@ -460,13 +461,17 @@ export class ClickyfiedClient {
     let invalidNumbers: string[] = [];
 
     if (Array.isArray(res?.valid)) {
-      validNumbers = res.valid;
-      invalidNumbers = Array.isArray(res?.invalid) ? res.invalid : [];
+      validNumbers = res.valid.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")));
+      invalidNumbers = Array.isArray(res?.invalid)
+        ? res.invalid.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")))
+        : [];
     } else if (Array.isArray(res?.verified)) {
-      validNumbers = res.verified;
-      invalidNumbers = Array.isArray(res?.unverified) ? res.unverified : [];
+      validNumbers = res.verified.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")));
+      invalidNumbers = Array.isArray(res?.unverified)
+        ? res.unverified.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")))
+        : [];
     } else if (Array.isArray(res?.numbers)) {
-      validNumbers = res.numbers;
+      validNumbers = res.numbers.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")));
     } else if (Array.isArray(res?.results)) {
       for (const item of res.results) {
         const isFound =
@@ -474,7 +479,7 @@ export class ClickyfiedClient {
           item.valid === true ||
           item.verified === true ||
           item.status === "VERIFIED";
-        const num = String(item.number || "");
+        const num = normalizeGhanaPhoneNumber(String(item.number || ""));
         if (isFound) {
           validNumbers.push(num);
         } else {
@@ -487,13 +492,15 @@ export class ClickyfiedClient {
           typeof item === "string"
             ? true
             : item.found === true || item.valid === true || item.verified === true;
-        const num = typeof item === "string" ? item : String(item.number || "");
+        const num = normalizeGhanaPhoneNumber(
+          typeof item === "string" ? item : String(item.number || "")
+        );
         if (isFound) validNumbers.push(num);
         else invalidNumbers.push(num);
       }
     } else if (res?.success && !res?.invalid?.length) {
       // Fallback: if { success: true } and no invalid listed, assume all requested numbers verified
-      validNumbers = cleanNumbers;
+      validNumbers = cleanNumbers.map((n) => normalizeGhanaPhoneNumber(n));
     }
 
     return {

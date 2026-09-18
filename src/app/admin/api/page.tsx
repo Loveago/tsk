@@ -62,7 +62,7 @@ export default function AdminApiManagementPage() {
   const [configuredRateLimit, setConfiguredRateLimit] = React.useState(60);
   const [configuredDailyLimit, setConfiguredDailyLimit] = React.useState(5000);
   const [configuredScopes, setConfiguredScopes] = React.useState(
-    "networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage"
+    "networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage,numbers:verify"
   );
   const [configuredIps, setConfiguredIps] = React.useState("");
   const [configuredMaxVolume, setConfiguredMaxVolume] = React.useState(1000);
@@ -160,7 +160,7 @@ export default function AdminApiManagementPage() {
     setConfiguredMaxVolume(app.maxOrderVolume || 1000);
     setConfiguredScopes(
       app.allowedScopes ||
-        "networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage"
+        "networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage,numbers:verify"
     );
     setConfiguredIps(app.ipRestrictions || "");
     setWebhookPerms(app.webhookPermissions ?? true);

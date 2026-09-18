@@ -133,10 +133,209 @@ export const openApiSpec = {
           rotateSecret: { type: "boolean", default: false },
         },
       },
+      NumberVerifyRequest: {
+        type: "object",
+        required: ["numbers"],
+        properties: {
+          numbers: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            maxItems: 100,
+            example: ["0241234567", "0201234567", "0261234567"],
+            description: "List of Ghanaian phone numbers to verify (max 100 per request). Accepts 0XXXXXXXXX, +233XXXXXXXXX, or 233XXXXXXXXX formats.",
+          },
+        },
+      },
+      NumberVerifyResult: {
+        type: "object",
+        properties: {
+          verified: {
+            type: "array",
+            items: { type: "string" },
+            example: ["0241234567"],
+            description: "List of valid numbers that are verified and ready for ordering",
+          },
+          unverified: {
+            type: "array",
+            items: { type: "string" },
+            example: ["0549999999"],
+            description: "List of valid MTN numbers that are not yet in the verified database",
+          },
+          invalid: {
+            type: "array",
+            items: { type: "string" },
+            example: ["not-a-number"],
+            description: "List of input strings that could not be parsed as valid Ghanaian phone numbers",
+          },
+          results: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                number:   { type: "string", example: "0241234567", description: "Normalized 10-digit Ghanaian number" },
+                network:  { type: "string", nullable: true, enum: ["MTN", "TELECEL", "AIRTELTIGO", null], example: "MTN" },
+                valid:    { type: "boolean", example: true, description: "Whether the number is a valid Ghanaian mobile number" },
+                verified: { type: "boolean", example: true, description: "Whether the number exists in our verified database" },
+                canOrder: { type: "boolean", example: true, description: "Whether an order can currently be placed for this number" },
+                note:     { type: "string", nullable: true, example: "Sandbox mode: all valid MTN numbers are treated as verified" },
+              },
+            },
+          },
+          summary: {
+            type: "object",
+            properties: {
+              total:      { type: "integer", example: 3 },
+              verified:   { type: "integer", example: 2 },
+              unverified: { type: "integer", example: 0 },
+              invalid:    { type: "integer", example: 1 },
+            },
+          },
+        },
+      },
     },
   },
   security: [{ bearerAuth: [] }],
   paths: {
+    "/numbers/verify": {
+      post: {
+        summary: "Verify Phone Numbers",
+        description:
+          "Check whether one or more Ghanaian mobile phone numbers are present in our verified database **before placing an order**. " +
+          "Use this endpoint to pre-screen recipients and surface actionable status to your users before they hit the ordering flow.\n\n" +
+          "**MTN only**: MTN numbers are subject to a verification gate — they must appear in our verified database for an order to succeed when verification is enabled. " +
+          "Telecel and AirtelTigo numbers always return `verified: true`.\n\n" +
+          "**Sandbox mode**: All valid MTN numbers are treated as verified so you can test ordering flows without real DB entries.\n\n" +
+          "**Batch**: Up to **100 numbers** per request. Split larger lists into batches.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/NumberVerifyRequest" },
+              examples: {
+                mixed: {
+                  summary: "Mixed networks and an invalid number",
+                  value: { numbers: ["0241234567", "0201234567", "0261234567", "not-a-number"] },
+                },
+                single: {
+                  summary: "Single MTN number",
+                  value: { numbers: ["0541234567"] },
+                },
+                international: {
+                  summary: "International format (+233)",
+                  value: { numbers: ["+233241234567", "+233201234567"] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Verification results for each number",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiResponseSuccess" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: { $ref: "#/components/schemas/NumberVerifyResult" },
+                      },
+                    },
+                  ],
+                },
+                example: {
+                  success: true,
+                  requestId: "req_4f2a1b3c",
+                  data: {
+                    results: [
+                      { number: "0241234567", network: "MTN",       valid: true,  verified: true,  canOrder: true  },
+                      { number: "0201234567", network: "TELECEL",   valid: true,  verified: true,  canOrder: true,  note: "TELECEL numbers do not require pre-verification" },
+                      { number: "0261234567", network: "AIRTELTIGO",valid: true,  verified: true,  canOrder: true,  note: "AIRTELTIGO numbers do not require pre-verification" },
+                      { number: "not-a-number", network: null,     valid: false, verified: false, canOrder: false, note: "Invalid Ghanaian phone number. Accepted formats: 0241234567, +233241234567, 233241234567" },
+                    ],
+                    summary: { total: 4, verified: 3, unverified: 0, invalid: 1 },
+                  },
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Bad request — missing or malformed numbers array",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+          "401": {
+            description: "Missing or invalid API key",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+          "403": {
+            description: "Insufficient scope (requires numbers:verify)",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+          "429": {
+            description: "Rate limit exceeded",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+        },
+      },
+      get: {
+        summary: "Verify Phone Numbers via Query Parameter",
+        description: "Alternative query-parameter based verification. Pass a single number (?number=0241234567) or comma-separated list (?numbers=0241234567,0201234567).",
+        parameters: [
+          {
+            name: "number",
+            in: "query",
+            required: false,
+            schema: { type: "string", example: "0241234567" },
+            description: "Single Ghanaian phone number to verify",
+          },
+          {
+            name: "numbers",
+            in: "query",
+            required: false,
+            schema: { type: "string", example: "0241234567,0201234567" },
+            description: "Comma-separated list of Ghanaian phone numbers to verify",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Verification results",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiResponseSuccess" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: { $ref: "#/components/schemas/NumberVerifyResult" },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Bad request — missing number or numbers query parameter",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+          "401": {
+            description: "Missing or invalid API key",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+          "403": {
+            description: "Insufficient scope (requires numbers:verify)",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+          "429": {
+            description: "Rate limit exceeded",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+        },
+      },
+    },
     "/networks": {
       get: {
         summary: "Retrieve Supported Networks",

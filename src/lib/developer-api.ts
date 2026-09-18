@@ -18,6 +18,7 @@ export type ApiErrorCode =
   | "RATE_LIMIT_EXCEEDED"
   | "MTN_NUMBER_NOT_VERIFIED"
   | "ORDER_IN_PROGRESS"
+  | "NUMBER_VERIFICATION_ERROR"
   | "SERVER_ERROR";
 
 export class ApiError extends Error {
@@ -202,6 +203,7 @@ export async function validateApiAuth(
       "balance:read",
       "webhooks:read",
       "webhooks:manage",
+      "numbers:verify",
     ];
 
     prisma.apiKey

@@ -525,7 +525,7 @@ model ApiApplication {
   reviewedBy            String?
 
   // Policy rules configured by admin upon approval
-  allowedScopes         String    @default("networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage")
+  allowedScopes         String    @default("networks:read,packages:read,orders:create,orders:read,orders:status,orders:bulk_status,balance:read,webhooks:read,webhooks:manage,numbers:verify")
   rateLimitPerMin       Int       @default(60)
   dailyRequestLimit     Int       @default(5000)
   maxOrderVolume        Int       @default(1000)
