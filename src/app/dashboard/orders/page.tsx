@@ -10,13 +10,14 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS, sanitizeCustomerRefundNote } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { ChevronRight, FileWarning, Layers, Search, Clock, Eye, CheckCircle2 } from "lucide-react";
+import { ChevronRight, FileWarning, Layers, Search, Clock, Eye, CheckCircle2, Smartphone } from "lucide-react";
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
 import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
-const REPORT_REASONS = ["Data not received", "Partial data received", "Wrong number sent", "Other"];
+
+type ViewMode = "batches" | "single";
 
 interface BatchRow {
   id: string;
@@ -50,6 +51,22 @@ interface DetailOrder {
   _hasReportedLocally?: boolean;
 }
 
+interface UserOrderRow {
+  id: number;
+  phoneNumber: string;
+  network: string;
+  gbAmount: number;
+  amount: number;
+  status: string;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  completedAt?: string | null;
+  batch?: { id: string; batchCode: string; status: string } | null;
+  deliveryReports?: { id: string; seq?: number; status: string; proofImageMime?: string | null }[];
+  _hasReportedLocally?: boolean;
+}
+
 interface BatchDetail {
   batch: BatchRow & { updatedAt: string; completedAt?: string | null };
   orders: DetailOrder[];
@@ -63,38 +80,71 @@ const selectCls =
 
 export default function OrdersPage() {
   const { toast } = useToast();
-  const [rows, setRows] = React.useState<BatchRow[]>([]);
-  const [pages, setPages] = React.useState(1);
-  const [page, setPage] = React.useState(1);
+  const [viewMode, setViewMode] = React.useState<ViewMode>("batches");
+
+  // Filter state
   const [network, setNetwork] = React.useState("");
   const [status, setStatus] = React.useState("");
   const [q, setQ] = React.useState("");
   const [dateFilter, setDateFilter] = React.useState<DateFilterValue>(getTodayRange());
+  const [page, setPage] = React.useState(1);
+  const [pages, setPages] = React.useState(1);
   const [loading, setLoading] = React.useState(true);
+
+  // Batches state
+  const [rows, setRows] = React.useState<BatchRow[]>([]);
+
+  // Single orders state
+  const [singleOrders, setSingleOrders] = React.useState<UserOrderRow[]>([]);
+  const [singleTotal, setSingleTotal] = React.useState(0);
+
+  // Detail dialog state
   const [detail, setDetail] = React.useState<BatchDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
+  const [batchSearch, setBatchSearch] = React.useState("");
   const [submittingReportId, setSubmittingReportId] = React.useState<number | null>(null);
   const [viewReportId, setViewReportId] = React.useState<string | null>(null);
 
+  // Auto-switch to single view when searching for a phone number
+  React.useEffect(() => {
+    if (/\d{3,}/.test(q.trim())) {
+      setViewMode("single");
+    }
+  }, [q]);
+
   const load = React.useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), pageSize: "12" });
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: viewMode === "single" ? "15" : "12",
+    });
     if (network) params.set("network", network);
     if (status) params.set("status", status);
     if (q) params.set("q", q);
     if (dateFilter.from) params.set("from", dateFilter.from);
     if (dateFilter.to) params.set("to", dateFilter.to);
+
     try {
-      const res = await fetch(`/api/orders/batches?${params}`);
-      const json = await res.json();
-      if (res.ok) {
-        setRows(json.data ?? []);
-        setPages(json.pages ?? 1);
+      if (viewMode === "single") {
+        const res = await fetch(`/api/orders?${params}`);
+        const json = await res.json();
+        if (res.ok) {
+          setSingleOrders(json.data ?? []);
+          setSingleTotal(json.total ?? 0);
+          setPages(json.pages ?? 1);
+        }
+      } else {
+        const res = await fetch(`/api/orders/batches?${params}`);
+        const json = await res.json();
+        if (res.ok) {
+          setRows(json.data ?? []);
+          setPages(json.pages ?? 1);
+        }
       }
     } finally {
       setLoading(false);
     }
-  }, [page, network, status, q, dateFilter]);
+  }, [page, network, status, q, dateFilter, viewMode]);
 
   React.useEffect(() => {
     const t = setTimeout(load, 250);
@@ -103,6 +153,8 @@ export default function OrdersPage() {
 
   const openDetail = async (id: string) => {
     setDetailLoading(true);
+    // Pre-populate in-modal search with q if searching for a number
+    setBatchSearch(q.trim());
     try {
       const res = await fetch(`/api/orders/batches/${id}`);
       const json = await res.json();
@@ -113,7 +165,7 @@ export default function OrdersPage() {
     }
   };
 
-  const directReportOrder = async (order: DetailOrder) => {
+  const directReportOrder = async (order: { id: number }) => {
     setSubmittingReportId(order.id);
     try {
       const res = await fetch("/api/reports/not-received", {
@@ -128,7 +180,20 @@ export default function OrdersPage() {
       }
       toast("Report submitted — our team will investigate", "success");
 
-      // Update local state to immediately show "Under Review"
+      // Update local state in single orders
+      setSingleOrders((prev) =>
+        prev.map((o) =>
+          o.id === order.id
+            ? {
+                ...o,
+                _hasReportedLocally: true,
+                deliveryReports: [{ id: json.report?.id ?? json.id ?? "", status: "UNDER_REVIEW" }],
+              }
+            : o
+        )
+      );
+
+      // Update local state in batch detail if open
       if (detail) {
         setDetail({
           ...detail,
@@ -150,11 +215,124 @@ export default function OrdersPage() {
     }
   };
 
+  const filteredModalOrders = React.useMemo(() => {
+    if (!detail) return [];
+    if (!batchSearch.trim()) return detail.orders;
+    const s = batchSearch.trim().toLowerCase();
+    return detail.orders.filter(
+      (o) =>
+        o.phoneNumber.toLowerCase().includes(s) ||
+        orderCode(o.id).toLowerCase().includes(s)
+    );
+  }, [detail, batchSearch]);
+
+  const renderReportButton = (o: DetailOrder | UserOrderRow) => {
+    const isCompleted = o.status === "SUCCESS" || o.status === "COMPLETED";
+    const hasReports = (o.deliveryReports && o.deliveryReports.length > 0) || o._hasReportedLocally;
+
+    if (!isCompleted && !hasReports) return null;
+
+    const rep = (o.deliveryReports && o.deliveryReports[0]) || (o._hasReportedLocally ? { id: "", status: "UNDER_REVIEW" } : null);
+    const isSubmitting = submittingReportId === o.id;
+
+    if (rep) {
+      const isDelivered = rep.status === "DELIVERED" || rep.status === "CONFIRM_SENT";
+      const isResolved = rep.status === "RESOLVED";
+      const isRefunded = rep.status === "REFUNDED";
+      const hasProof = Boolean((rep as any).proofImageMime);
+
+      let badgeText = "Under Review";
+      let badgeCls = "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20";
+      if (isDelivered) {
+        badgeText = hasProof ? "Confirmed Sent (Proof)" : "Confirm Sent";
+        badgeCls = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20";
+      } else if (isResolved) {
+        badgeText = "Resolved";
+        badgeCls = "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20";
+      } else if (isRefunded) {
+        badgeText = "Refunded";
+        badgeCls = "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20";
+      } else if (rep.status === "REJECTED") {
+        badgeText = "Rejected";
+        badgeCls = "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20";
+      }
+
+      return (
+        <button
+          type="button"
+          disabled={!rep.id}
+          onClick={() => { if (rep.id) setViewReportId(rep.id); }}
+          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${badgeCls} ${
+            rep.id ? "cursor-pointer hover:opacity-80" : "cursor-default opacity-80"
+          }`}
+          title={rep.id ? "Click to view review status and delivery proof" : "Under Review"}
+        >
+          <Clock className="h-3 w-3" />
+          <span>{badgeText}</span>
+          {hasProof && <Eye className="h-3 w-3 ml-0.5" />}
+        </button>
+      );
+    }
+
+    if (!isCompleted) return null;
+
+    return (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"
+        onClick={() => directReportOrder(o)}
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? (
+          <Spinner className="h-3.5 w-3.5 mr-1" />
+        ) : (
+          <FileWarning className="h-3.5 w-3.5 mr-1" />
+        )}
+        {isSubmitting ? "Submitting…" : "Report"}
+      </Button>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="My Sent Orders"
-        description="Orders are grouped into batches per network"
+        description="View your order batches or search individual phone numbers directly"
+        actions={
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode("batches");
+                setPage(1);
+              }}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
+                viewMode === "batches"
+                  ? "bg-brand-600 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+              }`}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              <span>Batches</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode("single");
+                setPage(1);
+              }}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
+                viewMode === "single"
+                  ? "bg-brand-600 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+              }`}
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span>Single Orders</span>
+            </button>
+          </div>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-1.5">
@@ -201,8 +379,8 @@ export default function OrdersPage() {
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <input
-              className={selectCls + " w-48 pl-8"}
-              placeholder="Search batch or phone…"
+              className={selectCls + " w-52 pl-8"}
+              placeholder="Search phone, batch, or ID…"
               value={q}
               onChange={(e) => {
                 setQ(e.target.value);
@@ -217,7 +395,127 @@ export default function OrdersPage() {
         <div className="flex justify-center rounded-2xl border border-slate-100 bg-white py-12 dark:border-slate-800 dark:bg-slate-900">
           <Spinner className="h-6 w-6 text-brand-600" />
         </div>
+      ) : viewMode === "single" ? (
+        /* Single Orders View Table */
+        singleOrders.length === 0 ? (
+          <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <EmptyState
+              icon={Search}
+              title={q ? `No orders found for "${q}"` : "No individual orders found"}
+              description={
+                q
+                  ? "Check the phone number or adjust your date filter to find this order."
+                  : "Orders you send will appear here individually."
+              }
+              action={
+                dateFilter.mode !== "all" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDateFilter(getAllTimeRange());
+                      setPage(1);
+                    }}
+                  >
+                    View All Time Orders
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[850px] text-left text-sm">
+                <thead className="border-b border-slate-200/80 bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-white/5 dark:text-slate-400">
+                  <tr>
+                    <th className="px-5 py-3.5">Order</th>
+                    <th className="px-4 py-3.5">Phone Number</th>
+                    <th className="px-4 py-3.5">Network</th>
+                    <th className="px-4 py-3.5">Bundle</th>
+                    <th className="px-4 py-3.5">Amount</th>
+                    <th className="px-4 py-3.5">Status</th>
+                    <th className="px-4 py-3.5">Delivered At</th>
+                    <th className="px-4 py-3.5">Batch</th>
+                    <th className="px-5 py-3.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {singleOrders.map((o) => (
+                    <tr key={o.id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-white/[0.03]">
+                      <td className="px-5 py-3.5">
+                        <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                          {orderCode(o.id)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-400">{formatDateTime(o.createdAt)}</p>
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        {o.phoneNumber}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                          {o.network}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                        {o.gbAmount} GB
+                      </td>
+                      <td className="px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
+                        {formatGHS(o.amount)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <StatusBadge status={o.status} />
+                        {o.failureReason && (
+                          <p
+                            className="mt-1 max-w-[170px] truncate text-[11px] text-red-500"
+                            title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
+                          >
+                            {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-xs whitespace-nowrap">
+                        {o.status === "SUCCESS" || o.status === "COMPLETED" ? (
+                          <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            {formatDateTime(o.completedAt ?? o.updatedAt ?? o.createdAt)}
+                          </span>
+                        ) : o.status === "PROCESSING" ? (
+                          <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400">In progress…</span>
+                        ) : o.status === "FAILED" ? (
+                          <span className="text-[11px] font-medium text-red-500 dark:text-red-400">Failed</span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {o.batch ? (
+                          <button
+                            type="button"
+                            onClick={() => openDetail(o.batch!.id)}
+                            className="font-mono text-xs font-medium text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+                            title="View batch containing this order"
+                          >
+                            {o.batch.batchCode}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          {renderReportButton(o)}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
       ) : rows.length === 0 ? (
+        /* Batches View Empty State */
         <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
           {dateFilter.mode !== "all" ? (
             <EmptyState
@@ -246,7 +544,7 @@ export default function OrdersPage() {
           )}
         </div>
       ) : (
-        /* Horizontal line order history layout */
+        /* Batches View Table */
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -380,123 +678,99 @@ export default function OrdersPage() {
               </div>
               <BatchStatsChips stats={detail.stats} className="mt-2" />
             </div>
+
+            {/* In-batch search / filter */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="relative w-full max-w-xs">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  className={selectCls + " h-8 w-full pl-8 text-xs"}
+                  placeholder="Filter phone number in batch…"
+                  value={batchSearch}
+                  onChange={(e) => setBatchSearch(e.target.value)}
+                />
+              </div>
+              {batchSearch.trim() && (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span>
+                    Showing {filteredModalOrders.length} of {detail.orders.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setBatchSearch("")}
+                    className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    Clear filter
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="max-h-96 overflow-y-auto rounded-xl border border-slate-100 dark:border-white/5">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-white dark:bg-[#0d1526]">
-                  <tr className="border-b border-slate-100 text-left text-xs text-slate-500 dark:border-white/5">
-                    <th className="px-3 py-2 font-medium">Order</th>
-                    <th className="px-3 py-2 font-medium">Phone</th>
-                    <th className="px-3 py-2 font-medium">Size</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 font-medium">Delivered At</th>
-                    <th className="px-3 py-2 text-right font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                  {detail.orders.map((o) => (
-                    <tr key={o.id}>
-                      <td className="px-3 py-2 font-mono text-xs font-semibold">{orderCode(o.id)}</td>
-                      <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">{o.phoneNumber}</td>
-                      <td className="px-3 py-2">{o.gbAmount} GB</td>
-                      <td className="px-3 py-2">
-                        <StatusBadge status={o.status} />
-                        {o.failureReason && (
-                          <p
-                            className="mt-0.5 max-w-[150px] truncate text-[11px] text-red-500"
-                            title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
-                          >
-                            {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-xs whitespace-nowrap">
-                        {o.status === "SUCCESS" || o.status === "COMPLETED" ? (
-                          <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            {formatDateTime(o.completedAt ?? o.updatedAt ?? o.createdAt)}
-                          </span>
-                        ) : o.status === "PROCESSING" ? (
-                          <span className="text-[11px] text-sky-600 dark:text-sky-400 font-medium">In progress…</span>
-                        ) : o.status === "FAILED" ? (
-                          <span className="text-[11px] text-red-500 dark:text-red-400 font-medium">Failed</span>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex justify-end gap-1.5">
-                          {/* Cancel order feature removed per user request */}
-                          {/* Report only shows on completed orders (SUCCESS or COMPLETED) or any order with a delivery report */}
-                          {((o.status === "SUCCESS" || o.status === "COMPLETED") || (o.deliveryReports && o.deliveryReports.length > 0) || o._hasReportedLocally) && (() => {
-                            const rep = (o.deliveryReports && o.deliveryReports[0]) || (o._hasReportedLocally ? { id: "", status: "UNDER_REVIEW" } : null);
-                            const isSubmitting = submittingReportId === o.id;
-
-                            if (rep) {
-                              const isDelivered = rep.status === "DELIVERED" || rep.status === "CONFIRM_SENT";
-                              const isResolved = rep.status === "RESOLVED";
-                              const isRefunded = rep.status === "REFUNDED";
-                              const hasProof = Boolean(rep.proofImageMime);
-
-                              let badgeText = "Under Review";
-                              let badgeCls = "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20";
-                              if (isDelivered) {
-                                badgeText = hasProof ? "Confirmed Sent (Proof)" : "Confirm Sent";
-                                badgeCls = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20";
-                              } else if (isResolved) {
-                                badgeText = "Resolved";
-                                badgeCls = "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20";
-                              } else if (isRefunded) {
-                                badgeText = "Refunded";
-                                badgeCls = "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20";
-                              } else if (rep.status === "REJECTED") {
-                                badgeText = "Rejected";
-                                badgeCls = "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20";
-                              }
-
-                              return (
-                                <button
-                                  type="button"
-                                  disabled={!rep.id}
-                                  onClick={() => { if (rep.id) setViewReportId(rep.id); }}
-                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${badgeCls} ${
-                                    rep.id ? "cursor-pointer hover:opacity-80" : "cursor-default opacity-80"
-                                  }`}
-                                  title={rep.id ? "Click to view review status and delivery proof" : "Under Review"}
-                                >
-                                  <Clock className="h-3 w-3" />
-                                  <span>{badgeText}</span>
-                                  {hasProof && <Eye className="h-3 w-3 ml-0.5" />}
-                                </button>
-                              );
-                            }
-
-                            if (o.status !== "SUCCESS" && o.status !== "COMPLETED") {
-                              return null;
-                            }
-
-                            return (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10"
-                                onClick={() => directReportOrder(o)}
-                                disabled={isSubmitting}
-                              >
-                                {isSubmitting ? (
-                                  <Spinner className="h-3.5 w-3.5 mr-1" />
-                                ) : (
-                                  <FileWarning className="h-3.5 w-3.5 mr-1" />
-                                )}
-                                {isSubmitting ? "Submitting…" : "Report"}
-                              </Button>
-                            );
-                          })()}
-                        </div>
-                      </td>
+              {filteredModalOrders.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-500">
+                  No orders in this batch match &quot;{batchSearch}&quot;.
+                  <button
+                    type="button"
+                    onClick={() => setBatchSearch("")}
+                    className="ml-1.5 font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    Clear filter
+                  </button>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-white dark:bg-[#0d1526]">
+                    <tr className="border-b border-slate-100 text-left text-xs text-slate-500 dark:border-white/5">
+                      <th className="px-3 py-2 font-medium">Order</th>
+                      <th className="px-3 py-2 font-medium">Phone</th>
+                      <th className="px-3 py-2 font-medium">Size</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Delivered At</th>
+                      <th className="px-3 py-2 text-right font-medium">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                    {filteredModalOrders.map((o) => (
+                      <tr key={o.id}>
+                        <td className="px-3 py-2 font-mono text-xs font-semibold">{orderCode(o.id)}</td>
+                        <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">{o.phoneNumber}</td>
+                        <td className="px-3 py-2">{o.gbAmount} GB</td>
+                        <td className="px-3 py-2">
+                          <StatusBadge status={o.status} />
+                          {o.failureReason && (
+                            <p
+                              className="mt-0.5 max-w-[150px] truncate text-[11px] text-red-500"
+                              title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
+                            >
+                              {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs whitespace-nowrap">
+                          {o.status === "SUCCESS" || o.status === "COMPLETED" ? (
+                            <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                              {formatDateTime(o.completedAt ?? o.updatedAt ?? o.createdAt)}
+                            </span>
+                          ) : o.status === "PROCESSING" ? (
+                            <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400">In progress…</span>
+                          ) : o.status === "FAILED" ? (
+                            <span className="text-[11px] font-medium text-red-500 dark:text-red-400">Failed</span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end gap-1.5">
+                            {renderReportButton(o)}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
             {detail.exports.length > 0 && (
               <p className="text-xs text-slate-400">
@@ -516,3 +790,4 @@ export default function OrdersPage() {
     </div>
   );
 }
+

@@ -340,7 +340,18 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = { userId: user.id };
     if (status) where.status = normalizeOrderStatus(status);
     if (network) where.network = network;
-    if (q) where.phoneNumber = { contains: q };
+    if (q) {
+      const trimmed = q.trim();
+      const idMatch = trimmed.match(/^(?:ORD-)?0*(\d+)$/i);
+      const orConditions: any[] = [
+        { phoneNumber: { contains: trimmed } },
+        { batch: { is: { batchCode: { contains: trimmed } } } },
+      ];
+      if (idMatch && Number(idMatch[1]) < 2147483647) {
+        orConditions.push({ id: Number(idMatch[1]) });
+      }
+      where.OR = orConditions;
+    }
     if (from || to) {
       where.createdAt = {};
       if (from) (where.createdAt as Record<string, Date>).gte = new Date(from);
@@ -354,6 +365,13 @@ export async function GET(request: NextRequest) {
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
+          batch: {
+            select: {
+              id: true,
+              batchCode: true,
+              status: true,
+            },
+          },
           deliveryReports: {
             orderBy: { createdAt: "desc" },
             select: {
@@ -445,12 +463,17 @@ export async function GET(request: NextRequest) {
     const positionOf = new Map<number, number>();
     queueRows.forEach((row, index) => positionOf.set(row.id, index + 1));
 
-    const dataWithQueue = data.map((order) => ({
-      ...order,
-      failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount),
-      queuePosition: positionOf.get(order.id) ?? null,
-      queueTotal,
-    }));
+    const dataWithQueue = data.map((order) => {
+      const isDelivered = order.status === "SUCCESS" || order.status === "COMPLETED";
+      const deliveredAt = isDelivered ? (order.completedAt ?? order.updatedAt) : null;
+      return {
+        ...order,
+        completedAt: deliveredAt ? new Date(deliveredAt).toISOString() : null,
+        failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount),
+        queuePosition: positionOf.get(order.id) ?? null,
+        queueTotal,
+      };
+    });
 
     return NextResponse.json({
       data: dataWithQueue,
