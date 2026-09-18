@@ -30,16 +30,47 @@ export async function POST(
     }
 
     const q = query.trim();
+    const digits = q.replace(/\D/g, "");
     let where: Prisma.StorefrontOrderWhereInput;
 
-    if (/^0\d{9}$/.test(q)) {
-      where = { storefrontId: storefront.id, customerPhone: q };
-    } else if (/^CF-ST-\d{5}$/i.test(q) || /^\d{1,6}$/.test(q)) {
+    if (digits.length >= 9) {
+      const last9 = digits.slice(-9);
+      const localPhone = "0" + last9;
+      where = {
+        storefrontId: storefront.id,
+        OR: [
+          { customerPhone: { contains: last9 } },
+          { customerPhone: localPhone },
+          { customerPhone: q },
+          { underlyingOrder: { is: { phoneNumber: { contains: last9 } } } },
+          { underlyingOrder: { is: { phoneNumber: localPhone } } },
+        ],
+      };
+    } else if (/^CF-ST-\d{1,6}$/i.test(q) || /^\d{1,6}$/.test(q)) {
       const seq = Number(q.replace(/^CF-ST-/i, "").replace(/^0+(?=\d)/, ""));
-      where = { storefrontId: storefront.id, seq };
+      where = {
+        storefrontId: storefront.id,
+        OR: [
+          { seq },
+          { paymentReference: { contains: q.toUpperCase() } },
+        ],
+      };
     } else {
-      where = { storefrontId: storefront.id, paymentReference: q.toUpperCase() };
+      where = {
+        storefrontId: storefront.id,
+        OR: [
+          { paymentReference: { contains: q.toUpperCase() } },
+          { paymentReference: q },
+        ],
+      };
     }
+
+    const [reportsEnabledSetting, windowHoursSetting] = await Promise.all([
+      prisma.systemSetting.findUnique({ where: { key: "reports_enabled" } }),
+      prisma.systemSetting.findUnique({ where: { key: "report_not_received_window_hours" } }),
+    ]);
+    const reportsEnabled = reportsEnabledSetting?.value !== "false";
+    const windowHours = parseInt(windowHoursSetting?.value || "24", 10);
 
     const orders = await prisma.storefrontOrder.findMany({
       where,
@@ -48,7 +79,30 @@ export async function POST(
       include: {
         product: { include: { dataPackage: true } },
         underlyingOrder: {
-          select: { id: true, status: true, providerReference: true, updatedAt: true },
+          select: {
+            id: true,
+            status: true,
+            providerReference: true,
+            updatedAt: true,
+            completedAt: true,
+            createdAt: true,
+            deliveryReports: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                seq: true,
+                status: true,
+                reason: true,
+                proofImageMime: true,
+                adminNote: true,
+                adminResponse: true,
+                respondedAt: true,
+                resolvedAt: true,
+                createdAt: true,
+              },
+            },
+          },
         },
       },
     });
@@ -85,14 +139,39 @@ export async function POST(
             o.underlyingOrder.status === "SUCCESS" ? "COMPLETED" : o.underlyingOrder.status;
         }
 
+        const isCompleted = displayStatus === "COMPLETED" || displayStatus === "SUCCESS";
+        const latestReport = o.underlyingOrder?.deliveryReports?.[0] ?? null;
+        const activeReportStatuses = ["OPEN", "UNDER_REVIEW", "INVESTIGATING"];
+        const hasActiveReport = latestReport ? activeReportStatuses.includes(latestReport.status) : false;
+
+        const completedTime = o.completedAt ?? o.underlyingOrder?.completedAt ?? o.underlyingOrder?.updatedAt ?? o.updatedAt;
+        const withinWindow =
+          completedTime &&
+          Date.now() - new Date(completedTime).getTime() <= windowHours * 3600 * 1000;
+        const canReport = Boolean(reportsEnabled && isCompleted && !hasActiveReport && withinWindow);
+
         return {
           code: o.paymentReference || storefrontOrderCode(o.seq, o.paymentReference),
           reference: o.paymentReference,
+          phone: o.customerPhone,
           network: o.product.dataPackage.network,
           size: `${o.product.dataPackage.gbAmount}GB`,
           amount: fromPesewas(o.sellingPrice),
           status: displayStatus,
           createdAt: o.createdAt.toISOString(),
+          canReport,
+          deliveryReport: latestReport
+            ? {
+                id: latestReport.id,
+                seq: latestReport.seq,
+                code: `NR-${String(latestReport.seq).padStart(5, "0")}`,
+                status: latestReport.status,
+                reason: latestReport.reason,
+                adminResponse: latestReport.adminResponse,
+                hasProof: Boolean(latestReport.proofImageMime),
+                createdAt: latestReport.createdAt.toISOString(),
+              }
+            : null,
         };
       })
     );
