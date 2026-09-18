@@ -48,6 +48,7 @@ type TabKey =
 
 export default function DeveloperDashboardPage() {
   const [activeTab, setActiveTab] = React.useState<TabKey>("overview");
+  const [playgroundEndpoint, setPlaygroundEndpoint] = React.useState<string>("post-verify-numbers");
   const [usageData, setUsageData] = React.useState<any>(null);
   const [appData, setAppData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
@@ -57,7 +58,9 @@ export default function DeveloperDashboardPage() {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       const tabParam = url.searchParams.get("tab") as TabKey;
+      const endpointParam = url.searchParams.get("endpoint");
       if (tabParam) setActiveTab(tabParam);
+      if (endpointParam) setPlaygroundEndpoint(endpointParam);
     }
   }, []);
 
@@ -341,10 +344,25 @@ export default function DeveloperDashboardPage() {
           )}
 
           {/* TAB 4: DOCUMENTATION */}
-          {activeTab === "docs" && <DeveloperDocs />}
+          {activeTab === "docs" && (
+            <DeveloperDocs
+              onOpenPlayground={(endpointId) => {
+                setPlaygroundEndpoint(endpointId);
+                setActiveTab("playground");
+                if (typeof window !== "undefined") {
+                  const u = new URL(window.location.href);
+                  u.searchParams.set("tab", "playground");
+                  u.searchParams.set("endpoint", endpointId);
+                  window.history.replaceState({}, "", u.toString());
+                }
+              }}
+            />
+          )}
 
           {/* TAB 5: PLAYGROUND */}
-          {activeTab === "playground" && <DeveloperPlayground />}
+          {activeTab === "playground" && (
+            <DeveloperPlayground initialEndpointId={playgroundEndpoint} />
+          )}
 
           {/* TAB 6: ORDERS */}
           {activeTab === "orders" && <DeveloperOrdersPanel />}

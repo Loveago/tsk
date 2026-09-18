@@ -82,6 +82,9 @@ export function DeveloperCredentials({
       setShowCreateModal(false);
       setCreateName("");
       setNewKeyModal(json.apiKey);
+      try {
+        localStorage.setItem("tsk_playground_api_key", json.apiKey);
+      } catch {}
       toast("Credential created successfully", "success");
       load();
     } catch {
@@ -110,6 +113,9 @@ export function DeveloperCredentials({
 
       if (action === "ROTATE" && json.newApiKey) {
         setNewKeyModal(json.newApiKey);
+        try {
+          localStorage.setItem("tsk_playground_api_key", json.newApiKey);
+        } catch {}
         toast("Key rotated successfully. Save your new key.", "success");
       } else {
         toast(`Credential ${action.toLowerCase()}d`, "success");

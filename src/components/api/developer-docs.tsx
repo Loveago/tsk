@@ -1,12 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Download, Copy, Check, Terminal, Code2, Globe, Shield, Zap, AlertCircle } from "lucide-react";
+import { Download, Copy, Check, Terminal, Code2, Globe, Shield, Zap, AlertCircle, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { useToast } from "@/components/toast";
 
-export function DeveloperDocs() {
+export function DeveloperDocs({
+  onOpenPlayground,
+}: {
+  onOpenPlayground?: (endpointId: string) => void;
+} = {}) {
   const { toast } = useToast();
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [langTab, setLangTab] = React.useState<"curl" | "javascript" | "nodejs" | "python" | "php">("curl");
@@ -435,7 +439,20 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
               </tr>
               <tr>
                 <td className="py-2.5 font-bold text-blue-600">POST / GET</td>
-                <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">/v1/numbers/verify</td>
+                <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span>/v1/numbers/verify</span>
+                    {onOpenPlayground && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenPlayground("post-verify-numbers")}
+                        className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 transition hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/60"
+                      >
+                        Playground ↗
+                      </button>
+                    )}
+                  </div>
+                </td>
                 <td className="py-2.5 text-slate-500">numbers:verify</td>
                 <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Pre-check if phone numbers are verified before ordering (batch up to 100)</td>
               </tr>
@@ -454,11 +471,21 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="rounded bg-blue-500/10 px-2 py-0.5 font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
                 POST / GET
               </span>
               <h3 className="text-base font-bold">Number Verification</h3>
+              {onOpenPlayground && (
+                <button
+                  type="button"
+                  onClick={() => onOpenPlayground("post-verify-numbers")}
+                  className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/60"
+                >
+                  <Play className="h-3 w-3 fill-current" />
+                  Try in Playground
+                </button>
+              )}
             </div>
             <p className="mt-1 text-xs text-slate-500">
               /v1/numbers/verify • Required Scope: <code className="font-mono text-slate-700 dark:text-slate-300">numbers:verify</code>
