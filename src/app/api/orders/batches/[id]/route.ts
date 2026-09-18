@@ -85,12 +85,27 @@ export async function GET(
     }
 
     const stats = statsFromCounts(aggregates.get(id)?.counts);
+    const isBatchCompleted = batch.status === "COMPLETED" || (stats.total > 0 && stats.completed === stats.total);
+    const latestDeliveredAt = orders
+      .filter((o) => o.status === "SUCCESS" || o.status === "COMPLETED")
+      .map((o) => o.completedAt ?? o.updatedAt)
+      .filter(Boolean)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? (batch.status === "COMPLETED" ? batch.updatedAt : null);
+
     return NextResponse.json({
-      batch,
-      orders: orders.map((o) => ({
-        ...o,
-        failureReason: sanitizeCustomerRefundNote(o.failureReason, o.amount),
-      })),
+      batch: {
+        ...batch,
+        completedAt: isBatchCompleted && latestDeliveredAt ? new Date(latestDeliveredAt).toISOString() : null,
+      },
+      orders: orders.map((o) => {
+        const isDelivered = o.status === "SUCCESS" || o.status === "COMPLETED";
+        const deliveredAt = isDelivered ? (o.completedAt ?? o.updatedAt) : null;
+        return {
+          ...o,
+          completedAt: deliveredAt ? new Date(deliveredAt).toISOString() : null,
+          failureReason: sanitizeCustomerRefundNote(o.failureReason, o.amount),
+        };
+      }),
       stats,
       progress: batchProgress(stats),
       exports,

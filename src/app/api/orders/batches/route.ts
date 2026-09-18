@@ -84,7 +84,13 @@ export async function GET(request: NextRequest) {
     const aggregates = await getBatchAggregates(data.map((b) => b.id));
     const rows = data.map((b) => {
       const stats = statsFromCounts(aggregates.get(b.id)?.counts);
-      return { ...b, stats, progress: batchProgress(stats) };
+      const isCompleted = b.status === "COMPLETED" || (stats.total > 0 && stats.completed === stats.total);
+      return {
+        ...b,
+        stats,
+        progress: batchProgress(stats),
+        completedAt: isCompleted ? b.updatedAt.toISOString() : null,
+      };
     });
 
     return NextResponse.json({
