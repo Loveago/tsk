@@ -66,15 +66,15 @@ async function main() {
         );
       }
     } else if (phone === "0531955626" || rep.seq === 53) {
-      // 3 GB -> Refunded GHS 11.25
-      console.log(`-> Setting NR-000${rep.seq} (3 GB) to REFUNDED (Refunded GHS 11.25)...`);
+      const refundAmtStr = rep.order?.amount ? `Refunded GHS ${rep.order.amount.toFixed(2)}` : "Refunded";
+      console.log(`-> Setting NR-000${rep.seq} (3 GB) to REFUNDED (${refundAmtStr})...`);
       await prisma.deliveryReport.update({
         where: { id: rep.id },
         data: {
           status: "REFUNDED",
           proofImage: null,
           proofImageMime: null,
-          adminResponse: "Refunded GHS 11.25",
+          adminResponse: refundAmtStr,
           resolvedAt: new Date(),
           resolvedBy: "Clickyfied API",
         },
@@ -84,21 +84,21 @@ async function main() {
         await changeOrderStatus(
           rep.order.id,
           "FAILED",
-          "Refunded GHS 11.25 on Clickyfied",
+          refundAmtStr,
           { id: "system", label: "Reconcile Script" },
           { force: true }
         );
       }
     } else if (phone === "0541133597" || rep.seq === 51) {
-      // 5 GB -> Refunded GHS 18.75
-      console.log(`-> Setting NR-000${rep.seq} (5 GB) to REFUNDED (Refunded GHS 18.75)...`);
+      const refundAmtStr = rep.order?.amount ? `Refunded GHS ${rep.order.amount.toFixed(2)}` : "Refunded";
+      console.log(`-> Setting NR-000${rep.seq} (5 GB) to REFUNDED (${refundAmtStr})...`);
       await prisma.deliveryReport.update({
         where: { id: rep.id },
         data: {
           status: "REFUNDED",
           proofImage: null,
           proofImageMime: null,
-          adminResponse: "Refunded GHS 18.75",
+          adminResponse: refundAmtStr,
           resolvedAt: new Date(),
           resolvedBy: "Clickyfied API",
         },
@@ -108,7 +108,7 @@ async function main() {
         await changeOrderStatus(
           rep.order.id,
           "FAILED",
-          "Refunded GHS 18.75 on Clickyfied",
+          refundAmtStr,
           { id: "system", label: "Reconcile Script" },
           { force: true }
         );

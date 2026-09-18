@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { changeOrderStatus } from "@/lib/orders";
 import { recordAudit } from "@/lib/audit";
 import { mapClickyfiedStatus, normalizePhoneLast9 } from "@/lib/provider-apis/router";
+import { sanitizeCustomerRefundNote } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -247,7 +248,10 @@ export async function POST(request: NextRequest) {
             where: { id: report.id },
             data: {
               status: newStatus,
-              adminResponse: adminNotes || report.adminResponse,
+              adminResponse:
+                (targetOrder
+                  ? sanitizeCustomerRefundNote(adminNotes, targetOrder.amount)
+                  : sanitizeCustomerRefundNote(adminNotes)) || report.adminResponse,
               ...(newProofAttached
                 ? {
                     proofImage,
@@ -268,10 +272,13 @@ export async function POST(request: NextRequest) {
           // If failed/refunded on Clickyfied, update ONLY this specific reported order to FAILED
           if (newStatus === "REFUNDED" && targetOrder) {
             try {
+              const refundReason =
+                sanitizeCustomerRefundNote(adminNotes, targetOrder.amount) ||
+                (targetOrder.amount ? `Refunded GHS ${targetOrder.amount.toFixed(2)}` : "Order was refunded");
               await changeOrderStatus(
                 targetOrder.id,
                 "FAILED",
-                adminNotes || "Order failed on Clickyfied and was refunded",
+                refundReason,
                 { id: "system", label: "Clickyfied Callback" },
                 { force: true }
               );

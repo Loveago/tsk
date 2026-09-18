@@ -8,7 +8,7 @@ import { ProgressBar } from "@/components/ui/progress";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
-import { formatDateTime, formatGHS } from "@/lib/types";
+import { formatDateTime, formatGHS, sanitizeCustomerRefundNote } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
 import { ChevronRight, FileWarning, Layers, Search, Clock, Eye } from "lucide-react";
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
@@ -346,8 +346,11 @@ export default function OrdersPage() {
                       <td className="px-3 py-2">
                         <StatusBadge status={o.status} />
                         {o.failureReason && (
-                          <p className="mt-0.5 max-w-[150px] truncate text-[11px] text-red-500" title={o.failureReason}>
-                            {o.failureReason}
+                          <p
+                            className="mt-0.5 max-w-[150px] truncate text-[11px] text-red-500"
+                            title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
+                          >
+                            {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
                           </p>
                         )}
                       </td>

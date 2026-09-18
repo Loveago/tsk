@@ -259,6 +259,71 @@ export function formatGHS(amount: number): string {
   return `GHS ${amount.toFixed(2)}`;
 }
 
+/**
+ * Sanitizes provider-originated failure reasons or administrative responses so customers
+ * never see wholesale provider cost prices (e.g. Clickyfied's "Refunded GHS 18.75")
+ * or provider names. Instead, it displays the price configured on our website
+ * (e.g. "Refunded GHS 25.00" based on order.amount).
+ */
+export function sanitizeCustomerRefundNote(
+  note: string | null | undefined,
+  orderAmount?: number | null
+): string | null {
+  if (!note) return null;
+  let text = note.trim();
+  if (!text) return null;
+
+  const websitePriceStr =
+    typeof orderAmount === "number" && !isNaN(orderAmount) && orderAmount > 0
+      ? `GHS ${orderAmount.toFixed(2)}`
+      : null;
+
+  const isRefund = /refund/i.test(text);
+
+  if (isRefund) {
+    if (websitePriceStr) {
+      // 1. Replace explicit refund price patterns like "Refunded GHS 18.75 on Clickyfied", "Refunded GH₵ 18.75", "Refunded 18.75", "Refunded 5 GB"
+      text = text.replace(
+        /refund(?:ed)?(?:\s+(?:on|by)\s+[a-z0-9_-]+(?:\s*provider)?)?\s*[:\-–]?\s*(?:(?:ghs|gh₵)\s*)?[0-9]+(?:\.[0-9]+)?(?:\s*gb)?/gi,
+        `Refunded ${websitePriceStr}`
+      );
+      // 2. Also handle phrases like "Refunded by Clickyfied provider", "Refunded on Clickyfied", "Order failed on Clickyfied and was refunded"
+      text = text.replace(
+        /refund(?:ed)?\s+(?:on|by)\s+[a-z0-9_-]+(?:\s*provider)?/gi,
+        `Refunded ${websitePriceStr}`
+      );
+      if (/order failed on [a-z0-9_-]+ and was refunded/i.test(text)) {
+        text = text.replace(/order failed on [a-z0-9_-]+ and was refunded/gi, `Refunded ${websitePriceStr}`);
+      }
+    } else {
+      // If amount is not known, ensure wholesale numbers are masked
+      text = text.replace(
+        /refund(?:ed)?(?:\s+(?:on|by)\s+[a-z0-9_-]+(?:\s*provider)?)?\s*[:\-–]?\s*(?:(?:ghs|gh₵)\s*)?[0-9]+(?:\.[0-9]+)?(?:\s*gb)?/gi,
+        "Refunded"
+      );
+    }
+  }
+
+  // Sanitize any remaining provider failure messages
+  text = text.replace(/failed on [a-z0-9_-]+(?:\s*provider)?/gi, "Failed to deliver");
+
+  // Strip internal provider names if still lingering
+  text = text
+    .replace(/on clickyfied/gi, "")
+    .replace(/by clickyfied provider/gi, "")
+    .replace(/clickyfied provider/gi, "")
+    .replace(/clickyfied/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // If text became empty or just punctuation, fallback to default
+  if (!text || text === ":" || text === "-") {
+    return websitePriceStr ? `Refunded ${websitePriceStr}` : "Refunded";
+  }
+
+  return text;
+}
+
 export function formatDateTime(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   return d.toLocaleString("en-GB", {

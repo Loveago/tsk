@@ -5,7 +5,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/shared";
 import { StatusBadge, DeliveryReportStatusBadge } from "@/components/status-badge";
-import { formatGHS, formatDateTime } from "@/lib/types";
+import { formatGHS, formatDateTime, sanitizeCustomerRefundNote } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
 import { ShieldCheck, Image as ImageIcon } from "lucide-react";
 
@@ -212,7 +212,9 @@ function AdminResponseSection({ report }: { report: NotReceivedReportDetail }) {
       <p className="flex items-center gap-1.5 text-xs font-semibold text-teal-700 dark:text-teal-400">
         <ShieldCheck className="h-3.5 w-3.5" /> ADMINISTRATIVE RESPONSE
       </p>
-      <p className="mt-1.5 text-teal-800 dark:text-teal-300">{report.adminResponse}</p>
+      <p className="mt-1.5 text-teal-800 dark:text-teal-300">
+        {sanitizeCustomerRefundNote(report.adminResponse, report.order?.amount)}
+      </p>
       {report.respondedAt && (
         <p className="mt-1 text-[11px] text-teal-600/70 dark:text-teal-400/70">
           {formatDateTime(report.respondedAt)}

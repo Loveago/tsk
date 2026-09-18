@@ -7,6 +7,7 @@ import {
   logApiRequestEntry,
   ApiError,
 } from "@/lib/developer-api";
+import { sanitizeCustomerRefundNote } from "@/lib/types";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -98,13 +99,13 @@ export async function GET(
       recipient: order.phoneNumber,
       amount: order.amount,
       status: displayStatus,
-      failureReason: order.failureReason || null,
+      failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount) || null,
       isSandbox: order.isSandbox,
       deliveryReport: order.deliveryReports?.[0] ? {
         id: order.deliveryReports[0].id,
         status: order.deliveryReports[0].status,
         reason: order.deliveryReports[0].reason,
-        adminResponse: order.deliveryReports[0].adminResponse,
+        adminResponse: sanitizeCustomerRefundNote(order.deliveryReports[0].adminResponse, order.amount),
         adminNote: order.deliveryReports[0].adminNote,
         createdAt: order.deliveryReports[0].createdAt.toISOString(),
         resolvedAt: order.deliveryReports[0].resolvedAt?.toISOString() || null,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { deliveryReportCode } from "@/lib/types";
+import { deliveryReportCode, sanitizeCustomerRefundNote } from "@/lib/types";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
 import { syncClickyfiedDeliveryReport } from "@/lib/provider-apis/router";
@@ -67,7 +67,13 @@ export async function GET(
     if (!isStaff && report.userId !== user.id) return apiError(403, "Not allowed");
     const { userId: _ownerId, ...safeReport } = report;
 
-    return NextResponse.json({ report: { ...safeReport, code: deliveryReportCode(safeReport.seq) } });
+    return NextResponse.json({
+      report: {
+        ...safeReport,
+        code: deliveryReportCode(safeReport.seq),
+        adminResponse: sanitizeCustomerRefundNote(safeReport.adminResponse, safeReport.order?.amount),
+      },
+    });
   } catch (err) {
     return handleRouteError(err);
   }

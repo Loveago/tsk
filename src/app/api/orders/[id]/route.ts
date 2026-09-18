@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { changeOrderStatus, deriveCompletedAt } from "@/lib/orders";
-import { reportWindowEnd, isWithinReportWindow, ACTIVE_DELIVERY_REPORT_STATUSES } from "@/lib/types";
+import { reportWindowEnd, isWithinReportWindow, ACTIVE_DELIVERY_REPORT_STATUSES, sanitizeCustomerRefundNote } from "@/lib/types";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
@@ -97,7 +97,13 @@ export async function GET(
     return NextResponse.json({
       order: {
         ...safeOrder,
-        deliveryReport: activeReport,
+        failureReason: sanitizeCustomerRefundNote(safeOrder.failureReason, safeOrder.amount),
+        deliveryReport: activeReport
+          ? {
+              ...activeReport,
+              adminResponse: sanitizeCustomerRefundNote(activeReport.adminResponse, safeOrder.amount),
+            }
+          : null,
         reportWindow: {
           completedAt,
           deadline,

@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { changeOrderStatus } from "../orders";
+import { sanitizeCustomerRefundNote } from "../types";
 import { recordOrderApiLog } from "../order-api-logs";
 import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_URL } from "./bigwindata";
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
@@ -871,6 +872,7 @@ export async function syncClickyfiedDeliveryReport(
             network: true,
             phoneNumber: true,
             gbAmount: true,
+            amount: true,
             status: true,
           },
         },
@@ -1213,7 +1215,9 @@ export async function syncClickyfiedDeliveryReport(
         where: { id: report.id },
         data: {
           status: newStatus,
-          ...(reportBelongsToOrder && adminNotes ? { adminResponse: adminNotes } : {}),
+          ...(reportBelongsToOrder && adminNotes
+            ? { adminResponse: sanitizeCustomerRefundNote(adminNotes, report.order?.amount) || adminNotes }
+            : {}),
           respondedAt: resolutionDate || report.respondedAt || new Date(),
           ...(newProofAttached
             ? {
@@ -1235,10 +1239,13 @@ export async function syncClickyfiedDeliveryReport(
       // If order failed/refunded, update order to FAILED (which refunds wallet or flags storefront)
       if (newStatus === "REFUNDED" && report.order.id) {
         try {
+          const refundReason =
+            sanitizeCustomerRefundNote(adminNotes, report.order.amount) ||
+            (report.order.amount ? `Refunded GHS ${report.order.amount.toFixed(2)}` : "Order was refunded");
           await changeOrderStatus(
             report.order.id,
             "FAILED",
-            adminNotes || "Order failed on Clickyfied and was refunded",
+            refundReason,
             { id: "system", label: actorLabel },
             { force: true }
           );

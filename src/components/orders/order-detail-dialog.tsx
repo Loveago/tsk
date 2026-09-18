@@ -4,7 +4,7 @@ import * as React from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
-import { formatGHS, formatDateTime } from "@/lib/types";
+import { formatGHS, formatDateTime, sanitizeCustomerRefundNote } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
 import { FileWarning } from "lucide-react";
 import {
@@ -118,7 +118,7 @@ export function OrderDetailDialog({
             )}
             {order.failureReason && (
               <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                {order.failureReason}
+                {sanitizeCustomerRefundNote(order.failureReason, order.amount)}
               </div>
             )}
 

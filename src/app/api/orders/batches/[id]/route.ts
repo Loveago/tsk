@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { getBatchAggregates, statsFromCounts, batchProgress } from "@/lib/batches";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { sanitizeCustomerRefundNote } from "@/lib/types";
 
 /** Batch detail for the owner: recipients + progress + export linkage. */
 export async function GET(
@@ -86,7 +87,10 @@ export async function GET(
     const stats = statsFromCounts(aggregates.get(id)?.counts);
     return NextResponse.json({
       batch,
-      orders,
+      orders: orders.map((o) => ({
+        ...o,
+        failureReason: sanitizeCustomerRefundNote(o.failureReason, o.amount),
+      })),
       stats,
       progress: batchProgress(stats),
       exports,

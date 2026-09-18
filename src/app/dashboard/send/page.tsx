@@ -11,7 +11,9 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
+  Check,
   ClipboardPaste,
+  Copy,
   Download,
   FileUp,
   Loader2,
@@ -229,6 +231,50 @@ export default function SendOrderPage() {
       } else {
         toast("No orders added — unverified number(s) were excluded", "info");
       }
+    }
+  };
+
+  const [copiedUnverified, setCopiedUnverified] = React.useState(false);
+
+  const copyUnverifiedNumbers = async () => {
+    if (!pendingUnverified) return;
+
+    const unverifiedSet = new Set(pendingUnverified.unverifiedNumbers);
+    const unverifiedItems = pendingUnverified.toAdd.filter((item) =>
+      unverifiedSet.has(item.phoneNumber)
+    );
+
+    const linesToFormat =
+      unverifiedItems.length > 0
+        ? unverifiedItems
+        : pendingUnverified.unverifiedNumbers.map((num) => {
+            const l = pendingUnverified.toAdd.find((item) => item.phoneNumber === num);
+            return { phoneNumber: num, gbAmount: l?.gbAmount ?? "" };
+          });
+
+    const textToCopy = linesToFormat
+      .map((item) => `${item.phoneNumber} ${item.gbAmount}`.trim())
+      .join("\n");
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = textToCopy;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopiedUnverified(true);
+      toast("Copied unverified numbers to clipboard", "success");
+      setTimeout(() => setCopiedUnverified(false), 2000);
+    } catch {
+      toast("Failed to copy to clipboard", "error");
     }
   };
 
@@ -780,9 +826,20 @@ export default function SendOrderPage() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={cancelUnverifiedAddition}
+              onClick={copyUnverifiedNumbers}
+              className="gap-1.5"
             >
-              Cancel / Edit
+              {copiedUnverified ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Copy</span>
+                </>
+              )}
             </Button>
             {pendingUnverified && pendingUnverified.verifiedItems.length > 0 && (
               <Button

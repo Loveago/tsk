@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { deliveryReportCreateSchema } from "@/lib/validation";
 import { deriveCompletedAt } from "@/lib/orders";
-import { isWithinReportWindow, ACTIVE_DELIVERY_REPORT_STATUSES, deliveryReportCode } from "@/lib/types";
+import { isWithinReportWindow, ACTIVE_DELIVERY_REPORT_STATUSES, deliveryReportCode, sanitizeCustomerRefundNote } from "@/lib/types";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
@@ -106,7 +106,11 @@ export async function GET(request: NextRequest) {
         prisma.deliveryReport.count({ where: { userId: user.id, status: "REFUNDED" } }),
       ]);
       return NextResponse.json({
-        reports: reports.map((r) => ({ ...r, code: deliveryReportCode(r.seq) })),
+        reports: reports.map((r) => ({
+          ...r,
+          code: deliveryReportCode(r.seq),
+          adminResponse: sanitizeCustomerRefundNote(r.adminResponse, r.order?.amount),
+        })),
         stats: {
           total,
           underReview,

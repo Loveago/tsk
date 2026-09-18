@@ -6,7 +6,7 @@ import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-
 import { DeliveryReportStatusBadge } from "@/components/status-badge";
 import { useToast } from "@/components/toast";
 import { orderCode } from "@/lib/utils";
-import { deliveryReportCode, formatDateTime } from "@/lib/types";
+import { deliveryReportCode, formatDateTime, sanitizeCustomerRefundNote } from "@/lib/types";
 import {
   CheckCircle2,
   CheckCheck,
@@ -200,7 +200,7 @@ export default function NotReceivedPage() {
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Reported {formatDateTime(r.createdAt)}
                     {r.reason ? ` · ${r.reason}` : ""}
-                    {r.adminResponse ? ` · Response: ${r.adminResponse}` : ""}
+                    {r.adminResponse ? ` · Response: ${sanitizeCustomerRefundNote(r.adminResponse, r.order.amount)}` : ""}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

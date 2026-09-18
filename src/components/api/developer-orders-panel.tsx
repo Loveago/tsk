@@ -5,7 +5,7 @@ import { Search, Filter, RefreshCw, ExternalLink, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Spinner, EmptyState } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
-import { formatDateTime, formatGHS } from "@/lib/types";
+import { formatDateTime, formatGHS, sanitizeCustomerRefundNote } from "@/lib/types";
 
 export function DeveloperOrdersPanel() {
   const [orders, setOrders] = React.useState<any[]>([]);
@@ -235,7 +235,7 @@ export function DeveloperOrdersPanel() {
               {selectedOrder.failureReason && (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 dark:border-red-900 dark:bg-red-950/20">
                   <p className="font-bold">Failure Reason:</p>
-                  <p className="mt-0.5">{selectedOrder.failureReason}</p>
+                  <p className="mt-0.5">{sanitizeCustomerRefundNote(selectedOrder.failureReason, selectedOrder.amount)}</p>
                 </div>
               )}
 

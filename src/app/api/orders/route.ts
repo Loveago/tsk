@@ -12,7 +12,7 @@ import {
 import { nextBatchCode } from "@/lib/batches";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
-import { normalizeOrderStatus } from "@/lib/types";
+import { normalizeOrderStatus, sanitizeCustomerRefundNote } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -447,6 +447,7 @@ export async function GET(request: NextRequest) {
 
     const dataWithQueue = data.map((order) => ({
       ...order,
+      failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount),
       queuePosition: positionOf.get(order.id) ?? null,
       queueTotal,
     }));
