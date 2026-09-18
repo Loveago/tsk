@@ -47,26 +47,81 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
     // Handle Delivery Report Events (Not Received Flow)
     // -----------------------------------------------------------------------
-    if (
-      event === "report.not_received.resolved" ||
-      event === "report.not_received.confirmed_sent" ||
-      payload?.report
-    ) {
-      const repData = payload?.report || {};
-      const repEntryId = repData?.orderEntryId ?? payload?.orderEntryId;
-      const repNumber = repData?.number ?? payload?.number;
+    const isReportEvent =
+      event.startsWith("report.not_received.") ||
+      event.startsWith("report.") ||
+      event.includes("not_received") ||
+      event.includes("report") ||
+      Boolean(payload?.report) ||
+      Boolean(payload?.reports) ||
+      Boolean(payload?.reportId) ||
+      Boolean(payload?.data?.report) ||
+      Boolean(payload?.data?.reports) ||
+      Boolean(payload?.data?.reportId);
+
+    if (isReportEvent) {
+      const repData =
+        payload?.report ||
+        payload?.data?.report ||
+        (Array.isArray(payload?.reports) ? payload.reports[0] : null) ||
+        (Array.isArray(payload?.data?.reports) ? payload.data.reports[0] : null) ||
+        payload?.data ||
+        payload ||
+        {};
+      const repEntryId =
+        repData?.orderEntryId ??
+        repData?.entryId ??
+        repData?.id ??
+        payload?.orderEntryId ??
+        payload?.entryId;
+      const repNumber =
+        repData?.number ??
+        repData?.phoneNumber ??
+        repData?.phone ??
+        repData?.recipient ??
+        payload?.number ??
+        payload?.phoneNumber ??
+        payload?.phone;
+      const repReportId =
+        repData?.reportId ??
+        repData?.id ??
+        payload?.reportId;
+
+      // Fallback: If orders wasn't found by externalRef/orderId, resolve target order by reportId or recipient phone
+      if (orders.length === 0 && repReportId) {
+        const rep = await prisma.deliveryReport.findFirst({
+          where: {
+            adminNote: { contains: `[PROVIDER_REPORT_ID:${repReportId}]` },
+          },
+          include: { order: true },
+        });
+        if (rep?.order) {
+          orders = [rep.order];
+        }
+      }
+      if (orders.length === 0 && repNumber) {
+        const normRep = normalizePhoneLast9(String(repNumber));
+        const foundOrders = await prisma.order.findMany({
+          where: { phoneNumber: { contains: normRep } },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        });
+        if (foundOrders.length > 0) {
+          orders = foundOrders;
+        }
+      }
 
       if (orders.length > 0) {
         // Find the specific target order in this batch:
         let targetOrder: any = null;
 
         // 0. Match by provider reportId from deliveryReport.adminNote or OrderApiLog
-        if (repData?.reportId) {
+        if (repReportId) {
           const matchedByNote = await prisma.deliveryReport.findFirst({
             where: {
               orderId: { in: orders.map((o) => o.id) },
               adminNote: {
-                contains: `[PROVIDER_REPORT_ID:${repData.reportId}]`,
+                contains: `[PROVIDER_REPORT_ID:${repReportId}]`,
               },
             },
             include: { order: true },
@@ -79,7 +134,7 @@ export async function POST(request: NextRequest) {
                 orderId: { in: orders.map((o) => o.id) },
                 provider: "CLICKYFIED",
                 action: "NOT_RECEIVED",
-                responsePayload: { contains: `"reportId":${repData.reportId}` },
+                responsePayload: { contains: `"reportId":${repReportId}` },
               },
               orderBy: { createdAt: "desc" },
             });
@@ -161,6 +216,8 @@ export async function POST(request: NextRequest) {
 
           const isRefund =
             event === "report.not_received.refunded" ||
+            event === "report.not_received.refund" ||
+            event.includes("refund") ||
             ["refund", "refunded"].includes(rawStatus) ||
             resolutionStr === "refund" ||
             resolutionStr === "refunded" ||
@@ -243,6 +300,10 @@ export async function POST(request: NextRequest) {
           }
 
           const isTerminal = ["RESOLVED", "CONFIRM_SENT", "DELIVERED", "REFUNDED", "REJECTED"].includes(newStatus);
+          const resolutionDate =
+            repData?.resolutionDate && !isNaN(new Date(repData.resolutionDate).getTime())
+              ? new Date(repData.resolutionDate)
+              : undefined;
 
           await prisma.deliveryReport.update({
             where: { id: report.id },
@@ -252,6 +313,7 @@ export async function POST(request: NextRequest) {
                 (targetOrder
                   ? sanitizeCustomerRefundNote(adminNotes, targetOrder.amount)
                   : sanitizeCustomerRefundNote(adminNotes)) || report.adminResponse,
+              respondedAt: resolutionDate || report.respondedAt || new Date(),
               ...(newProofAttached
                 ? {
                     proofImage,
@@ -262,7 +324,7 @@ export async function POST(request: NextRequest) {
                 : {}),
               ...(isTerminal
                 ? {
-                    resolvedAt: new Date(),
+                    resolvedAt: resolutionDate || report.resolvedAt || new Date(),
                     resolvedBy: "Clickyfied Callback",
                   }
                 : {}),

@@ -910,12 +910,15 @@ export async function syncClickyfiedDeliveryReport(
       return { changed: false };
     }
 
-    // If poller is disabled in settings, do NOT perform automated background sync
-    const pollerSetting = await prisma.systemSetting.findUnique({
-      where: { key: "provider_sync_poller_enabled" },
-    });
-    if (pollerSetting && pollerSetting.value === "false") {
-      return { changed: false };
+    // Only suppress automated background poller / cron if poller is disabled in settings.
+    // Explicit admin queue view sync, user on-demand track sync, or manual actions should always run.
+    if (actorLabel.includes("Background Poller") || actorLabel.includes("Cron")) {
+      const pollerSetting = await prisma.systemSetting.findUnique({
+        where: { key: "provider_sync_poller_enabled" },
+      });
+      if (pollerSetting && pollerSetting.value === "false") {
+        return { changed: false };
+      }
     }
 
     // 120-second throttle per delivery report
@@ -1249,7 +1252,10 @@ export async function syncClickyfiedDeliveryReport(
     const notesChanged = Boolean(reportBelongsToOrder && adminNotes && adminNotes !== report.adminResponse);
 
     if (statusChanged || notesChanged || newProofAttached) {
-      const resolutionDate = repData?.resolutionDate ? new Date(repData.resolutionDate) : undefined;
+      const resolutionDate =
+        repData?.resolutionDate && !isNaN(new Date(repData.resolutionDate).getTime())
+          ? new Date(repData.resolutionDate)
+          : undefined;
       await prisma.deliveryReport.update({
         where: { id: report.id },
         data: {
