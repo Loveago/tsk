@@ -62,9 +62,9 @@ export default function LoginPage() {
     router.refresh();
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otpCode.trim().length !== 6) return;
+  const verifyOtp = async (codeToVerify?: string) => {
+    const code = (codeToVerify ?? otpCode).trim();
+    if (code.length !== 6 || verifyingOtp) return;
 
     setServerError(null);
     setVerifyingOtp(true);
@@ -72,7 +72,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticket: otpTicket, code: otpCode.trim() }),
+        body: JSON.stringify({ ticket: otpTicket, code }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -86,6 +86,24 @@ export default function LoginPage() {
       setServerError("Network error verifying code");
     } finally {
       setVerifyingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await verifyOtp();
+  };
+
+  const handlePasteOtp = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData?.getData("text/plain") || e.clipboardData?.getData("text") || "";
+    if (!pasted) return;
+    const digits = pasted.replace(/\D/g, "").slice(0, 6);
+    if (digits) {
+      setOtpCode(digits);
+      if (digits.length === 6) {
+        verifyOtp(digits);
+      }
     }
   };
 
@@ -154,9 +172,15 @@ export default function LoginPage() {
               pattern="[0-9]*"
               autoComplete="one-time-code"
               autoFocus
-              maxLength={6}
               value={otpCode}
-              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onPaste={handlePasteOtp}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setOtpCode(digits);
+                if (digits.length === 6 && digits !== otpCode) {
+                  verifyOtp(digits);
+                }
+              }}
               placeholder="••••••"
               className="text-center font-mono text-2xl tracking-[0.5em] h-12 font-bold"
             />
