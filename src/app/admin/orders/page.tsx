@@ -12,8 +12,9 @@ import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import Link from "next/link";
-import { Layers, Search, Store, RefreshCw, Activity } from "lucide-react";
+import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock } from "lucide-react";
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
+import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
@@ -85,8 +86,8 @@ export default function AdminOrdersPage() {
   const [sfPages, setSfPages] = React.useState(1);
 
   // ── data fetcher ─────────────────────────────────────────────
-  const load = React.useCallback(async () => {
-    setLoading(true);
+  const load = React.useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       if (viewMode === "storefront") {
         const params = new URLSearchParams({ page: String(page), pageSize: "15" });
@@ -122,21 +123,31 @@ export default function AdminOrdersPage() {
       }
       setLastRefreshed(new Date());
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [viewMode, page, network, status, q, quick]);
 
   React.useEffect(() => {
-    const t = setTimeout(load, 250);
+    const t = setTimeout(() => { void load(false); }, 250);
     return () => clearTimeout(t);
   }, [load]);
 
-  // Auto-refresh interval
-  React.useEffect(() => {
-    if (refreshInterval <= 0) return;
-    const id = setInterval(() => { load(); }, refreshInterval * 1000);
-    return () => clearInterval(id);
-  }, [load, refreshInterval]);
+  // Efficient Auto-refresh with tab visibility awareness & silent background refresh
+  const {
+    secondsRemaining,
+    isPaused,
+    isManuallyPaused,
+    togglePause,
+    triggerRefresh,
+    intervalSeconds,
+  } = useAutoRefresh({
+    intervalSeconds: refreshInterval,
+    onRefresh: () => load(true),
+    enabled: !sheetOpen,
+    pauseOnHidden: true,
+    refreshOnVisible: true,
+    pauseOnOffline: true,
+  });
 
   const switchView = (v: ViewMode) => {
     setViewMode(v);
@@ -287,17 +298,44 @@ export default function AdminOrdersPage() {
         title={pageTitle}
         description={pageDesc}
         actions={
-          <div className="flex items-center gap-2">
-            {lastRefreshed && (
-              <span className="hidden text-xs text-slate-400 dark:text-slate-500 sm:inline">
-                {lastRefreshed.toLocaleTimeString()}
+          <div className="flex flex-wrap items-center gap-2">
+            {intervalSeconds > 0 && (
+              <span className="hidden text-xs text-slate-400 dark:text-slate-500 sm:flex items-center gap-1 font-mono min-w-[50px]">
+                {isPaused ? (
+                  <span className="text-amber-500 font-medium">Paused</span>
+                ) : (
+                  <>
+                    <Clock className="h-3 w-3 text-slate-400" />
+                    {secondsRemaining}s
+                  </>
+                )}
               </span>
             )}
-            <Button size="sm" variant="outline" onClick={() => load()} disabled={loading} className="gap-1.5">
+            {intervalSeconds > 0 && (
+              <button
+                type="button"
+                onClick={togglePause}
+                className="rounded-lg border border-slate-200 bg-white p-1.5 text-xs text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 cursor-pointer"
+                title={isManuallyPaused ? "Resume auto-refresh" : "Pause auto-refresh"}
+              >
+                {isManuallyPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+              </button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                triggerRefresh();
+                void load(false);
+              }}
+              disabled={loading}
+              className="gap-1.5"
+              title={lastRefreshed ? `Last updated: ${lastRefreshed.toLocaleTimeString()}` : "Refresh"}
+            >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
-            <ClickyfiedBatchDispatchButton onSuccess={load} />
+            <ClickyfiedBatchDispatchButton onSuccess={() => void load(false)} />
             <Link
               href="/admin/order-api-logs"
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
