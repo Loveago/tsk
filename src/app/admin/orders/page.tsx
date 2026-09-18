@@ -15,16 +15,11 @@ import Link from "next/link";
 import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock } from "lucide-react";
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
+import { OrderDateFilter, getTodayRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
 const STOREFRONT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "AWAITING_PAYMENT", "FAILED", "REFUNDED"];
-const QUICK_RANGES = [
-  { key: "today", label: "Today" },
-  { key: "yesterday", label: "Yesterday" },
-  { key: "last7", label: "Last 7 days" },
-  { key: "month", label: "This month" },
-];
 
 const selectCls =
   "h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 placeholder:text-slate-400 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400 [&>option]:bg-white dark:[&>option]:bg-[#0d1526]";
@@ -41,7 +36,7 @@ export default function AdminOrdersPage() {
   const [network, setNetwork] = React.useState("");
   const [status, setStatus] = React.useState("");
   const [q, setQ] = React.useState("");
-  const [quick, setQuick] = React.useState("");
+  const [dateFilter, setDateFilter] = React.useState<DateFilterValue>(getTodayRange());
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(true);
   const [reconciling, setReconciling] = React.useState(false);
@@ -91,9 +86,12 @@ export default function AdminOrdersPage() {
     try {
       if (viewMode === "storefront") {
         const params = new URLSearchParams({ page: String(page), pageSize: "15" });
+        if (network) params.set("network", network);
         if (status) params.set("status", status);
         if (q) params.set("q", q);
-        const res = await fetch(`/api/admin/storefront-orders?${params}`);
+        if (dateFilter.from) params.set("from", dateFilter.from);
+        if (dateFilter.to) params.set("to", dateFilter.to);
+        const res = await fetch(`/api/admin/storefront-orders?${params}`, { cache: "no-store" });
         const json = await res.json();
         setSfOrders(json.data ?? []);
         setSfTotal(json.total ?? 0);
@@ -103,7 +101,9 @@ export default function AdminOrdersPage() {
         if (network) params.set("network", network);
         if (status) params.set("status", status);
         if (q) params.set("q", q);
-        const res = await fetch(`/api/admin/orders?${params}`);
+        if (dateFilter.from) params.set("from", dateFilter.from);
+        if (dateFilter.to) params.set("to", dateFilter.to);
+        const res = await fetch(`/api/admin/orders?${params}`, { cache: "no-store" });
         const json = await res.json();
         setSingleOrders(json.data ?? []);
         setSingleTotal(json.total ?? 0);
@@ -114,8 +114,9 @@ export default function AdminOrdersPage() {
         if (network) params.set("network", network);
         if (status) params.set("status", status);
         if (q) params.set("q", q);
-        if (quick) params.set("quick", quick);
-        const res = await fetch(`/api/admin/batches?${params}`);
+        if (dateFilter.from) params.set("from", dateFilter.from);
+        if (dateFilter.to) params.set("to", dateFilter.to);
+        const res = await fetch(`/api/admin/batches?${params}`, { cache: "no-store" });
         const json = await res.json();
         setBatches(json.data ?? []);
         setBatchTotal(json.total ?? 0);
@@ -125,7 +126,7 @@ export default function AdminOrdersPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [viewMode, page, network, status, q, quick]);
+  }, [viewMode, page, network, status, q, dateFilter]);
 
   React.useEffect(() => {
     const t = setTimeout(() => { void load(false); }, 250);
@@ -135,11 +136,13 @@ export default function AdminOrdersPage() {
   // Efficient Auto-refresh with tab visibility awareness & silent background refresh
   const {
     secondsRemaining,
+    isRefreshing,
     isPaused,
     isManuallyPaused,
     togglePause,
     triggerRefresh,
     intervalSeconds,
+    lastRefreshedAt,
   } = useAutoRefresh({
     intervalSeconds: refreshInterval,
     onRefresh: () => load(true),
@@ -292,6 +295,8 @@ export default function AdminOrdersPage() {
   const currentTotal = viewMode === "storefront" ? sfTotal : viewMode === "single" ? singleTotal : batchTotal;
   const currentPages = viewMode === "storefront" ? sfPages : viewMode === "single" ? singlePages : batchPages;
 
+  const displayTime = lastRefreshed || lastRefreshedAt;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -299,9 +304,19 @@ export default function AdminOrdersPage() {
         description={pageDesc}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {displayTime && (
+              <span className="hidden text-xs text-slate-400 dark:text-slate-500 md:inline">
+                Updated {displayTime.toLocaleTimeString()}
+              </span>
+            )}
             {intervalSeconds > 0 && (
               <span className="hidden text-xs text-slate-400 dark:text-slate-500 sm:flex items-center gap-1 font-mono min-w-[50px]">
-                {isPaused ? (
+                {isRefreshing ? (
+                  <span className="flex items-center gap-1 text-brand-600 dark:text-brand-400 font-medium">
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    Updating...
+                  </span>
+                ) : isPaused ? (
                   <span className="text-amber-500 font-medium">Paused</span>
                 ) : (
                   <>
@@ -326,13 +341,12 @@ export default function AdminOrdersPage() {
               variant="outline"
               onClick={() => {
                 triggerRefresh();
-                void load(false);
               }}
-              disabled={loading}
+              disabled={loading || isRefreshing}
               className="gap-1.5"
-              title={lastRefreshed ? `Last updated: ${lastRefreshed.toLocaleTimeString()}` : "Refresh"}
+              title={displayTime ? `Last updated: ${displayTime.toLocaleTimeString()}` : "Refresh"}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${loading || isRefreshing ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
             <ClickyfiedBatchDispatchButton onSuccess={() => void load(false)} />
@@ -400,24 +414,14 @@ export default function AdminOrdersPage() {
         )}
 
         <div className={`${viewMode !== "storefront" ? "ml-auto" : ""} flex flex-wrap items-center gap-2`}>
-          {/* Quick range — batches only */}
-          {viewMode === "batches" && (
-            <select
-              className={selectCls}
-              value={quick}
-              onChange={(e) => {
-                setQuick(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All time</option>
-              {QUICK_RANGES.map((r) => (
-                <option key={r.key} value={r.key}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          )}
+          {/* Date & Calendar Filter */}
+          <OrderDateFilter
+            value={dateFilter}
+            onChange={(df) => {
+              setDateFilter(df);
+              setPage(1);
+            }}
+          />
 
           {/* Status filter */}
           <select

@@ -12,6 +12,7 @@ import { formatDateTime, formatGHS, sanitizeCustomerRefundNote } from "@/lib/typ
 import { orderCode } from "@/lib/utils";
 import { ChevronRight, FileWarning, Layers, Search, Clock, Eye } from "lucide-react";
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
+import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
@@ -64,6 +65,7 @@ export default function OrdersPage() {
   const [network, setNetwork] = React.useState("");
   const [status, setStatus] = React.useState("");
   const [q, setQ] = React.useState("");
+  const [dateFilter, setDateFilter] = React.useState<DateFilterValue>(getTodayRange());
   const [loading, setLoading] = React.useState(true);
   const [detail, setDetail] = React.useState<BatchDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
@@ -76,6 +78,8 @@ export default function OrdersPage() {
     if (network) params.set("network", network);
     if (status) params.set("status", status);
     if (q) params.set("q", q);
+    if (dateFilter.from) params.set("from", dateFilter.from);
+    if (dateFilter.to) params.set("to", dateFilter.to);
     try {
       const res = await fetch(`/api/orders/batches?${params}`);
       const json = await res.json();
@@ -86,7 +90,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, network, status, q]);
+  }, [page, network, status, q, dateFilter]);
 
   React.useEffect(() => {
     const t = setTimeout(load, 250);
@@ -168,6 +172,13 @@ export default function OrdersPage() {
           </button>
         ))}
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <OrderDateFilter
+            value={dateFilter}
+            onChange={(df) => {
+              setDateFilter(df);
+              setPage(1);
+            }}
+          />
           <select
             className={selectCls}
             value={status}
@@ -186,7 +197,7 @@ export default function OrdersPage() {
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <input
-              className={selectCls + " w-52 pl-8"}
+              className={selectCls + " w-48 pl-8"}
               placeholder="Search batch or phone…"
               value={q}
               onChange={(e) => {
@@ -204,11 +215,31 @@ export default function OrdersPage() {
         </div>
       ) : rows.length === 0 ? (
         <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <EmptyState
-            icon={Layers}
-            title="No batches yet"
-            description="Send an order from the Send Order page — recipients are grouped into a network batch."
-          />
+          {dateFilter.mode !== "all" ? (
+            <EmptyState
+              icon={Layers}
+              title={`No batches found for ${dateFilter.label}`}
+              description="No order batches were created on this date. You can pick another date using the calendar or view all time."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setDateFilter(getAllTimeRange());
+                    setPage(1);
+                  }}
+                >
+                  View All Time Batches
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={Layers}
+              title="No batches yet"
+              description="Send an order from the Send Order page — recipients are grouped into a network batch."
+            />
+          )}
         </div>
       ) : (
         /* Horizontal line order history layout */

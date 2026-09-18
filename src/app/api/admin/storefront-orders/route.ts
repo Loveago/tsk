@@ -18,6 +18,8 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
     const status = searchParams.get("status");
     const q = searchParams.get("q"); // phone number or payment reference search
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
     const shouldReconcile = searchParams.get("reconcile") === "true";
 
     if (shouldReconcile) {
@@ -25,6 +27,12 @@ export async function GET(request: NextRequest) {
     }
 
     const where: Record<string, unknown> = {};
+    if (from || to) {
+      const createdAt: Record<string, Date> = {};
+      if (from) createdAt.gte = new Date(from);
+      if (to) createdAt.lte = new Date(to);
+      where.createdAt = createdAt;
+    }
     if (status === "AWAITING_PAYMENT") {
       where.underlyingOrderId = null;
     } else if (status === "PENDING") {

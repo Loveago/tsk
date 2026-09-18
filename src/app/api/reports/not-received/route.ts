@@ -57,6 +57,12 @@ export async function GET(request: NextRequest) {
           reportWhere.status = status;
         }
       }
+      if (from || to) {
+        const createdAt: Record<string, Date> = {};
+        if (from) createdAt.gte = new Date(from);
+        if (to) createdAt.lte = new Date(to);
+        reportWhere.createdAt = createdAt;
+      }
       if (q) {
         reportWhere.OR = [
           { order: { is: { phoneNumber: { contains: q } } } },

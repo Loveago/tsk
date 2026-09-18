@@ -4,9 +4,11 @@ import * as React from "react";
 import { EmptyState, Spinner } from "@/components/shared";
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
 import { DeliveryReportStatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import { orderCode } from "@/lib/utils";
 import { deliveryReportCode, formatDateTime, sanitizeCustomerRefundNote } from "@/lib/types";
+import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 import {
   CheckCircle2,
   CheckCheck,
@@ -59,6 +61,7 @@ export default function NotReceivedPage() {
   const [page, setPage] = React.useState(1);
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState("");
+  const [dateFilter, setDateFilter] = React.useState<DateFilterValue>(getTodayRange());
   const [loading, setLoading] = React.useState(true);
   const [viewReportId, setViewReportId] = React.useState<string | null>(null);
 
@@ -67,6 +70,8 @@ export default function NotReceivedPage() {
     const params = new URLSearchParams({ view: "reports", page: String(page), pageSize: "15" });
     if (q) params.set("q", q);
     if (status) params.set("status", status);
+    if (dateFilter.from) params.set("from", dateFilter.from);
+    if (dateFilter.to) params.set("to", dateFilter.to);
     try {
       const res = await fetch(`/api/reports/not-received?${params}`);
       const json = await res.json();
@@ -79,7 +84,7 @@ export default function NotReceivedPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, status, toast]);
+  }, [page, q, status, dateFilter, toast]);
 
   React.useEffect(() => {
     const t = setTimeout(loadMyReports, 250);
@@ -145,13 +150,20 @@ export default function NotReceivedPage() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <OrderDateFilter
+              value={dateFilter}
+              onChange={(df) => {
+                setDateFilter(df);
+                setPage(1);
+              }}
+            />
             <select
               value={status}
               onChange={(e) => {
                 setStatus(e.target.value);
                 setPage(1);
               }}
-              className={`${statusInputCls} w-44`}
+              className={`${statusInputCls} w-36`}
             >
               <option value="">All Status</option>
               <option value="UNDER_REVIEW">Under Review</option>
@@ -159,16 +171,17 @@ export default function NotReceivedPage() {
               <option value="RESOLVED">Resolved</option>
               <option value="REFUNDED">Refunded</option>
             </select>
-            {(q || status) && (
+            {(q || status || dateFilter.mode !== "today") && (
               <button
                 onClick={() => {
                   setQ("");
                   setStatus("");
+                  setDateFilter(getAllTimeRange());
                   setPage(1);
                 }}
-                className="h-9 rounded-lg bg-slate-500/10 px-3 text-xs font-bold text-slate-500 transition hover:bg-slate-500/20 dark:text-slate-400"
+                className="h-9 rounded-lg bg-slate-500/10 px-3 text-xs font-bold text-slate-500 transition hover:bg-slate-500/20 dark:text-slate-400 cursor-pointer"
               >
-                Clear
+                Reset
               </button>
             )}
           </div>
@@ -179,11 +192,31 @@ export default function NotReceivedPage() {
             <Spinner className="h-6 w-6 text-brand-600" />
           </div>
         ) : myReports.length === 0 ? (
-          <EmptyState
-            icon={FileWarning}
-            title="No reports yet"
-            description="Reports you submit from a completed order will appear here."
-          />
+          dateFilter.mode !== "all" ? (
+            <EmptyState
+              icon={FileWarning}
+              title={`No reports found for ${dateFilter.label}`}
+              description="No delivery reports were filed on this date. You can select another date from the calendar or view all time."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setDateFilter(getAllTimeRange());
+                    setPage(1);
+                  }}
+                >
+                  View All Time Reports
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={FileWarning}
+              title="No reports yet"
+              description="Reports you submit from a completed order will appear here."
+            />
+          )
         ) : (
           <ul className="divide-y divide-slate-100 dark:divide-white/5">
             {myReports.map((r) => (

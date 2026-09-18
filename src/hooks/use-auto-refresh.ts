@@ -20,6 +20,8 @@ export interface UseAutoRefreshOptions {
 export interface UseAutoRefreshReturn {
   /** Seconds remaining until the next automatic refresh. */
   secondsRemaining: number;
+  /** Whether a refresh is currently executing. */
+  isRefreshing: boolean;
   /** Whether auto-refresh is currently paused (by user, tab hidden, or offline). */
   isPaused: boolean;
   /** True if the user manually toggled pause. */
@@ -48,18 +50,52 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
     pauseOnOffline = true,
   } = options;
 
-  const [intervalSeconds, setIntervalSeconds] = React.useState(initialInterval);
+  const [intervalSeconds, setIntervalSecondsState] = React.useState(initialInterval);
   const [isManuallyPaused, setManuallyPaused] = React.useState(false);
-  const [secondsRemaining, setSecondsRemaining] = React.useState(intervalSeconds);
+  const [secondsRemaining, setSecondsRemaining] = React.useState(initialInterval);
   const [lastRefreshedAt, setLastRefreshedAt] = React.useState<Date | null>(null);
   const [isTabVisible, setIsTabVisible] = React.useState(true);
   const [isOnline, setIsOnline] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
 
   // Keep latest onRefresh ref to prevent timer re-creations
   const onRefreshRef = React.useRef(onRefresh);
   React.useEffect(() => {
     onRefreshRef.current = onRefresh;
   }, [onRefresh]);
+
+  // Synchronize interval state when initial prop changes
+  React.useEffect(() => {
+    setIntervalSecondsState(initialInterval);
+    setSecondsRemaining(initialInterval);
+  }, [initialInterval]);
+
+  const setIntervalSeconds = React.useCallback((seconds: number) => {
+    setIntervalSecondsState(seconds);
+    setSecondsRemaining(seconds);
+  }, []);
+
+  const isPaused =
+    !enabled ||
+    intervalSeconds <= 0 ||
+    isManuallyPaused ||
+    (pauseOnHidden && !isTabVisible) ||
+    (pauseOnOffline && !isOnline);
+
+  const triggerRefresh = React.useCallback(async () => {
+    setIsRefreshing(true);
+    setSecondsRemaining(intervalSeconds);
+    try {
+      await Promise.resolve(onRefreshRef.current());
+      setLastRefreshedAt(new Date());
+    } catch (err) {
+      console.error("Auto-refresh error:", err);
+    } finally {
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 600);
+    }
+  }, [intervalSeconds]);
 
   // Track visibility state
   React.useEffect(() => {
@@ -70,14 +106,13 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
       setIsTabVisible(visible);
 
       if (visible && refreshOnVisible && !isManuallyPaused && enabled && intervalSeconds > 0) {
-        // If user returns to tab after interval has elapsed, trigger immediate refresh
-        triggerRefresh();
+        void triggerRefresh();
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [pauseOnHidden, refreshOnVisible, isManuallyPaused, enabled, intervalSeconds]);
+  }, [pauseOnHidden, refreshOnVisible, isManuallyPaused, enabled, intervalSeconds, triggerRefresh]);
 
   // Track online status
   React.useEffect(() => {
@@ -94,29 +129,6 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
     };
   }, [pauseOnOffline]);
 
-  // Synchronize interval state when initial prop changes
-  React.useEffect(() => {
-    setIntervalSeconds(initialInterval);
-    setSecondsRemaining(initialInterval);
-  }, [initialInterval]);
-
-  const isPaused =
-    !enabled ||
-    intervalSeconds <= 0 ||
-    isManuallyPaused ||
-    (pauseOnHidden && !isTabVisible) ||
-    (pauseOnOffline && !isOnline);
-
-  const triggerRefresh = React.useCallback(() => {
-    setSecondsRemaining(intervalSeconds);
-    setLastRefreshedAt(new Date());
-    try {
-      void onRefreshRef.current();
-    } catch (err) {
-      console.error("Auto-refresh error:", err);
-    }
-  }, [intervalSeconds]);
-
   const togglePause = React.useCallback(() => {
     setManuallyPaused((prev) => !prev);
   }, []);
@@ -128,24 +140,25 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
     const timer = setInterval(() => {
       setSecondsRemaining((prev) => {
         if (prev <= 1) {
-          // Time expired -> trigger refresh
-          setLastRefreshedAt(new Date());
-          try {
-            void onRefreshRef.current();
-          } catch (err) {
-            console.error("Auto-refresh error:", err);
-          }
-          return intervalSeconds;
+          return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPaused, intervalSeconds]);
+  }, [isPaused]);
+
+  // Trigger refresh when timer reaches 0
+  React.useEffect(() => {
+    if (secondsRemaining === 0 && !isPaused && !isRefreshing) {
+      void triggerRefresh();
+    }
+  }, [secondsRemaining, isPaused, isRefreshing, triggerRefresh]);
 
   return {
     secondsRemaining,
+    isRefreshing,
     isPaused,
     isManuallyPaused,
     togglePause,

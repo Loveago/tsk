@@ -39,14 +39,18 @@ export function DashboardAutoRefresh() {
       .catch(() => {});
   }, []);
 
-  const handleRefresh = React.useCallback(() => {
-    startTransition(() => {
-      router.refresh();
+  const handleRefresh = React.useCallback(async () => {
+    return new Promise<void>((resolve) => {
+      startTransition(() => {
+        router.refresh();
+        resolve();
+      });
     });
   }, [router]);
 
   const {
     secondsRemaining,
+    isRefreshing,
     isPaused,
     isManuallyPaused,
     togglePause,
@@ -69,6 +73,8 @@ export function DashboardAutoRefresh() {
     } catch {}
   };
 
+  const isSpinning = isPending || isRefreshing;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {/* Interval Selector Pill Dropdown / Selector */}
@@ -88,9 +94,19 @@ export function DashboardAutoRefresh() {
       </div>
 
       {/* Status & Countdown indicator */}
-      <div className="hidden sm:flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500 min-w-[70px]">
+      <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+        {lastRefreshedAt && (
+          <span className="text-slate-400 dark:text-slate-500 font-normal">
+            Updated {lastRefreshedAt.toLocaleTimeString()}
+          </span>
+        )}
         {intervalSeconds > 0 && (
-          isPaused ? (
+          isSpinning ? (
+            <span className="flex items-center gap-1 text-brand-600 dark:text-brand-400 font-medium">
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              Updating...
+            </span>
+          ) : isPaused ? (
             <span className="flex items-center gap-1 text-amber-500 font-medium">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
               Paused
@@ -126,11 +142,11 @@ export function DashboardAutoRefresh() {
         size="sm"
         variant="outline"
         onClick={() => triggerRefresh()}
-        disabled={isPending}
+        disabled={isSpinning}
         className="gap-1.5"
         title={lastRefreshedAt ? `Last updated: ${lastRefreshedAt.toLocaleTimeString()}` : "Refresh now"}
       >
-        <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin text-brand-600 dark:text-brand-400")} />
+        <RefreshCw className={cn("h-3.5 w-3.5", isSpinning && "animate-spin text-brand-600 dark:text-brand-400")} />
         <span>Refresh</span>
       </Button>
     </div>

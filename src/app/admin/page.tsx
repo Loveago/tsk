@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import { getOrderStats, isOrderProcessingHalted } from "@/lib/orders";
 import { formatGHS, formatDateTime } from "@/lib/types";

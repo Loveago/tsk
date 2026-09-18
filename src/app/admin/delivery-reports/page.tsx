@@ -11,6 +11,7 @@ import { formatDateTime, formatGHS } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
 import { FileWarning, Image as ImageIcon, RefreshCw, Pause, Play, Clock } from "lucide-react";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
+import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 
 const TABS = [
   { key: "", label: "All" },
@@ -56,6 +57,7 @@ export default function DeliveryReportsPage() {
   const [page, setPage] = React.useState(1);
   const [status, setStatus] = React.useState("");
   const [q, setQ] = React.useState("");
+  const [dateFilter, setDateFilter] = React.useState<DateFilterValue>(getTodayRange());
   const [loading, setLoading] = React.useState(true);
   const [manageId, setManageId] = React.useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null);
@@ -77,8 +79,12 @@ export default function DeliveryReportsPage() {
     const params = new URLSearchParams({ page: String(page), pageSize: "15" });
     if (status) params.set("status", status);
     if (q) params.set("q", q);
+    if (dateFilter.from) params.set("from", dateFilter.from);
+    if (dateFilter.to) params.set("to", dateFilter.to);
     try {
-      const res = await fetch(`/api/admin/delivery-reports?${params}`);
+      const res = await fetch(`/api/admin/delivery-reports?${params}`, {
+        cache: "no-store",
+      });
       const json = await res.json();
       if (res.ok) {
         setRows(json.data ?? []);
@@ -90,7 +96,7 @@ export default function DeliveryReportsPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, status, q]);
+  }, [page, status, q, dateFilter]);
 
   React.useEffect(() => {
     const t = setTimeout(() => { void load(false); }, 250);
@@ -100,11 +106,13 @@ export default function DeliveryReportsPage() {
   // Efficient Auto-refresh with tab visibility awareness & silent background refresh
   const {
     secondsRemaining,
+    isRefreshing,
     isPaused,
     isManuallyPaused,
     togglePause,
     triggerRefresh,
     intervalSeconds,
+    lastRefreshedAt,
   } = useAutoRefresh({
     intervalSeconds: refreshInterval,
     onRefresh: () => load(true),
@@ -114,6 +122,8 @@ export default function DeliveryReportsPage() {
     pauseOnOffline: true,
   });
 
+  const displayTime = lastRefreshed || lastRefreshedAt;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -121,9 +131,19 @@ export default function DeliveryReportsPage() {
         description={`${total} report${total === 1 ? "" : "s"} filed by customers`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {displayTime && (
+              <span className="hidden text-xs text-slate-400 dark:text-slate-500 md:inline">
+                Updated {displayTime.toLocaleTimeString()}
+              </span>
+            )}
             {intervalSeconds > 0 && (
               <span className="hidden text-xs text-slate-400 dark:text-slate-500 sm:flex items-center gap-1 font-mono min-w-[50px]">
-                {isPaused ? (
+                {isRefreshing ? (
+                  <span className="flex items-center gap-1 text-brand-600 dark:text-brand-400 font-medium">
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    Updating...
+                  </span>
+                ) : isPaused ? (
                   <span className="text-amber-500 font-medium">Paused</span>
                 ) : (
                   <>
@@ -148,13 +168,12 @@ export default function DeliveryReportsPage() {
               variant="outline"
               onClick={() => {
                 triggerRefresh();
-                void load(false);
               }}
-              disabled={loading}
+              disabled={loading || isRefreshing}
               className="gap-1.5"
-              title={lastRefreshed ? `Last updated: ${lastRefreshed.toLocaleTimeString()}` : "Refresh"}
+              title={displayTime ? `Last updated: ${displayTime.toLocaleTimeString()}` : "Refresh"}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${loading || isRefreshing ? "animate-spin" : ""}`} />
               Refresh
             </Button>
           </div>
@@ -176,15 +195,24 @@ export default function DeliveryReportsPage() {
             }}
           />
         </div>
-        <input
-          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 placeholder:text-slate-400 lg:w-64 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400"
-          placeholder="Search phone, user, order code…"
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(1);
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <OrderDateFilter
+            value={dateFilter}
+            onChange={(df) => {
+              setDateFilter(df);
+              setPage(1);
+            }}
+          />
+          <input
+            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 placeholder:text-slate-400 sm:w-64 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400"
+            placeholder="Search phone, user, order code…"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
       </div>
 
       <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -193,11 +221,31 @@ export default function DeliveryReportsPage() {
             <Spinner className="h-6 w-6 text-brand-600" />
           </div>
         ) : rows.length === 0 ? (
-          <EmptyState
-            icon={FileWarning}
-            title="No reports"
-            description="Customer-filed reports will appear here."
-          />
+          dateFilter.mode !== "all" ? (
+            <EmptyState
+              icon={FileWarning}
+              title={`No reports found for ${dateFilter.label}`}
+              description="No delivery reports were filed on this date. You can select another date from the calendar or view all time."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setDateFilter(getAllTimeRange());
+                    setPage(1);
+                  }}
+                >
+                  View All Time Reports
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={FileWarning}
+              title="No reports"
+              description="Customer-filed reports will appear here."
+            />
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

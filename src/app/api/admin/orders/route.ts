@@ -17,11 +17,19 @@ export async function GET(request: NextRequest) {
     const network = searchParams.get("network");
     const q = searchParams.get("q");
     const source = searchParams.get("source"); // WEB | API | STOREFRONT
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
 
     const where: Record<string, unknown> = {};
     if (status) where.status = normalizeOrderStatus(status);
     if (network) where.network = network;
     if (source) where.source = source;
+    if (from || to) {
+      const createdAt: Record<string, Date> = {};
+      if (from) createdAt.gte = new Date(from);
+      if (to) createdAt.lte = new Date(to);
+      where.createdAt = createdAt;
+    }
     if (q) {
       where.OR = [
         { phoneNumber: { contains: q } },
