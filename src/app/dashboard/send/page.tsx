@@ -399,6 +399,9 @@ export default function SendOrderPage() {
       setLines([]);
       setFileName(null);
       toast("Orders sent!", "success");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("balance-update"));
+      }
     } finally {
       setSubmitting(false);
     }

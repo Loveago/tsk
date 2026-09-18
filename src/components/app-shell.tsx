@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Lock, LogOut, MessageCircle, Signal } from "lucide-react";
+import { Lock, LogOut, MessageCircle, Signal, Wallet, Plus } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { useToast } from "@/components/toast";
 import {
@@ -16,7 +16,7 @@ import {
   type NavItem,
   type ExtraNavItem,
 } from "@/components/app-nav";
-import type { AuthUser } from "@/lib/types";
+import { formatGHS, type AuthUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SystemChatWidget } from "@/components/chat/system-chat-widget";
 
@@ -182,6 +182,47 @@ export function AppShell({
     ].filter(Boolean) as NavItem[];
   }
   const pathname = usePathname();
+  const [balance, setBalance] = React.useState<number>(user.balance ?? 0);
+
+  React.useEffect(() => {
+    setBalance(user.balance ?? 0);
+  }, [user.balance]);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    const refreshBalance = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && data.user && typeof data.user.balance === "number") {
+            setBalance(data.user.balance);
+          }
+        }
+      } catch {}
+    };
+
+    refreshBalance();
+
+    const handleCustomUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ balance?: number }>;
+      if (customEvent.detail && typeof customEvent.detail.balance === "number") {
+        setBalance(customEvent.detail.balance);
+      } else {
+        refreshBalance();
+      }
+    };
+
+    window.addEventListener("balance-update", handleCustomUpdate);
+    window.addEventListener("focus", refreshBalance);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("balance-update", handleCustomUpdate);
+      window.removeEventListener("focus", refreshBalance);
+    };
+  }, [pathname]);
+
   let adminItems = adminNav;
   if (admin && user.role === "SECRETARY" && allowedNavHrefs && allowedNavHrefs.length > 0) {
     adminItems = adminNav.filter((i) => allowedNavHrefs.includes(i.href) || i.href === "/admin");
@@ -246,6 +287,32 @@ export function AppShell({
             <ThemeToggle />
           </div>
 
+          {/* Desktop Available Balance & Subtle Top Up (User Dashboard) */}
+          {!admin && (
+            <div className="hidden sm:flex items-center gap-2 rounded-full border border-slate-200/80 bg-slate-100/80 pl-2.5 pr-1.5 py-1 text-xs dark:border-white/10 dark:bg-white/5">
+              <Link
+                href="/dashboard/billing"
+                className="flex items-center gap-1.5 transition-colors hover:text-brand-600 dark:hover:text-brand-400"
+                title="View wallet & billing"
+              >
+                <Wallet className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Balance:</span>
+                <span className="font-bold text-slate-900 dark:text-white tabular-nums">
+                  {formatGHS(balance)}
+                </span>
+              </Link>
+              <div className="h-3.5 w-px bg-slate-200 dark:bg-white/10" />
+              <Link
+                href="/dashboard/billing"
+                className="inline-flex items-center gap-1 rounded-full border border-brand-500/20 bg-brand-500/10 px-2.5 py-0.5 text-[11px] font-bold text-brand-600 transition hover:bg-brand-500/20 active:scale-95 dark:border-brand-400/30 dark:bg-brand-500/15 dark:text-brand-300 dark:hover:bg-brand-500/25"
+                title="Top up wallet balance"
+              >
+                <Plus className="h-3 w-3 stroke-[2.5]" />
+                <span>Top up</span>
+              </Link>
+            </div>
+          )}
+
           <Link
             href={admin ? "/admin/settings" : "/dashboard/profile"}
             title={admin ? "Account settings" : "My profile"}
@@ -265,17 +332,17 @@ export function AppShell({
         </div>
       </div>
 
-      {/* Mobile: user pill row + page select */}
+      {/* Mobile: user pill row + balance card + page select */}
       <div className="mx-auto w-full max-w-[1440px] px-4 pt-3 sm:hidden">
         <div className="flex items-center gap-2">
           <Link
             href={admin ? "/admin/settings" : "/dashboard/profile"}
             title={admin ? "Account settings" : "My profile"}
-            className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-1.5 shadow-sm transition-shadow hover:ring-2 hover:ring-brand-500/30 dark:border-white/10 dark:bg-white/5"
+            className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-2 shadow-xs transition-shadow hover:ring-2 hover:ring-brand-500/30 dark:border-white/10 dark:bg-white/5"
           >
-            <Avatar user={user} className="h-7 w-7" />
+            <Avatar user={user} className="h-7 w-7 shrink-0" />
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">{user.name}</span>
-            <RoleBadge role={user.role} className="mr-1.5" />
+            <RoleBadge role={user.role} className="mr-1 shrink-0" />
           </Link>
 
           {isStaffRole && (
@@ -292,11 +359,43 @@ export function AppShell({
           <button
             onClick={onLogout}
             aria-label="Sign out"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:text-red-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-xs transition-colors hover:text-red-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
           >
             <LogOut className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Mobile Balance & Top-up bar */}
+        {!admin && (
+          <div className="mt-2 flex items-center justify-between rounded-xl border border-slate-200/80 bg-white/90 px-3.5 py-2 shadow-xs backdrop-blur dark:border-white/10 dark:bg-[#0f172a]/90">
+            <Link
+              href="/dashboard/billing"
+              className="flex min-w-0 items-center gap-2.5 transition hover:opacity-80"
+              title="View wallet & billing"
+            >
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:bg-brand-400/15 dark:text-brand-300">
+                <Wallet className="h-3.5 w-3.5" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Available Balance
+                </div>
+                <div className="truncate text-sm font-bold text-slate-900 dark:text-white tabular-nums">
+                  {formatGHS(balance)}
+                </div>
+              </div>
+            </Link>
+
+            <Link
+              href="/dashboard/billing"
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-brand-500/20 bg-brand-500/10 px-2.5 text-xs font-semibold text-brand-600 transition active:scale-95 hover:bg-brand-500/20 dark:border-brand-400/30 dark:bg-brand-500/15 dark:text-brand-300"
+              title="Top up wallet"
+            >
+              <Plus className="h-3 w-3 stroke-[2.5]" />
+              <span>Top up</span>
+            </Link>
+          </div>
+        )}
         <MobileSelectNav
           items={items}
           isAdminRole={user.role === "ADMIN" || user.role === "MANAGER"}

@@ -105,6 +105,11 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
 
       setClaimResult(json.claim);
       toast("Payment verified and credited!", "success");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("balance-update", { detail: { balance: json.claim?.newBalance } })
+        );
+      }
       onSuccess();
     } catch {
       setErrorMessage("An unexpected error occurred while claiming. Please try again.");
