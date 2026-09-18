@@ -295,46 +295,64 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="My Sent Orders"
         description="View your order batches or search individual phone numbers directly"
-        actions={
-          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
-            <button
-              type="button"
-              onClick={() => {
-                setViewMode("batches");
-                setPage(1);
-              }}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
-                viewMode === "batches"
-                  ? "bg-brand-600 text-white shadow-sm"
-                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-              }`}
-            >
-              <Layers className="h-3.5 w-3.5" />
-              <span>Batches</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setViewMode("single");
-                setPage(1);
-              }}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
-                viewMode === "single"
-                  ? "bg-brand-600 text-white shadow-sm"
-                  : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-              }`}
-            >
-              <Search className="h-3.5 w-3.5" />
-              <span>Single Orders</span>
-            </button>
-          </div>
-        }
       />
 
+      {/* View mode toggle + Search — compact on mobile */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-2">
+        {/* View mode toggle */}
+        <div className="flex items-center gap-1 self-start rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("batches");
+              setPage(1);
+            }}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
+              viewMode === "batches"
+                ? "bg-brand-600 text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+            }`}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            <span>Batches</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("single");
+              setPage(1);
+            }}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
+              viewMode === "single"
+                ? "bg-brand-600 text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+            }`}
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span>Single Orders</span>
+          </button>
+        </div>
+
+        {/* Search box — full width on mobile */}
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+          <input
+            className={selectCls + " w-full pl-8"}
+            placeholder="Search phone, batch, or ID…"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Filter chips row */}
       <div className="flex flex-wrap items-center gap-1.5">
         {["", ...NETWORKS].map((n) => (
           <button
@@ -353,7 +371,7 @@ export default function OrdersPage() {
             {n || "All networks"}
           </button>
         ))}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
           <OrderDateFilter
             value={dateFilter}
             onChange={(df) => {
@@ -376,18 +394,6 @@ export default function OrdersPage() {
               </option>
             ))}
           </select>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              className={selectCls + " w-52 pl-8"}
-              placeholder="Search phone, batch, or ID…"
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
         </div>
       </div>
 
@@ -396,7 +402,7 @@ export default function OrdersPage() {
           <Spinner className="h-6 w-6 text-brand-600" />
         </div>
       ) : viewMode === "single" ? (
-        /* Single Orders View Table */
+        /* ── Single Orders View ── */
         singleOrders.length === 0 ? (
           <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
             <EmptyState
@@ -424,98 +430,175 @@ export default function OrdersPage() {
             />
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-left text-sm">
-                <thead className="border-b border-slate-200/80 bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-white/5 dark:text-slate-400">
-                  <tr>
-                    <th className="px-5 py-3.5">Order</th>
-                    <th className="px-4 py-3.5">Phone Number</th>
-                    <th className="px-4 py-3.5">Network</th>
-                    <th className="px-4 py-3.5">Bundle</th>
-                    <th className="px-4 py-3.5">Amount</th>
-                    <th className="px-4 py-3.5">Status</th>
-                    <th className="px-4 py-3.5">Delivered At</th>
-                    <th className="px-4 py-3.5">Batch</th>
-                    <th className="px-5 py-3.5 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                  {singleOrders.map((o) => (
-                    <tr key={o.id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-white/[0.03]">
-                      <td className="px-5 py-3.5">
-                        <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
-                          {orderCode(o.id)}
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-400">{formatDateTime(o.createdAt)}</p>
-                      </td>
-                      <td className="px-4 py-3.5 font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">
+          <>
+            {/* Mobile card list */}
+            <div className="flex flex-col gap-3 sm:hidden">
+              {singleOrders.map((o) => (
+                <div
+                  key={o.id}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs dark:border-white/10 dark:bg-[#0d1526]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                        {orderCode(o.id)}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-400">{formatDateTime(o.createdAt)}</p>
+                    </div>
+                    <StatusBadge status={o.status} />
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-400">Phone</span>
+                      <p className="font-mono font-semibold text-slate-900 dark:text-slate-100 truncate">
                         {o.phoneNumber}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Network</span>
+                      <p>
+                        <span className="inline-flex rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
                           {o.network}
                         </span>
-                      </td>
-                      <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
-                        {o.gbAmount} GB
-                      </td>
-                      <td className="px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
-                        {formatGHS(o.amount)}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <StatusBadge status={o.status} />
-                        {o.failureReason && (
-                          <p
-                            className="mt-1 max-w-[170px] truncate text-[11px] text-red-500"
-                            title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
-                          >
-                            {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-xs whitespace-nowrap">
-                        {o.status === "SUCCESS" || o.status === "COMPLETED" ? (
-                          <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            {formatDateTime(o.completedAt ?? o.updatedAt ?? o.createdAt)}
-                          </span>
-                        ) : o.status === "PROCESSING" ? (
-                          <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400">In progress…</span>
-                        ) : o.status === "FAILED" ? (
-                          <span className="text-[11px] font-medium text-red-500 dark:text-red-400">Failed</span>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {o.batch ? (
-                          <button
-                            type="button"
-                            onClick={() => openDetail(o.batch!.id)}
-                            className="font-mono text-xs font-medium text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
-                            title="View batch containing this order"
-                          >
-                            {o.batch.batchCode}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          {renderReportButton(o)}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Bundle</span>
+                      <p className="font-medium text-slate-800 dark:text-slate-200">{o.gbAmount} GB</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Amount</span>
+                      <p className="font-bold text-slate-900 dark:text-white">{formatGHS(o.amount)}</p>
+                    </div>
+                  </div>
+
+                  {o.failureReason && (
+                    <p
+                      className="mt-2 truncate text-[11px] text-red-500"
+                      title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
+                    >
+                      {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
+                    </p>
+                  )}
+
+                  {(o.status === "SUCCESS" || o.status === "COMPLETED") && (
+                    <p className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                      Delivered: {formatDateTime(o.completedAt ?? o.updatedAt ?? o.createdAt)}
+                    </p>
+                  )}
+
+                  {o.batch && (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Batch:{" "}
+                      <button
+                        type="button"
+                        onClick={() => openDetail(o.batch!.id)}
+                        className="font-mono font-medium text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+                      >
+                        {o.batch.batchCode}
+                      </button>
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex justify-end">{renderReportButton(o)}</div>
+                </div>
+              ))}
             </div>
-          </div>
+
+            {/* Desktop table */}
+            <div className="hidden overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d1526] sm:block">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px] text-left text-sm">
+                  <thead className="border-b border-slate-200/80 bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-white/5 dark:text-slate-400">
+                    <tr>
+                      <th className="px-5 py-3.5">Order</th>
+                      <th className="px-4 py-3.5">Phone Number</th>
+                      <th className="px-4 py-3.5">Network</th>
+                      <th className="px-4 py-3.5">Bundle</th>
+                      <th className="px-4 py-3.5">Amount</th>
+                      <th className="px-4 py-3.5">Status</th>
+                      <th className="px-4 py-3.5">Delivered At</th>
+                      <th className="px-4 py-3.5">Batch</th>
+                      <th className="px-5 py-3.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {singleOrders.map((o) => (
+                      <tr key={o.id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-white/[0.03]">
+                        <td className="px-5 py-3.5">
+                          <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                            {orderCode(o.id)}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-400">{formatDateTime(o.createdAt)}</p>
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {o.phoneNumber}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                            {o.network}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                          {o.gbAmount} GB
+                        </td>
+                        <td className="px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
+                          {formatGHS(o.amount)}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <StatusBadge status={o.status} />
+                          {o.failureReason && (
+                            <p
+                              className="mt-1 max-w-[170px] truncate text-[11px] text-red-500"
+                              title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
+                            >
+                              {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 text-xs whitespace-nowrap">
+                          {o.status === "SUCCESS" || o.status === "COMPLETED" ? (
+                            <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                              {formatDateTime(o.completedAt ?? o.updatedAt ?? o.createdAt)}
+                            </span>
+                          ) : o.status === "PROCESSING" ? (
+                            <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400">In progress…</span>
+                          ) : o.status === "FAILED" ? (
+                            <span className="text-[11px] font-medium text-red-500 dark:text-red-400">Failed</span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {o.batch ? (
+                            <button
+                              type="button"
+                              onClick={() => openDetail(o.batch!.id)}
+                              className="font-mono text-xs font-medium text-brand-600 underline-offset-2 hover:underline dark:text-brand-400"
+                              title="View batch containing this order"
+                            >
+                              {o.batch.batchCode}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex justify-end gap-1.5">{renderReportButton(o)}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
         )
       ) : rows.length === 0 ? (
-        /* Batches View Empty State */
+        /* ── Batches Empty State ── */
         <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
           {dateFilter.mode !== "all" ? (
             <EmptyState
@@ -544,87 +627,150 @@ export default function OrdersPage() {
           )}
         </div>
       ) : (
-        /* Batches View Table */
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="border-b border-slate-200/80 bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-white/5 dark:text-slate-400">
-                <tr>
-                  <th className="px-5 py-3.5">Batch Code</th>
-                  <th className="px-4 py-3.5">Network</th>
-                  <th className="px-4 py-3.5">Recipients</th>
-                  <th className="px-4 py-3.5">Total GB</th>
-                  <th className="px-4 py-3.5">Total Value</th>
-                  <th className="px-4 py-3.5">Progress</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                {rows.map((b) => (
-                  <tr
-                    key={b.id}
-                    onClick={() => openDetail(b.id)}
-                    className="cursor-pointer transition-colors hover:bg-slate-50/80 dark:hover:bg-white/[0.03]"
-                  >
-                    <td className="px-5 py-3.5">
-                      <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
-                        {b.batchCode}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-400">Sent: {formatDateTime(b.createdAt)}</p>
-                      {(b.status === "COMPLETED" || b.completedAt) && (
-                        <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                          <CheckCircle2 className="h-3 w-3 shrink-0" />
-                          Delivered: {formatDateTime(b.completedAt ?? b.updatedAt ?? b.createdAt)}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
-                        {b.network}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+        /* ── Batches View ── */
+        <>
+          {/* Mobile card list */}
+          <div className="flex flex-col gap-3 sm:hidden">
+            {rows.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => openDetail(b.id)}
+                className="w-full rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-xs transition active:scale-[0.99] hover:border-brand-300/60 dark:border-white/10 dark:bg-[#0d1526] dark:hover:border-brand-500/30"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">{b.batchCode}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-400">Sent: {formatDateTime(b.createdAt)}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <BatchStatusBadge status={b.status} />
+                    <span className="inline-flex rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                      {b.network}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <span className="text-slate-400">Recipients</span>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">
                       {b.stats.total || b.totalRecipients}
-                    </td>
-                    <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
-                      {b.totalGb} GB
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
-                      {formatGHS(b.totalAmount)}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex w-32 items-center gap-2">
-                        <ProgressBar value={b.stats.completed + b.stats.cancelled} total={b.stats.total} />
-                        <span className="text-xs font-semibold text-slate-500">{b.progress}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <BatchStatusBadge status={b.status} />
-                      {(b.status === "COMPLETED" || b.completedAt) && (
-                        <span className="mt-1 block text-[11px] text-slate-400">
-                          {formatDateTime(b.completedAt ?? b.updatedAt ?? b.createdAt)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openDetail(b.id);
-                        }}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-brand-500/40 dark:hover:text-brand-400"
-                      >
-                        Details <ChevronRight className="h-3 w-3" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Total GB</span>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{b.totalGb} GB</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Value</span>
+                    <p className="font-bold text-slate-900 dark:text-white">{formatGHS(b.totalAmount)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <div className="flex items-center gap-2">
+                    <ProgressBar value={b.stats.completed + b.stats.cancelled} total={b.stats.total} />
+                    <span className="text-xs font-semibold text-slate-500">{b.progress}%</span>
+                  </div>
+                </div>
+
+                {(b.status === "COMPLETED" || b.completedAt) && (
+                  <p className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    Delivered: {formatDateTime(b.completedAt ?? b.updatedAt ?? b.createdAt)}
+                  </p>
+                )}
+
+                <div className="mt-2.5 flex items-center justify-end gap-1 text-[11px] font-medium text-brand-600 dark:text-brand-400">
+                  View details <ChevronRight className="h-3 w-3" />
+                </div>
+              </button>
+            ))}
           </div>
-        </div>
+
+          {/* Desktop table */}
+          <div className="hidden overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d1526] sm:block">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="border-b border-slate-200/80 bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-white/5 dark:text-slate-400">
+                  <tr>
+                    <th className="px-5 py-3.5">Batch Code</th>
+                    <th className="px-4 py-3.5">Network</th>
+                    <th className="px-4 py-3.5">Recipients</th>
+                    <th className="px-4 py-3.5">Total GB</th>
+                    <th className="px-4 py-3.5">Total Value</th>
+                    <th className="px-4 py-3.5">Progress</th>
+                    <th className="px-4 py-3.5">Status</th>
+                    <th className="px-5 py-3.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {rows.map((b) => (
+                    <tr
+                      key={b.id}
+                      onClick={() => openDetail(b.id)}
+                      className="cursor-pointer transition-colors hover:bg-slate-50/80 dark:hover:bg-white/[0.03]"
+                    >
+                      <td className="px-5 py-3.5">
+                        <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                          {b.batchCode}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-400">Sent: {formatDateTime(b.createdAt)}</p>
+                        {(b.status === "COMPLETED" || b.completedAt) && (
+                          <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3 w-3 shrink-0" />
+                            Delivered: {formatDateTime(b.completedAt ?? b.updatedAt ?? b.createdAt)}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                          {b.network}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                        {b.stats.total || b.totalRecipients}
+                      </td>
+                      <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                        {b.totalGb} GB
+                      </td>
+                      <td className="px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
+                        {formatGHS(b.totalAmount)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex w-32 items-center gap-2">
+                          <ProgressBar value={b.stats.completed + b.stats.cancelled} total={b.stats.total} />
+                          <span className="text-xs font-semibold text-slate-500">{b.progress}%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <BatchStatusBadge status={b.status} />
+                        {(b.status === "COMPLETED" || b.completedAt) && (
+                          <span className="mt-1 block text-[11px] text-slate-400">
+                            {formatDateTime(b.completedAt ?? b.updatedAt ?? b.createdAt)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDetail(b.id);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-brand-500/40 dark:hover:text-brand-400"
+                        >
+                          Details <ChevronRight className="h-3 w-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {pages > 1 && (

@@ -102,45 +102,50 @@ export default function BillingPage() {
         <StatCard title="Total Spending" value={formatGHS(summary.spend)} icon={ArrowUpRight} />
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex border-b border-slate-200 dark:border-white/10 text-sm font-medium gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("overview")}
-          className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
-            tab === "overview"
-              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
-              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          <Wallet className="h-4 w-4" /> Wallet &amp; Top-up
-        </button>
-        {sendClaimEnabled && (
-          <>
-            <button
-              type="button"
-              onClick={() => setTab("send-claim")}
-              className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
-                tab === "send-claim"
-                  ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
-                  : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              <Smartphone className="h-4 w-4" /> Send &amp; Claim
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("claim-history")}
-              className={`flex items-center gap-2 pb-3 px-3 transition-colors border-b-2 font-semibold ${
-                tab === "claim-history"
-                  ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
-                  : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              <History className="h-4 w-4" /> Claim History
-            </button>
-          </>
-        )}
+      {/* Tab Navigation — scrollable on mobile */}
+      <div className="overflow-x-auto">
+        <div className="flex min-w-max border-b border-slate-200 dark:border-white/10 text-sm font-medium gap-1">
+          <button
+            type="button"
+            onClick={() => setTab("overview")}
+            className={`flex items-center gap-1.5 whitespace-nowrap pb-3 px-3 transition-colors border-b-2 font-semibold ${
+              tab === "overview"
+                ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            <Wallet className="h-3.5 w-3.5 shrink-0" />
+            <span>Wallet & Top-up</span>
+          </button>
+          {sendClaimEnabled && (
+            <>
+              <button
+                type="button"
+                onClick={() => setTab("send-claim")}
+                className={`flex items-center gap-1.5 whitespace-nowrap pb-3 px-3 transition-colors border-b-2 font-semibold ${
+                  tab === "send-claim"
+                    ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                <Smartphone className="h-3.5 w-3.5 shrink-0" />
+                <span>Send & Claim</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("claim-history")}
+                className={`flex items-center gap-1.5 whitespace-nowrap pb-3 px-3 transition-colors border-b-2 font-semibold ${
+                  tab === "claim-history"
+                    ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                <History className="h-3.5 w-3.5 shrink-0" />
+                <span>Claim History</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Tab 1: Overview & Instant Top-up */}
@@ -166,7 +171,7 @@ export default function BillingPage() {
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-white/5">
                 {data.map((t) => (
-                  <div key={t.id} className="flex items-center gap-3 px-5 py-3 text-sm">
+                  <div key={t.id} className="flex items-start gap-3 px-4 py-3 text-sm sm:items-center sm:px-5">
                     <span
                       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
                         t.type === "TOPUP"
@@ -188,7 +193,7 @@ export default function BillingPage() {
                         {t.note ? ` · ${t.note}` : ""}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="shrink-0 text-right">
                       <p className="font-semibold">{formatGHS(t.amount)}</p>
                       {txBadge(t.status)}
                     </div>
