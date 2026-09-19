@@ -84,6 +84,64 @@ export function withdrawalCode(seq: number): string {
   return `CF-WD-${String(seq).padStart(5, "0")}`;
 }
 
+/**
+ * Generates a clean guest buyer email for Paystack transactions, e.g.:
+ * guest1234@tskdatastore.com
+ * Prevents exposing store owner or admin personal email on public checkouts.
+ */
+export function generateGuestEmail(domain: string): string {
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  return `guest${randomNum}@${domain}`;
+}
+
+/**
+ * Resolves the storefront domain from incoming request headers or configured environment,
+ * stripping port and 'www.' prefixes, with fallback to STOREFRONT_DOMAIN.
+ */
+export function resolveStorefrontDomain(
+  requestHeaders?: Headers | { get(name: string): string | null }
+): string {
+  const configuredDomain = (
+    process.env.STOREFRONT_DOMAIN ||
+    process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN ||
+    "tskdatastore.com"
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+  const mainDomain = (
+    process.env.MAIN_DOMAIN ||
+    process.env.NEXT_PUBLIC_MAIN_DOMAIN ||
+    "tsk05.net"
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+  if (!requestHeaders) return configuredDomain;
+
+  const forwardedHost = requestHeaders.get("x-forwarded-host");
+  const hostHeader = forwardedHost
+    ? forwardedHost.split(",")[0].trim()
+    : requestHeaders.get("host")?.split(",")[0].trim();
+
+  let requestHost = hostHeader ? hostHeader.split(":")[0].trim().toLowerCase() : "";
+  requestHost = requestHost.replace(/^www\./, "");
+
+  if (
+    !requestHost ||
+    requestHost === "localhost" ||
+    requestHost === "127.0.0.1" ||
+    requestHost.endsWith(".local") ||
+    requestHost === mainDomain
+  ) {
+    return configuredDomain;
+  }
+
+  return requestHost;
+}
+
 /** Reserved slugs that would collide with real routes (§5). */
 export const RESERVED_SLUGS = new Set([
   "api", "admin", "dashboard", "storefront", "store", "login", "register",

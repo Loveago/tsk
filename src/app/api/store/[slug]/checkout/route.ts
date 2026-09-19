@@ -10,6 +10,8 @@ import {
   nextStorefrontSeq,
   storefrontOrderCode,
   generateStorefrontOrderCode,
+  resolveStorefrontDomain,
+  generateGuestEmail,
 } from "@/lib/storefront";
 import { isPaystackConfigured, initializeTransaction } from "@/lib/paystack";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
@@ -110,16 +112,21 @@ export async function POST(
 
     try {
       const origin = getRequestOrigin(request);
-      const owner = await prisma.user.findUniqueOrThrow({
-        where: { id: storefront.userId },
-        select: { email: true },
-      });
+      const storefrontDomain = resolveStorefrontDomain(request.headers);
+      const guestEmail = generateGuestEmail(storefrontDomain);
+
       const authorization = await initializeTransaction({
-        email: owner.email, // buyer pays without an account
+        email: guestEmail, // Guest buyer checkout - does not leak admin/reseller email
         amountPesewas: sellingPrice,
         reference: paymentReference,
         callbackUrl: `${origin}/api/store/paystack/callback`,
-        metadata: { storefrontOrderId: row.id, slug, seq },
+        metadata: {
+          storefrontOrderId: row.id,
+          slug,
+          seq,
+          guestEmail,
+          customerPhone: input.customerPhone,
+        },
       });
       return NextResponse.json({
         reference: paymentReference,
