@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/toast";
 import { Spinner } from "@/components/shared";
+import { Copy, Check, Terminal, Smartphone, Key, Globe, ShieldCheck } from "lucide-react";
 
 interface Settings {
   id: string;
@@ -28,9 +29,18 @@ export function MomoSettingsCard() {
     if (typeof window !== "undefined") return window.location.origin;
     return "";
   });
+
   const [copiedWebhook, setCopiedWebhook] = React.useState(false);
   const [forwarderSecret, setForwarderSecret] = React.useState("tskconnect_forwarder_secret_2026");
   const [copiedSecret, setCopiedSecret] = React.useState(false);
+  const [copiedFullUrl, setCopiedFullUrl] = React.useState(false);
+  const [copiedHeader, setCopiedHeader] = React.useState(false);
+  const [copiedCustomHeader, setCopiedCustomHeader] = React.useState(false);
+  const [copiedCurl, setCopiedCurl] = React.useState(false);
+  const [copiedTemplate, setCopiedTemplate] = React.useState(false);
+
+  const [activeMethod, setActiveMethod] = React.useState<"query" | "bearer" | "header">("query");
+  const [activeApp, setActiveApp] = React.useState<"macrodroid" | "smsforwarder">("macrodroid");
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && !origin) {
@@ -41,6 +51,10 @@ export function MomoSettingsCard() {
   const webhookUrl =
     serverWebhookUrl ||
     (origin ? `${origin}/api/webhooks/momo/sms` : "/api/webhooks/momo/sms");
+
+  const fullUrlWithSecret = webhookUrl.includes("?")
+    ? `${webhookUrl}&secret=${forwarderSecret}`
+    : `${webhookUrl}?secret=${forwarderSecret}`;
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -96,6 +110,17 @@ export function MomoSettingsCard() {
     }
   };
 
+  const copyToClipboard = (text: string, setter: (val: boolean) => void, msg: string) => {
+    navigator.clipboard.writeText(text);
+    setter(true);
+    toast(msg, "success");
+    setTimeout(() => setter(false), 2000);
+  };
+
+  const curlTestCommand = `curl -X POST "${fullUrlWithSecret}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"message": "Payment received for GHS 10.00 from 0241234567. Transaction ID: TEST${Date.now()}."}'`;
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -108,6 +133,7 @@ export function MomoSettingsCard() {
 
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* Settings Form */}
       <form onSubmit={save} className="space-y-5 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
         <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-white/5">
           <div>
@@ -234,86 +260,256 @@ export function MomoSettingsCard() {
         </div>
       </form>
 
-      {/* SMS Forwarder Integration Guide */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
-        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-          SMS Forwarder Integration Details
-        </h4>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Configure your Android SMS Forwarder application to push Mobile Money transaction SMS messages to this endpoint.
-        </p>
+      {/* SMS Forwarder Integration Guide & Methods */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#0d1526] space-y-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+            <h4 className="text-base font-bold text-slate-900 dark:text-white">
+              SMS Forwarder Integration &amp; Methods
+            </h4>
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Configure your Android phone (with your MoMo SIM) to push incoming transaction SMS to your server. Choose whichever configuration method works best for your app:
+          </p>
+        </div>
 
-        <div className="mt-4 space-y-3 font-mono text-xs">
-          <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
+        {/* Method Selector Tabs */}
+        <div className="flex flex-wrap gap-2 border-b border-slate-100 pb-3 dark:border-white/5 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setActiveMethod("query")}
+            className={`rounded-lg px-3 py-1.5 transition-colors ${
+              activeMethod === "query"
+                ? "bg-brand-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+            }`}
+          >
+            Method 1: URL Query (Easiest — No Headers)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMethod("bearer")}
+            className={`rounded-lg px-3 py-1.5 transition-colors ${
+              activeMethod === "bearer"
+                ? "bg-brand-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+            }`}
+          >
+            Method 2: Authorization Header (Standard)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMethod("header")}
+            className={`rounded-lg px-3 py-1.5 transition-colors ${
+              activeMethod === "header"
+                ? "bg-brand-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+            }`}
+          >
+            Method 3: Custom Header (x-forwarder-secret)
+          </button>
+        </div>
+
+        {/* Method 1 Content */}
+        {activeMethod === "query" && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-4 dark:border-brand-500/20 dark:bg-brand-950/20 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-slate-500 block">Webhook URL:</span>
+              <div>
+                <span className="text-xs font-bold text-brand-900 dark:text-brand-200 uppercase tracking-wider">
+                  Recommended: URL Query Parameter
+                </span>
+                <p className="text-[11px] text-brand-700 dark:text-brand-300 mt-0.5">
+                  The simplest setup. Paste this single URL into your forwarder app. No custom headers needed!
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => copyToClipboard(fullUrlWithSecret, setCopiedFullUrl, "Full Webhook URL copied!")}
+                className="shrink-0 bg-white dark:bg-slate-900 text-xs border-brand-300 dark:border-brand-500/40"
+              >
+                {copiedFullUrl ? <Check className="h-3.5 w-3.5 text-emerald-600 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                {copiedFullUrl ? "Copied!" : "Copy Full URL"}
+              </Button>
+            </div>
+            <div className="rounded-lg bg-white p-2.5 font-mono text-xs text-brand-900 dark:bg-[#080d19] dark:text-brand-300 break-all select-all border border-brand-200 dark:border-white/5">
+              {fullUrlWithSecret}
+            </div>
+          </div>
+        )}
+
+        {/* Method 2 Content */}
+        {activeMethod === "bearer" && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-white/10 dark:bg-white/5 space-y-3">
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+              Standard Bearer Authorization Header
+            </span>
+
+            <div className="space-y-2 text-xs">
+              <div className="rounded-lg bg-white p-3 dark:bg-[#080d19] border border-slate-200/80 dark:border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Webhook URL:</span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(webhookUrl, setCopiedWebhook, "Webhook URL copied!")}
+                    className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    {copiedWebhook ? "Copied!" : "Copy URL"}
+                  </button>
+                </div>
+                <span className="font-mono block mt-1 select-all break-all text-slate-800 dark:text-slate-200">
+                  {webhookUrl}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-white p-3 dark:bg-[#080d19] border border-slate-200/80 dark:border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Header Name / Value:</span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(`Bearer ${forwarderSecret}`, setCopiedHeader, "Header value copied!")}
+                    className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    {copiedHeader ? "Copied!" : "Copy Value"}
+                  </button>
+                </div>
+                <div className="font-mono mt-1 space-y-1">
+                  <div><span className="text-slate-400">Header:</span> <span className="font-semibold text-slate-800 dark:text-slate-200">Authorization</span></div>
+                  <div><span className="text-slate-400">Value:</span> <span className="font-semibold text-brand-600 dark:text-brand-400 select-all">Bearer {forwarderSecret}</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Method 3 Content */}
+        {activeMethod === "header" && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-white/10 dark:bg-white/5 space-y-3">
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+              Custom Header (x-forwarder-secret)
+            </span>
+
+            <div className="space-y-2 text-xs">
+              <div className="rounded-lg bg-white p-3 dark:bg-[#080d19] border border-slate-200/80 dark:border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Webhook URL:</span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(webhookUrl, setCopiedWebhook, "Webhook URL copied!")}
+                    className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    {copiedWebhook ? "Copied!" : "Copy URL"}
+                  </button>
+                </div>
+                <span className="font-mono block mt-1 select-all break-all text-slate-800 dark:text-slate-200">
+                  {webhookUrl}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-white p-3 dark:bg-[#080d19] border border-slate-200/80 dark:border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Header Name / Value:</span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(forwarderSecret, setCopiedCustomHeader, "Secret token copied!")}
+                    className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    {copiedCustomHeader ? "Copied!" : "Copy Secret"}
+                  </button>
+                </div>
+                <div className="font-mono mt-1 space-y-1">
+                  <div><span className="text-slate-400">Header:</span> <span className="font-semibold text-slate-800 dark:text-slate-200">x-forwarder-secret</span></div>
+                  <div><span className="text-slate-400">Value:</span> <span className="font-semibold text-brand-600 dark:text-brand-400 select-all">{forwarderSecret}</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Android App Setup Templates */}
+        <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-4 dark:border-white/5 dark:bg-white/5 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+              Android App JSON Payload Template
+            </span>
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(webhookUrl);
-                  setCopiedWebhook(true);
-                  toast("Webhook URL copied to clipboard", "success");
-                  setTimeout(() => setCopiedWebhook(false), 2000);
-                }}
-                className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400 font-sans"
+                onClick={() => setActiveApp("macrodroid")}
+                className={`text-[11px] font-medium px-2 py-0.5 rounded ${
+                  activeApp === "macrodroid"
+                    ? "bg-brand-600 text-white"
+                    : "text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10"
+                }`}
               >
-                {copiedWebhook ? "Copied!" : "Copy URL"}
+                MacroDroid
               </button>
-            </div>
-            <span className="mt-1 block font-semibold text-brand-600 dark:text-brand-400 select-all break-all">
-              {webhookUrl}
-            </span>
-          </div>
-
-          <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
-            <span className="text-slate-500 block">HTTP Method:</span>
-            <span className="font-semibold text-slate-800 dark:text-slate-200">POST</span>
-          </div>
-
-          <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500 block">Forwarder Secret Token:</span>
               <button
                 type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(forwarderSecret);
-                  setCopiedSecret(true);
-                  toast("Secret token copied to clipboard", "success");
-                  setTimeout(() => setCopiedSecret(false), 2000);
-                }}
-                className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400 font-sans"
+                onClick={() => setActiveApp("smsforwarder")}
+                className={`text-[11px] font-medium px-2 py-0.5 rounded ${
+                  activeApp === "smsforwarder"
+                    ? "bg-brand-600 text-white"
+                    : "text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10"
+                }`}
               >
-                {copiedSecret ? "Copied!" : "Copy Token"}
+                SMS Forwarder
               </button>
             </div>
-            <span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200 select-all font-mono">
-              {forwarderSecret}
-            </span>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
-            <span className="text-slate-500 block">Authentication Header (Recommended):</span>
-            <span className="font-semibold text-slate-800 dark:text-slate-200">
-              Authorization: Bearer {forwarderSecret}
-            </span>
-            <span className="mt-1 block text-slate-400 dark:text-slate-500 text-[11px]">
-              Alternatively use header: <code>x-forwarder-secret: {forwarderSecret}</code> or URL query: <code>?secret={forwarderSecret}</code>
-            </span>
-          </div>
-
-          <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
-            <span className="text-slate-500 block">JSON Body Format:</span>
-            <pre className="mt-1 text-slate-700 dark:text-slate-300">
-{`{
-  "message": "Payment received for GHS 50.00 from 0241234567. Ref: Topup. Transaction ID: 123456789.",
-  "from": "MTN MoMo",
-  "timestamp": 1757698800000
-}`}
+          <div className="relative">
+            <pre className="rounded-lg bg-white p-3 font-mono text-xs text-slate-800 dark:bg-[#080d19] dark:text-slate-200 border border-slate-200/80 dark:border-white/5">
+              {activeApp === "macrodroid"
+                ? `{\n  "message": "{sms_message}",\n  "from": "{sms_number}"\n}`
+                : `{\n  "message": "[msg]",\n  "from": "[from]"\n}`}
             </pre>
+            <button
+              type="button"
+              onClick={() => {
+                const text =
+                  activeApp === "macrodroid"
+                    ? `{\n  "message": "{sms_message}",\n  "from": "{sms_number}"\n}`
+                    : `{\n  "message": "[msg]",\n  "from": "[from]"\n}`;
+                copyToClipboard(text, setCopiedTemplate, "Payload template copied!");
+              }}
+              className="absolute top-2.5 right-2.5 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+            >
+              {copiedTemplate ? "Copied!" : "Copy Template"}
+            </button>
           </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            HTTP Method: <strong>POST</strong> · Content-Type: <strong>application/json</strong>
+          </p>
+        </div>
+
+        {/* Live Terminal Test cURL */}
+        <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-4 dark:border-white/5 dark:bg-white/5 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Terminal className="h-4 w-4 text-slate-500" />
+              <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                Instant Verification (cURL Terminal Command)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => copyToClipboard(curlTestCommand, setCopiedCurl, "cURL test command copied!")}
+              className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+            >
+              {copiedCurl ? "Copied!" : "Copy Command"}
+            </button>
+          </div>
+          <pre className="rounded-lg bg-slate-900 p-3 font-mono text-[11px] text-slate-200 overflow-x-auto select-all">
+            {curlTestCommand}
+          </pre>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Run this command in your computer or VPS terminal to simulate an incoming payment SMS and verify your endpoint responds with <code>&#123;&quot;received&quot;: true&#125;</code>.
+          </p>
         </div>
       </div>
     </div>
   );
 }
-

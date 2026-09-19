@@ -40,10 +40,23 @@ Your Tskconnect server listens for incoming SMS at:
 
 - URL:     https://<YOUR-DOMAIN>/api/webhooks/momo/sms
 - Method:  POST
-- Headers:
+- Webhook URL & Authentication Options:
+
+  METHOD 1 (Easiest — No Headers Required):
+  Set URL to:
+    https://<YOUR-DOMAIN>/api/webhooks/momo/sms?secret=<SMS_FORWARDER_SECRET>
+
+  METHOD 2 (Standard Bearer Header):
+  Set URL to: https://<YOUR-DOMAIN>/api/webhooks/momo/sms
+  Headers:
     Content-Type: application/json
     Authorization: Bearer <SMS_FORWARDER_SECRET>
-    (Alternatively: x-forwarder-secret: <SMS_FORWARDER_SECRET>)
+
+  METHOD 3 (Custom Header):
+  Set URL to: https://<YOUR-DOMAIN>/api/webhooks/momo/sms
+  Headers:
+    Content-Type: application/json
+    x-forwarder-secret: <SMS_FORWARDER_SECRET>
 
 - JSON Body (Request Payload):
   {

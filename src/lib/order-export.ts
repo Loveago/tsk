@@ -37,14 +37,9 @@ export async function buildOrdersWorkbook(
 
   // One sheet per network, named after the network
   const ws = wb.addWorksheet(meta.network.slice(0, 30), {
-    views: [{ state: "frozen", ySplit: 2 }],
+    views: [{ state: "frozen", ySplit: 1 }],
   });
   ws.columns = [{ width: 18 }, { width: 14 }];
-
-  // The export starts with the network name (MTN / Telecel / AirtelTigo)
-  const networkCell = ws.getCell("A1");
-  networkCell.value = meta.network;
-  networkCell.font = { bold: true, size: 12 };
 
   // Header row — Phone Number | Volume (GB), yellow like the vendor template
   const header = ws.addRow(["Phone Number", "Volume (GB)"]);

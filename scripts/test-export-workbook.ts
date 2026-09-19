@@ -37,15 +37,13 @@ async function main() {
   });
 
   // Structural assertions
-  const a1 = ws.getCell("A1").value;
-  const header = ws.getRow(2);
-  const firstData = ws.getRow(3);
-  const lastDataRow = ws.getRow(3 + 2);
-  const afterData = ws.getRow(3 + 3);
+  const header = ws.getRow(1);
+  const firstData = ws.getRow(2);
+  const lastDataRow = ws.getRow(2 + 2);
+  const afterData = ws.getRow(2 + 3);
 
   const checks = [
     ws.name === "MTN",
-    a1 === "MTN",
     header.getCell(1).value === "Phone Number",
     header.getCell(2).value === "Volume (GB)",
     header.getCell(1).fill
