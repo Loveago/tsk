@@ -339,6 +339,15 @@ export async function dispatchClickyfiedMtnBatch(
 
   try {
     const config = await getProviderRoutingConfig();
+    if (!config.enabled) {
+      return {
+        success: false,
+        dispatchedCount: 0,
+        totalGb: 0,
+        batchIds: [],
+        error: "Automated order processing is currently disabled.",
+      };
+    }
     if (!config.clickyfied.enabled) {
       return {
         success: false,
@@ -656,7 +665,7 @@ export async function checkAndTriggerMtnBatch(
 ): Promise<{ triggered: boolean; reason?: string }> {
   try {
     const config = await getProviderRoutingConfig();
-    if (!config.clickyfied.enabled) return { triggered: false };
+    if (!config.enabled || !config.clickyfied.enabled) return { triggered: false };
 
     const batchConfig = await getClickyfiedBatchConfig();
     if (!batchConfig.enabled) return { triggered: false };

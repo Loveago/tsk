@@ -89,20 +89,19 @@ export function isClickyfiedSandbox(clickyfied: ClickyfiedConfig): boolean {
 
 /**
  * Determines whether auto-dispatch should trigger on order creation.
- * When Clickyfied Sandbox is active, auto-dispatch is unconditionally enabled
- * so end-to-end sandbox testing works seamlessly across all ordering surfaces.
+ * If provider routing master switch is disabled, returns false.
  */
 export function shouldAutoDispatch(config: ProviderRoutingConfig): boolean {
-  // If Clickyfied is enabled in Sandbox mode, all orders must auto-dispatch to sandbox
+  // If master automated order processing switch is turned OFF, NEVER auto-dispatch any orders
+  if (!config.enabled) {
+    return false;
+  }
+  // When master routing is enabled, if Clickyfied is in Sandbox mode, auto-dispatch to sandbox
   if (config.clickyfied.enabled && isClickyfiedSandbox(config.clickyfied)) {
     return true;
   }
   // Standard routing autoDispatch check
-  if (config.enabled && config.autoDispatch) {
-    return true;
-  }
-  // If Clickyfied is enabled in production and is the sole active integration
-  if (config.clickyfied.enabled && !config.bigwindata.enabled && config.autoDispatch) {
+  if (config.autoDispatch) {
     return true;
   }
   return false;
@@ -117,17 +116,8 @@ export async function getProviderForNetwork(
 ): Promise<ProviderType> {
   const config = await getProviderRoutingConfig();
 
-  // 1. If Clickyfied Sandbox is active and enabled, route ALL orders to Clickyfied sandbox
-  if (config.clickyfied.enabled && isClickyfiedSandbox(config.clickyfied)) {
-    return "CLICKYFIED";
-  }
-
-  // 2. If general provider routing is disabled:
+  // If general provider routing is disabled, all orders remain strictly MANUAL
   if (!config.enabled) {
-    // If Clickyfied is enabled with production credentials and Bigwindata is disabled, route to Clickyfied
-    if (config.clickyfied.enabled && !config.bigwindata.enabled) {
-      return "CLICKYFIED";
-    }
     return "MANUAL";
   }
 
@@ -178,7 +168,12 @@ export async function getProviderForNetwork(
     return config.defaultProvider;
   }
 
-  // 5. If Clickyfied is enabled in production and Bigwindata is disabled
+  // 5. If Clickyfied Sandbox is active and enabled, route as fallback
+  if (config.clickyfied.enabled && isClickyfiedSandbox(config.clickyfied)) {
+    return "CLICKYFIED";
+  }
+
+  // 6. If Clickyfied is enabled in production and Bigwindata is disabled
   if (config.clickyfied.enabled && !config.bigwindata.enabled) {
     return "CLICKYFIED";
   }
@@ -230,10 +225,9 @@ export async function dispatchOrder(
   }
 
   const config = await getProviderRoutingConfig();
-  const isSandboxMode = config.clickyfied.enabled && isClickyfiedSandbox(config.clickyfied);
 
-  // If general routing is disabled, but Clickyfied sandbox (or sole active production provider) is enabled, proceed!
-  if (!config.enabled && !isSandboxMode && !(config.clickyfied.enabled && !config.bigwindata.enabled)) {
+  // If master routing switch is disabled, enforce strict manual export mode
+  if (!config.enabled) {
     return {
       success: true,
       provider: "MANUAL",
@@ -1385,11 +1379,14 @@ export async function dispatchOrdersBatch(orderIds: number[]): Promise<{
   }
 
   // Trigger threshold check if pending MTN orders accumulated >= threshold
-  try {
-    const { checkAndTriggerMtnBatch } = await import("./clickyfied-batch");
-    await checkAndTriggerMtnBatch("THRESHOLD");
-  } catch {
-    // Ignore trigger check errors in background
+  const config = await getProviderRoutingConfig();
+  if (config.enabled) {
+    try {
+      const { checkAndTriggerMtnBatch } = await import("./clickyfied-batch");
+      await checkAndTriggerMtnBatch("THRESHOLD");
+    } catch {
+      // Ignore trigger check errors in background
+    }
   }
 
   return {
