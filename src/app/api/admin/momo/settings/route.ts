@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { getSendClaimSettings, updateSendClaimSettings } from "@/lib/send-claim";
+import { getSendClaimSettings, updateSendClaimSettings, DEFAULT_FORWARDER_SECRET } from "@/lib/send-claim";
 import { sendClaimSettingsUpdateSchema } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, getRequestOrigin } from "@/lib/api-helpers";
@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
     const settings = await getSendClaimSettings();
     const origin = getRequestOrigin(request);
     const webhookUrl = origin ? `${origin}/api/webhooks/momo/sms` : "/api/webhooks/momo/sms";
-    return NextResponse.json({ settings, webhookUrl });
+    const forwarderSecret = process.env.SMS_FORWARDER_SECRET || DEFAULT_FORWARDER_SECRET;
+    return NextResponse.json({ settings, webhookUrl, forwarderSecret });
   } catch (err) {
     return handleRouteError(err);
   }

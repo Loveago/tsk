@@ -29,6 +29,8 @@ export function MomoSettingsCard() {
     return "";
   });
   const [copiedWebhook, setCopiedWebhook] = React.useState(false);
+  const [forwarderSecret, setForwarderSecret] = React.useState("tskconnect_forwarder_secret_2026");
+  const [copiedSecret, setCopiedSecret] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && !origin) {
@@ -47,6 +49,7 @@ export function MomoSettingsCard() {
       const json = await res.json();
       setSettings(json.settings ?? null);
       if (json.webhookUrl) setServerWebhookUrl(json.webhookUrl);
+      if (json.forwarderSecret) setForwarderSecret(json.forwarderSecret);
     } catch {
       toast("Failed to load settings", "error");
     } finally {
@@ -268,9 +271,33 @@ export function MomoSettingsCard() {
           </div>
 
           <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
-            <span className="text-slate-500 block">Authentication Header:</span>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 block">Forwarder Secret Token:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(forwarderSecret);
+                  setCopiedSecret(true);
+                  toast("Secret token copied to clipboard", "success");
+                  setTimeout(() => setCopiedSecret(false), 2000);
+                }}
+                className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400 font-sans"
+              >
+                {copiedSecret ? "Copied!" : "Copy Token"}
+              </button>
+            </div>
+            <span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200 select-all font-mono">
+              {forwarderSecret}
+            </span>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5">
+            <span className="text-slate-500 block">Authentication Header (Recommended):</span>
             <span className="font-semibold text-slate-800 dark:text-slate-200">
-              Authorization: Bearer [SMS_FORWARDER_SECRET]
+              Authorization: Bearer {forwarderSecret}
+            </span>
+            <span className="mt-1 block text-slate-400 dark:text-slate-500 text-[11px]">
+              Alternatively use header: <code>x-forwarder-secret: {forwarderSecret}</code> or URL query: <code>?secret={forwarderSecret}</code>
             </span>
           </div>
 

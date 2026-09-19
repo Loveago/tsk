@@ -468,9 +468,9 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
 // ---------- Send & Claim ----------
 export const sendClaimSubmitSchema = z.object({
-  transactionReference: z.string().trim().min(3, "Transaction reference is required").max(100),
-  amount: z.coerce.number().positive("Amount must be positive"),
-  network: z.enum(NETWORKS as [string, ...string[]]),
+  transactionReference: z.string().trim().min(3, "Transaction ID is required").max(100),
+  amount: z.coerce.number().positive("Amount must be positive").optional(),
+  network: z.enum(NETWORKS as [string, ...string[]]).optional(),
   senderPhone: z.string().trim().max(30).optional().or(z.literal("")),
 });
 

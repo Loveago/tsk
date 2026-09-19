@@ -2,11 +2,11 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Input, Label } from "@/components/ui/input";
 import { useToast } from "@/components/toast";
 import { Spinner } from "@/components/shared";
 import { formatGHS } from "@/lib/types";
-import { Copy, Check, Smartphone, CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
+import { Copy, Check, Smartphone, CheckCircle2, AlertCircle, ArrowRight, Hash } from "lucide-react";
 
 interface SendClaimSettings {
   enabled: boolean;
@@ -32,11 +32,8 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
   const [loadingSettings, setLoadingSettings] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
 
-  // Form states
+  // Form state: only Transaction ID is needed
   const [reference, setReference] = React.useState("");
-  const [amount, setAmount] = React.useState("");
-  const [network, setNetwork] = React.useState("MTN");
-  const [senderPhone, setSenderPhone] = React.useState("");
   const [claiming, setClaiming] = React.useState(false);
   const [claimStatusText, setClaimStatusText] = React.useState<string | null>(null);
   const [claimResult, setClaimResult] = React.useState<ClaimResult | null>(null);
@@ -48,7 +45,6 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
       .then((d) => {
         if (d.settings) {
           setSettings(d.settings);
-          if (d.settings.network) setNetwork(d.settings.network);
         }
       })
       .catch(() => {})
@@ -68,28 +64,21 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
     setErrorMessage(null);
     setClaimResult(null);
 
-    const amt = Number(amount);
-    if (!amt || amt <= 0) {
-      setErrorMessage("Please enter a valid amount sent");
-      return;
-    }
-    if (!reference.trim()) {
-      setErrorMessage("Please enter the transaction reference / ID");
+    const cleanRef = reference.trim();
+    if (!cleanRef) {
+      setErrorMessage("Please enter the Transaction ID from your MoMo SMS");
       return;
     }
 
     setClaiming(true);
-    setClaimStatusText("Checking payment... Matching transaction...");
+    setClaimStatusText("Verifying Transaction ID... Crediting wallet...");
 
     try {
       const res = await fetch("/api/wallet/send-claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          transactionReference: reference.trim(),
-          amount: amt,
-          network,
-          senderPhone: senderPhone.trim() || undefined,
+          transactionReference: cleanRef,
         }),
       });
 
@@ -98,13 +87,13 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
       if (!res.ok) {
         setErrorMessage(
           json.error ??
-            "We couldn't find a matching Mobile Money transaction. Make sure the transaction ID, network, and amount are correct."
+            "We couldn't find a matching Mobile Money transaction with this Transaction ID. Please verify the ID from your confirmation SMS."
         );
         return;
       }
 
       setClaimResult(json.claim);
-      toast("Payment verified and credited!", "success");
+      toast("Payment verified and credited to wallet!", "success");
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("balance-update", { detail: { balance: json.claim?.newBalance } })
@@ -153,7 +142,7 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
             <h3 className="text-base font-bold text-slate-900 dark:text-white">SEND &amp; CLAIM</h3>
             <p className="text-xs text-slate-600 dark:text-slate-300">
               {settings?.instructions ||
-                "Send money to the Mobile Money number below, then enter your transaction details to claim the funds."}
+                "Send money to the Mobile Money number below, then enter your Transaction ID below to instantly claim your funds."}
             </p>
           </div>
         </div>
@@ -216,7 +205,7 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
             </div>
             <div>
               <h4 className="text-base font-bold text-emerald-900 dark:text-emerald-200">
-                ✓ Payment Verified
+                ✓ Payment Verified &amp; Credited
               </h4>
               <p className="text-xs text-emerald-700 dark:text-emerald-300">
                 {formatGHS(claimResult.amount)} has been added to your Tskconnect wallet.
@@ -226,7 +215,7 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
 
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-emerald-200 pt-3 text-xs sm:grid-cols-4 dark:border-emerald-500/20">
             <div>
-              <span className="text-slate-500 dark:text-slate-400">Amount:</span>
+              <span className="text-slate-500 dark:text-slate-400">Amount Credited:</span>
               <p className="font-bold text-emerald-700 dark:text-emerald-300">{formatGHS(claimResult.amount)}</p>
             </div>
             <div>
@@ -251,21 +240,25 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
             onClick={() => {
               setClaimResult(null);
               setReference("");
-              setAmount("");
-              setSenderPhone("");
             }}
           >
-            Claim Another Payment <ArrowRight className="h-3.5 w-3.5" />
+            Claim Another Payment <ArrowRight className="h-3.5 w-3.5 ml-1" />
           </Button>
         </div>
       )}
 
-      {/* Claim Form */}
+      {/* Claim Form: ONLY Transaction ID */}
       {!claimResult && (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-            After sending the money, enter the transaction details below.
-          </h4>
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
+          <div className="flex items-center gap-2 mb-1">
+            <Hash className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+              Claim Payment with Transaction ID
+            </h4>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            After sending money, find the <strong>Transaction ID</strong> from your Mobile Money SMS receipt (e.g. <code>87441563372</code>) and paste it below. The amount and network are automatically verified.
+          </p>
 
           {errorMessage && (
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
@@ -275,66 +268,37 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
           )}
 
           <form onSubmit={handleClaim} className="mt-4 space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="txRef">Transaction ID / Reference *</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="txRef" className="text-xs font-semibold">
+                Transaction ID *
+              </Label>
+              <div className="relative">
                 <Input
                   id="txRef"
-                  placeholder="e.g. 12345678901"
+                  placeholder="e.g. 87441563372"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  className="font-mono text-sm uppercase"
+                  className="font-mono text-base tracking-wider uppercase h-11 pr-4"
                   required
+                  autoFocus
                 />
               </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="txAmount">Amount Sent (GHS) *</Label>
-                <Input
-                  id="txAmount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="e.g. 50.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  required
-                />
-              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Enter only the transaction reference or ID from the confirmation message.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="txNetwork">MoMo Network *</Label>
-                <Select
-                  id="txNetwork"
-                  value={network}
-                  onChange={(e) => setNetwork(e.target.value)}
-                >
-                  <option value="MTN">MTN</option>
-                  <option value="TELECEL">Telecel</option>
-                  <option value="AIRTELTIGO">AirtelTigo</option>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="senderPhone">Sender Phone Number (Optional)</Label>
-                <Input
-                  id="senderPhone"
-                  placeholder="e.g. 0241234567"
-                  value={senderPhone}
-                  onChange={(e) => setSenderPhone(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <Button type="submit" className="w-full sm:w-auto px-8" disabled={claiming}>
+            <Button
+              type="submit"
+              className="w-full sm:w-auto px-8 h-10 font-semibold"
+              disabled={claiming || !reference.trim()}
+            >
               {claiming ? (
                 <>
-                  <Spinner /> {claimStatusText || "Checking payment..."}
+                  <Spinner className="mr-2" /> {claimStatusText || "Checking payment..."}
                 </>
               ) : (
-                "Claim Money"
+                "Claim Payment"
               )}
             </Button>
           </form>
@@ -343,4 +307,3 @@ export function SendClaimCard({ onSuccess }: { onSuccess: () => void }) {
     </div>
   );
 }
-

@@ -6,23 +6,52 @@ export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
     const secretHeader = request.headers.get("x-forwarder-secret");
-    const token = authHeader || secretHeader;
+    const apiKeyHeader = request.headers.get("x-api-key");
+    const querySecret = request.nextUrl.searchParams.get("secret") || request.nextUrl.searchParams.get("token");
+    const token = authHeader || secretHeader || apiKeyHeader || querySecret;
 
     if (!verifyForwarderSecret(token)) {
-      return apiError(401, "Unauthorized SMS forwarder request");
+      console.warn("[MOMO_WEBHOOK] Unauthorized forwarder request. Token provided:", token ? "YES (masked)" : "NONE");
+      return apiError(401, "Unauthorized SMS forwarder request. Please check your SMS forwarder secret token.");
     }
 
     let body: Record<string, unknown> = {};
     const contentType = request.headers.get("content-type") || "";
 
     if (contentType.includes("application/json")) {
-      body = await request.json();
+      try {
+        body = await request.json();
+      } catch {
+        const rawText = await request.text();
+        try {
+          body = JSON.parse(rawText);
+        } catch {
+          body = { message: rawText };
+        }
+      }
+    } else if (contentType.includes("application/x-www-form-urlencoded")) {
+      const rawText = await request.text();
+      const params = new URLSearchParams(rawText);
+      body = Object.fromEntries(params.entries());
     } else {
       const rawText = await request.text();
       try {
         body = JSON.parse(rawText);
       } catch {
-        body = { message: rawText };
+        // Fallback for key-value or raw plain text
+        if (
+          rawText.includes("=") &&
+          (rawText.includes("&") ||
+            rawText.startsWith("message=") ||
+            rawText.startsWith("content=") ||
+            rawText.startsWith("body=") ||
+            rawText.startsWith("msg="))
+        ) {
+          const params = new URLSearchParams(rawText);
+          body = Object.fromEntries(params.entries());
+        } else {
+          body = { message: rawText };
+        }
       }
     }
 
@@ -32,6 +61,10 @@ export async function POST(request: NextRequest) {
       (body.text as string) ||
       (body.content as string) ||
       (body.sms as string) ||
+      (body.msg as string) ||
+      (body.textMsg as string) ||
+      (body.desp as string) ||
+      (body.data as string) ||
       "";
 
     if (!rawSms || typeof rawSms !== "string" || !rawSms.trim()) {
@@ -41,12 +74,6 @@ export async function POST(request: NextRequest) {
     const senderPhone = (body.from as string) || (body.sender as string) || null;
     const recipientPhone = (body.recipient as string) || (body.to as string) || null;
     const networkHint = (body.network as string) || null;
-
-    // Prevent SMS spoofing/injection from regular phone numbers.
-    // Official MoMo messages come from alphanumeric sender IDs (e.g., MobileMoney, TelecelCash).
-    if (senderPhone && /^\+?\d{9,}$/.test(senderPhone.replace(/\s+/g, ""))) {
-      return apiError(403, "Rejected: SMS appears to be from a standard phone number rather than an official MoMo shortcode.");
-    }
 
     const result = await processIncomingForwardedSms({
       rawSms: rawSms.trim(),
@@ -64,4 +91,3 @@ export async function POST(request: NextRequest) {
     return handleRouteError(err);
   }
 }
-

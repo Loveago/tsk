@@ -12,8 +12,12 @@ import {
 import { validateMtnOrderRecipient } from "./mtn-verification";
 
 export async function getSetting(key: string, fallback = ""): Promise<string> {
-  const row = await prisma.systemSetting.findUnique({ where: { key } });
-  return row?.value ?? fallback;
+  try {
+    const row = await prisma.systemSetting.findUnique({ where: { key } });
+    return row?.value ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {

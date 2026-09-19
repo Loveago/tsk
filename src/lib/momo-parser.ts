@@ -175,7 +175,7 @@ function extractSender(text: string): { phone: string | null; name: string | nul
  * MTN MoMo SMS parser
  */
 export function parseMtnSms(rawSms: string): ParsedMomoTransaction | null {
-  const isMtn = /MTN|MobileMoney|Cash\s*In\s*received|Payment\s*received\s*for|Financial\s*Transaction\s*Id/i.test(rawSms);
+  const isMtn = /MTN|MobileMoney|Cash\s*In\s*received|Payment\s*received\s*for|Financial\s*Transaction\s*Id|TRANSACTION\s*FEE/i.test(rawSms);
   const amount = extractAmount(rawSms);
   const txId = extractTransactionId(rawSms);
 
@@ -352,7 +352,7 @@ export function parseMomoSms(
     const res = parseAirtelTigoSms(text);
     if (res) return res;
   }
-  if (/MTN|MobileMoney/i.test(text)) {
+  if (/MTN|MobileMoney|Payment\s*received\s*for|Cash\s*In\s*received|TRANSACTION\s*FEE/i.test(text)) {
     const res = parseMtnSms(text);
     if (res) return res;
   }

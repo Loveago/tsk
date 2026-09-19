@@ -20,11 +20,13 @@ export async function POST(request: NextRequest) {
     const minAmount = parseFloat(await getSetting("send_claim_min_amount", "1"));
     const maxAmount = parseFloat(await getSetting("send_claim_max_amount", "5000"));
 
-    if (input.amount < minAmount) {
-      return apiError(400, `Minimum claim amount is GHS ${minAmount}`);
-    }
-    if (input.amount > maxAmount) {
-      return apiError(400, `Maximum claim amount is GHS ${maxAmount}`);
+    if (input.amount !== undefined) {
+      if (input.amount < minAmount) {
+        return apiError(400, `Minimum claim amount is GHS ${minAmount}`);
+      }
+      if (input.amount > maxAmount) {
+        return apiError(400, `Maximum claim amount is GHS ${maxAmount}`);
+      }
     }
 
     const maxActive = parseInt(await getSetting("send_claim_max_active_per_user", "5"), 10);
