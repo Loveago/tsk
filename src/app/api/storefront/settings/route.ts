@@ -26,10 +26,29 @@ export async function PATCH(request: NextRequest) {
     const storefront = await requireStorefront(user.id);
     const input = storefrontSettingsSchema.parse(await request.json());
 
+    let newSlug: string | undefined = undefined;
+    if (input.slug && input.slug.trim() !== storefront.slug) {
+      const candidate = slugify(input.slug);
+      if (!isValidSlug(candidate) || RESERVED_SLUGS.has(candidate)) {
+        return NextResponse.json(
+          { error: "Store address must be 3-32 lowercase letters, numbers, and hyphens, and not a reserved word" },
+          { status: 400 }
+        );
+      }
+      const taken = await prisma.storefront.findFirst({
+        where: { slug: candidate, NOT: { id: storefront.id } },
+      });
+      if (taken) {
+        return NextResponse.json({ error: "That store address is already taken" }, { status: 409 });
+      }
+      newSlug = candidate;
+    }
+
     const updated = await prisma.storefront.update({
       where: { id: storefront.id },
       data: {
         name: input.storeName,
+        ...(newSlug ? { slug: newSlug } : {}),
         description: input.description || null,
         phone: input.phone || null,
         whatsappGroupLink: input.whatsappGroupLink || null,
@@ -56,15 +75,15 @@ export async function POST(request: NextRequest) {
     const slug = slugify(body.slug ?? "");
     if (!isValidSlug(slug) || RESERVED_SLUGS.has(slug)) {
       return NextResponse.json(
-        { error: "Slug must be 3-32 letters/numbers/dashes and not a reserved word" },
+        { error: "Store address must be 3-32 lowercase letters, numbers, and hyphens, and not a reserved word" },
         { status: 400 }
       );
     }
     const taken = await prisma.storefront.findFirst({ where: { slug, NOT: { id: storefront.id } } });
-    if (taken) return NextResponse.json({ error: "That store address is taken" }, { status: 409 });
+    if (taken) return NextResponse.json({ error: "That store address is already taken" }, { status: 409 });
 
     const updated = await prisma.storefront.update({ where: { id: storefront.id }, data: { slug } });
-    return NextResponse.json({ storefront: updated });
+    return NextResponse.json({ storefront: updated, message: "Store address updated successfully" });
   } catch (err) {
     return handleRouteError(err);
   }

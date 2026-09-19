@@ -22,7 +22,9 @@ export default async function StorefrontSettingsPage() {
         variant="card"
       />
       <StorefrontSettingsForm
+        storefrontDomain={storefrontDomain}
         initial={{
+          slug: storefront.slug,
           name: storefront.name,
           description: storefront.description ?? "",
           whatsapp: storefront.whatsapp ?? "",

@@ -357,6 +357,7 @@ export const storefrontStatusToggleSchema = z.object({
 
 export const storefrontSettingsSchema = z.object({
   storeName: z.string().min(2).max(60),
+  slug: z.string().min(3).max(32).optional(),
   description: z.string().max(600).optional().or(z.literal("")),
   phone: z.string().max(40).optional().or(z.literal("")),
   whatsappGroupLink: z.string().max(255).optional().or(z.literal("")),
@@ -364,6 +365,14 @@ export const storefrontSettingsSchema = z.object({
   contactText: z.string().max(160).optional().or(z.literal("")),
   whatsappLabel: z.string().max(40).optional().or(z.literal("")),
   isActive: z.boolean().optional(),
+});
+
+export const storefrontSlugSchema = z.object({
+  slug: z
+    .string()
+    .trim()
+    .min(3, "Slug must be at least 3 characters")
+    .max(32, "Slug must be at most 32 characters"),
 });
 
 /** User-side store application: store name, contact number, and WhatsApp group link are mandatory. */
