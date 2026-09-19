@@ -39,7 +39,7 @@ export default function StorefrontIndexPage() {
               <Store className="h-5 w-5" />
             </span>
             <span className="font-bold tracking-tight text-lg text-white">
-              tskstore<span className="text-violet-400">.net</span>
+              tskdatastore<span className="text-violet-400">.com</span>
             </span>
           </div>
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
@@ -66,7 +66,7 @@ export default function StorefrontIndexPage() {
           </h1>
           <p className="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto">
             You weren&apos;t really supposed to find the engine room without a store link... but since you&apos;re here! 👀
-            Every store on <span className="text-violet-300 font-semibold">tskstore.net</span> is independently operated.
+            Every store on <span className="text-violet-300 font-semibold">tskdatastore.com</span> is independently operated.
             Type the vendor or store name you were looking for below to jump straight to their packages.
           </p>
         </div>
@@ -79,7 +79,7 @@ export default function StorefrontIndexPage() {
           >
             <div className="flex items-center flex-1 px-3 text-slate-400 text-sm">
               <span className="font-semibold text-slate-500 select-none mr-1">
-                tskstore.net/
+                tskdatastore.com/
               </span>
               <input
                 type="text"
@@ -116,7 +116,7 @@ export default function StorefrontIndexPage() {
             </p>
             <div className="pt-2">
               <span className="text-xs text-slate-500 font-mono">
-                Hint: tskstore.net/[store-name]/track
+                Hint: tskdatastore.com/[store-name]/track
               </span>
             </div>
           </div>
@@ -128,7 +128,7 @@ export default function StorefrontIndexPage() {
             </div>
             <h3 className="text-base font-bold text-white">Verified Telecom Dispatch</h3>
             <p className="text-sm text-slate-400">
-              Stores on tskstore.net process payments securely via Mobile Money with automated bundle dispatch across MTN, Telecel, and AirtelTigo.
+              Stores on tskdatastore.com process payments securely via Mobile Money with automated bundle dispatch across MTN, Telecel, and AirtelTigo.
             </p>
             <div className="flex flex-wrap gap-2 pt-2">
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 bg-white/5 border border-white/10 px-2.5 py-1 rounded-full">
@@ -151,7 +151,7 @@ export default function StorefrontIndexPage() {
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 py-6 text-center text-xs text-slate-600">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>© {new Date().getFullYear()} tskstore.net. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} tskdatastore.com. All rights reserved.</p>
           <div className="flex items-center gap-4">
             <span className="inline-flex items-center gap-1 text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />

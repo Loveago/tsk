@@ -52,7 +52,7 @@ export function AdminStorefrontPanel({
   initialStorefrontEnabled?: boolean;
 }) {
   const router = useRouter();
-  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskstore.net";
+  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskdatastore.com";
   const [storefrontsActive, setStorefrontsActive] = React.useState(initialStorefrontEnabled);
   const [togglingMaster, setTogglingMaster] = React.useState(false);
   const [userId, setUserId] = React.useState(candidates[0]?.id ?? "");

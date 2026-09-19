@@ -13,7 +13,7 @@ You can use two separate domains on the SAME Vercel project:
 This works whether you use:
 • Two free Vercel subdomains (e.g. `tsk-admin.vercel.app` & `tsk-store.vercel.app`)
   OR
-• Two custom domains (e.g. `tsk05.net` & `tskstore.net`)
+• Two custom domains (e.g. `tsk05.net` & `tskdatastore.com`)
 ================================================================================
 
 --------------------------------------------------------------------------------
@@ -21,7 +21,7 @@ TABLE OF CONTENTS
 --------------------------------------------------------------------------------
 1. Step 1: Add Both Separate Domains to Your Vercel Project
    • Option A: Two Free .vercel.app Subdomains (Zero DNS required)
-   • Option B: Two Custom Domains (e.g. tsk05.net & tskstore.net)
+   • Option B: Two Custom Domains (e.g. tsk05.net & tskdatastore.com)
 2. Step 2: Set the Dual-Domain Environment Variables in Vercel
 3. Step 3: Update Database Schema (Prisma DB Push)
 4. Step 4: Redeploy the Project on Vercel
@@ -49,16 +49,16 @@ You now have two distinct domains pointing to your app:
 • `my-storefront.vercel.app`
 
 --------------------------------------------------------------------------------
-OPTION B: Using Two Custom Domains (e.g. tsk05.net & tskstore.net)
+OPTION B: Using Two Custom Domains (e.g. tsk05.net & tskdatastore.com)
 --------------------------------------------------------------------------------
 1. In Vercel Project -> Settings -> Domains:
    - Add `tsk05.net` and `www.tsk05.net`
-   - Add `tskstore.net` and `www.tskstore.net`
+   - Add `tskdatastore.com` and `www.tskdatastore.com`
 2. In your DNS provider (Namecheap, Cloudflare, GoDaddy, etc.), set:
    For tsk05.net:
      A record:     @   ->  76.76.21.21
      CNAME record: www ->  cname.vercel-dns.com
-   For tskstore.net:
+   For tskdatastore.com:
      A record:     @   ->  76.76.21.21
      CNAME record: www ->  cname.vercel-dns.com
 
@@ -76,8 +76,8 @@ Add / Update these 4 domain variables:
 | :----------------------------- | :---------------------------- | :------------------------- |
 | MAIN_DOMAIN                    | my-portal.vercel.app          | tsk05.net                  |
 | NEXT_PUBLIC_MAIN_DOMAIN        | my-portal.vercel.app          | tsk05.net                  |
-| STOREFRONT_DOMAIN              | my-storefront.vercel.app      | tskstore.net               |
-| NEXT_PUBLIC_STOREFRONT_DOMAIN  | my-storefront.vercel.app      | tskstore.net               |
+| STOREFRONT_DOMAIN              | my-storefront.vercel.app      | tskdatastore.com           |
+| NEXT_PUBLIC_STOREFRONT_DOMAIN  | my-storefront.vercel.app      | tskdatastore.com           |
 
 Also ensure your other required variables are set:
 • DATABASE_URL: Your cloud Neon/Postgres pooling connection string

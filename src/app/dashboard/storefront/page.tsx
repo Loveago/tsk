@@ -57,7 +57,7 @@ export default async function StorefrontOverviewPage() {
       }),
     ]);
 
-  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskstore.net";
+  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskdatastore.com";
   const storeUrl = `https://${storefrontDomain}/${storefront.slug}`;
   const stats = [
     {

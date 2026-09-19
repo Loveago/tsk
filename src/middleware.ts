@@ -15,7 +15,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/packages",
 ];
 
-const STOREFRONT_DOMAIN = (process.env.STOREFRONT_DOMAIN || "tskstore.net").toLowerCase();
+const STOREFRONT_DOMAIN = (process.env.STOREFRONT_DOMAIN || "tskdatastore.com").toLowerCase();
 const MAIN_DOMAIN = (process.env.MAIN_DOMAIN || "tsk05.net").toLowerCase();
 
 export async function middleware(request: NextRequest) {
@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
   const isLocalhost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
 
   // ---------------------------------------------------------------------------
-  // 1. STOREFRONT DOMAIN ROUTING (tskstore.net)
+  // 1. STOREFRONT DOMAIN ROUTING (tskdatastore.com)
   // ---------------------------------------------------------------------------
   if (isStorefrontDomain) {
     // Prevent access to management dashboard & admin panel on the storefront domain
@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(`https://${MAIN_DOMAIN}/login`);
     }
 
-    // Serve dedicated storefront favicon and app icons for tskstore.net
+    // Serve dedicated storefront favicon and app icons for tskdatastore.com
     if (pathname === "/favicon.ico" || pathname === "/icon.svg" || pathname === "/apple-icon.png") {
       const url = request.nextUrl.clone();
       url.pathname = "/store/icon.svg";
@@ -63,7 +63,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(cleanUrl);
     }
 
-    // Handle Storefront root (e.g. https://tskstore.net/)
+    // Handle Storefront root (e.g. https://tskdatastore.com/)
     // Rewrites to /store which renders the dedicated "Inquisitive Visitor" homepage
     if (pathname === "/" || pathname === "") {
       const url = request.nextUrl.clone();

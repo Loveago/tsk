@@ -1,11 +1,11 @@
 # Multi-Domain Storefront Implementation Guide
-**Host Customer Storefronts on `tskstore.net` & Manage Everything on `tsk05.net` (Same VPS)**
+**Host Customer Storefronts on `tskdatastore.com` & Manage Everything on `tsk05.net` (Same VPS)**
 
 ---
 
 ## Executive Summary & Architecture
 
-This guide provides the complete blueprint and step-by-step instructions to host customer-facing storefronts on a dedicated, clean domain (e.g. `https://tskstore.net/loveagostore`) while allowing users to manage products, pricing, orders, and commissions on the main platform (`https://tsk05.net`), all hosted on the **same VPS**.
+This guide provides the complete blueprint and step-by-step instructions to host customer-facing storefronts on a dedicated, clean domain (e.g. `https://tskdatastore.com/loveagostore`) while allowing users to manage products, pricing, orders, and commissions on the main platform (`https://tsk05.net`), all hosted on the **same VPS**.
 
 ### Recommended Architecture: Unified Multi-Domain Single-App
 
@@ -16,14 +16,14 @@ This guide provides the complete blueprint and step-by-step instructions to host
                       │                 Nginx Proxy                   │
                       │             Ports 80 / 443 (SSL)              │
                       └───────┬───────────────────────────────┬───────┘
-                              │ Host: tsk05.net               │ Host: tskstore.net
+                              │ Host: tsk05.net               │ Host: tskdatastore.com
                               ▼                               ▼
                       ┌───────────────────────────────────────────────┐
                       │        Single Next.js App (Port 3000)         │
                       │                  (PM2 Node)                   │
                       │                                               │
                       │  Next.js Middleware Domain Router:            │
-                      │  • tskstore.net/loveagostore                  │
+                      │  • tskdatastore.com/loveagostore                  │
                       │    ──(rewrite)──> /store/loveagostore         │
                       │  • tsk05.net/dashboard                        │
                       │    ──(normal)───> /dashboard                  │
@@ -37,32 +37,32 @@ This guide provides the complete blueprint and step-by-step instructions to host
 ```
 
 ### Key Architectural Benefits:
-1. **Zero Database Sync Complexity**: Since both domains connect to the same PostgreSQL database, orders placed on `tskstore.net` immediately update the seller's commission wallet visible on `tsk05.net`.
+1. **Zero Database Sync Complexity**: Since both domains connect to the same PostgreSQL database, orders placed on `tskdatastore.com` immediately update the seller's commission wallet visible on `tsk05.net`.
 2. **Minimal VPS Resource Footprint**: Running one optimized Next.js app in PM2 cluster mode uses 50% less RAM than launching separate apps.
-3. **Clean URLs for Customers**: Buyers visit `https://tskstore.net/loveagostore` directly (no ugly `/store/` prefix required in the browser).
-4. **Isolated Security**: Requests to `/admin` or `/dashboard` arriving on `tskstore.net` are automatically redirected to `https://tsk05.net/login`.
+3. **Clean URLs for Customers**: Buyers visit `https://tskdatastore.com/loveagostore` directly (no ugly `/store/` prefix required in the browser).
+4. **Isolated Security**: Requests to `/admin` or `/dashboard` arriving on `tskdatastore.com` are automatically redirected to `https://tsk05.net/login`.
 
 ---
 
 ## Step 1: DNS Configuration (How & Why Both Domains Share Your VPS IP)
 
-### "I already have `tsk05.net` @ and www pointed to my VPS IP, so what should I do with `tskstore.net`?"
+### "I already have `tsk05.net` @ and www pointed to my VPS IP, so what should I do with `tskdatastore.com`?"
 
-**You do the exact same thing for `tskstore.net`!**
+**You do the exact same thing for `tskdatastore.com`!**
 
 > **How this works**:
-> A VPS has a single public IP address. Both `tsk05.net` and `tskstore.net` can point to that **same IP**. When a user's browser makes a request, it sends an HTTP header called `Host` (e.g., `Host: tskstore.net` or `Host: tsk05.net`).
+> A VPS has a single public IP address. Both `tsk05.net` and `tskdatastore.com` can point to that **same IP**. When a user's browser makes a request, it sends an HTTP header called `Host` (e.g., `Host: tskdatastore.com` or `Host: tsk05.net`).
 > - Nginx listens on that single IP on ports 80/443.
 > - When Nginx sees `Host: tsk05.net`, it serves the main portal.
-> - When Nginx sees `Host: tskstore.net`, it serves the customer storefronts and the inquisitive homepage.
+> - When Nginx sees `Host: tskdatastore.com`, it serves the customer storefronts and the inquisitive homepage.
 
-### In your DNS manager for `tskstore.net` (Namecheap, Cloudflare, GoDaddy, etc.):
+### In your DNS manager for `tskdatastore.com` (Namecheap, Cloudflare, GoDaddy, etc.):
 Add these DNS **A records** pointing to the **exact same VPS IP**:
 
 | Type | Host / Name | Value / Destination | TTL | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **A** | `@` | `<YOUR_VPS_IP>` | Auto / 1 min | Points root `tskstore.net` to your VPS |
-| **A** | `www` | `<YOUR_VPS_IP>` | Auto / 1 min | Points `www.tskstore.net` to your VPS |
+| **A** | `@` | `<YOUR_VPS_IP>` | Auto / 1 min | Points root `tskdatastore.com` to your VPS |
+| **A** | `www` | `<YOUR_VPS_IP>` | Auto / 1 min | Points `www.tskdatastore.com` to your VPS |
 
 *(Do NOT touch or delete your existing records for `tsk05.net` — both domains will happily live on the same VPS).*
 
@@ -71,16 +71,16 @@ Add these DNS **A records** pointing to the **exact same VPS IP**:
 
 ## Step 2: Nginx Reverse Proxy Configuration on VPS
 
-Create a dedicated Nginx configuration for `tskstore.net`. This keeps configuration clean and modular alongside `/etc/nginx/sites-available/tsk05.net`.
+Create a dedicated Nginx configuration for `tskdatastore.com`. This keeps configuration clean and modular alongside `/etc/nginx/sites-available/tsk05.net`.
 
-### 1. Create `/etc/nginx/sites-available/tskstore.net`
+### 1. Create `/etc/nginx/sites-available/tskdatastore.com`
 Run on your VPS:
 ```bash
-sudo cat << 'EOF' > /etc/nginx/sites-available/tskstore.net
+sudo cat << 'EOF' > /etc/nginx/sites-available/tskdatastore.com
 server {
     listen 80;
     listen [::]:80;
-    server_name tskstore.net www.tskstore.net;
+    server_name tskdatastore.com www.tskdatastore.com;
 
     client_max_body_size 250M;
 
@@ -116,7 +116,7 @@ EOF
 
 ### 2. Enable Site & Reload Nginx
 ```bash
-sudo ln -sf /etc/nginx/sites-available/tskstore.net /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/tskdatastore.com /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -125,9 +125,9 @@ sudo systemctl reload nginx
 
 ## Step 3: SSL Certificate via Certbot (HTTPS)
 
-Issue a free Let's Encrypt SSL certificate for `tskstore.net`:
+Issue a free Let's Encrypt SSL certificate for `tskdatastore.com`:
 ```bash
-sudo certbot --nginx -d tskstore.net -d www.tskstore.net --non-interactive --agree-tos -m admin@tsk05.net --redirect
+sudo certbot --nginx -d tskdatastore.com -d www.tskdatastore.com --non-interactive --agree-tos -m admin@tsk05.net --redirect
 ```
 
 ---
@@ -142,8 +142,8 @@ MAIN_DOMAIN="tsk05.net"
 NEXT_PUBLIC_MAIN_DOMAIN="tsk05.net"
 
 # Dedicated Storefront Domain
-STOREFRONT_DOMAIN="tskstore.net"
-NEXT_PUBLIC_STOREFRONT_DOMAIN="tskstore.net"
+STOREFRONT_DOMAIN="tskdatastore.com"
+NEXT_PUBLIC_STOREFRONT_DOMAIN="tskdatastore.com"
 ```
 
 ---
@@ -153,13 +153,13 @@ NEXT_PUBLIC_STOREFRONT_DOMAIN="tskstore.net"
 Update `src/middleware.ts` to handle host-based routing.
 
 ### What the Middleware Does:
-1. **Detects Domain**: Checks if incoming request is for `tskstore.net` or `tsk05.net`.
-2. **Clean URL Rewrite**: When a visitor enters `https://tskstore.net/loveagostore`, Next.js internally rewrites it to `/store/loveagostore` so the existing App Router code (`src/app/store/[slug]/...`) handles it without changing the URL in the browser!
+1. **Detects Domain**: Checks if incoming request is for `tskdatastore.com` or `tsk05.net`.
+2. **Clean URL Rewrite**: When a visitor enters `https://tskdatastore.com/loveagostore`, Next.js internally rewrites it to `/store/loveagostore` so the existing App Router code (`src/app/store/[slug]/...`) handles it without changing the URL in the browser!
 3. **Sub-Route Support**:
-   - `tskstore.net/loveagostore/mtn` -> `/store/loveagostore/mtn`
-   - `tskstore.net/loveagostore/track` -> `/store/loveagostore/track`
-   - `tskstore.net/loveagostore/order/TSK-xxx` -> `/store/loveagostore/order/TSK-xxx`
-4. **Security Isolation**: If someone visits `tskstore.net/admin` or `tskstore.net/dashboard`, they are redirected to `https://tsk05.net/login`.
+   - `tskdatastore.com/loveagostore/mtn` -> `/store/loveagostore/mtn`
+   - `tskdatastore.com/loveagostore/track` -> `/store/loveagostore/track`
+   - `tskdatastore.com/loveagostore/order/TSK-xxx` -> `/store/loveagostore/order/TSK-xxx`
+4. **Security Isolation**: If someone visits `tskdatastore.com/admin` or `tskdatastore.com/dashboard`, they are redirected to `https://tsk05.net/login`.
 5. **API & Static Passthrough**: `/api/...` and static files pass through transparently.
 
 ### Full Code for `src/middleware.ts`:
@@ -182,7 +182,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/packages",
 ];
 
-const STOREFRONT_DOMAIN = (process.env.STOREFRONT_DOMAIN || "tskstore.net").toLowerCase();
+const STOREFRONT_DOMAIN = (process.env.STOREFRONT_DOMAIN || "tskdatastore.com").toLowerCase();
 const MAIN_DOMAIN = (process.env.MAIN_DOMAIN || "tsk05.net").toLowerCase();
 
 export async function middleware(request: NextRequest) {
@@ -192,7 +192,7 @@ export async function middleware(request: NextRequest) {
   const isStorefrontDomain = host === STOREFRONT_DOMAIN || host === `www.${STOREFRONT_DOMAIN}`;
 
   // ---------------------------------------------------------------------------
-  // 1. STOREFRONT DOMAIN ROUTING (tskstore.net)
+  // 1. STOREFRONT DOMAIN ROUTING (tskdatastore.com)
   // ---------------------------------------------------------------------------
   if (isStorefrontDomain) {
     // Prevent access to management dashboard & admin panel on the storefront domain
@@ -217,7 +217,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(cleanUrl);
     }
 
-    // Handle Storefront root (e.g. https://tskstore.net/)
+    // Handle Storefront root (e.g. https://tskdatastore.com/)
     // Rewrites to /store which renders the dedicated "Inquisitive Visitor" homepage
     if (pathname === "/" || pathname === "") {
       const url = request.nextUrl.clone();
@@ -319,7 +319,7 @@ export const config = {
 
 ## Step 5.1: The "Inquisitive Visitor" Homepage (`src/app/store/page.tsx`)
 
-When someone visits the naked root `https://tskstore.net/` without specifying a store slug, they shouldn't hit an error or get booted to an admin login. Instead, they meet an engaging, witty **"Inquisitive Visitor"** landing page that explains what `tskstore.net` is, lets them quickly enter a store name, track an existing order, or register on `tsk05.net` to launch their own store.
+When someone visits the naked root `https://tskdatastore.com/` without specifying a store slug, they shouldn't hit an error or get booted to an admin login. Instead, they meet an engaging, witty **"Inquisitive Visitor"** landing page that explains what `tskdatastore.com` is, lets them quickly enter a store name, track an existing order, or register on `tsk05.net` to launch their own store.
 
 ### Create `src/app/store/page.tsx`:
 
@@ -369,7 +369,7 @@ export default function StorefrontIndexPage() {
               <Store className="h-5 w-5" />
             </span>
             <span className="font-bold tracking-tight text-lg text-white">
-              tskstore<span className="text-violet-400">.net</span>
+              tskdatastore<span className="text-violet-400">.com</span>
             </span>
           </div>
           <a
@@ -399,7 +399,7 @@ export default function StorefrontIndexPage() {
           </h1>
           <p className="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto">
             You’ve landed on the engine behind Ghana’s independent telecom reseller storefronts.
-            Every store on <span className="text-violet-300 font-semibold">tskstore.net</span> is
+            Every store on <span className="text-violet-300 font-semibold">tskdatastore.com</span> is
             independently owned and powered by verified local entrepreneurs.
           </p>
         </div>
@@ -412,7 +412,7 @@ export default function StorefrontIndexPage() {
           >
             <div className="flex items-center flex-1 px-3 text-slate-400 text-sm">
               <span className="font-semibold text-slate-500 select-none mr-1">
-                tskstore.net/
+                tskdatastore.com/
               </span>
               <input
                 type="text"
@@ -449,7 +449,7 @@ export default function StorefrontIndexPage() {
             </p>
             <div className="pt-2">
               <span className="text-xs text-slate-500 font-mono">
-                Hint: tskstore.net/[store-name]/track
+                Hint: tskdatastore.com/[store-name]/track
               </span>
             </div>
           </div>
@@ -479,7 +479,7 @@ export default function StorefrontIndexPage() {
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 py-6 text-center text-xs text-slate-600">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>© {new Date().getFullYear()} tskstore.net. Platform infrastructure by Tskconnect.</p>
+          <p>© {new Date().getFullYear()} tskdatastore.com. Platform infrastructure by Tskconnect.</p>
           <div className="flex items-center gap-4">
             <span className="inline-flex items-center gap-1 text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -515,17 +515,17 @@ export function storeHref(storeSlug: string, subpath: string = ""): string {
 ```
 
 And in `src/components/store/store-chrome.tsx`:
-Replace `/store/${slug}` links with `/${slug}` or `storeHref(slug)`. When loaded under `tskstore.net`, navigation between home, networks, track, and order receipt stays under `tskstore.net/loveagostore/...`.
+Replace `/store/${slug}` links with `/${slug}` or `storeHref(slug)`. When loaded under `tskdatastore.com`, navigation between home, networks, track, and order receipt stays under `tskdatastore.com/loveagostore/...`.
 
 ---
 
 ## Step 7: User Dashboard URL Displays & Share Buttons
 
-On `tsk05.net`, when store owners view their Storefront dashboard, their store link and share buttons will present their dedicated URL (`https://tskstore.net/loveagostore`).
+On `tsk05.net`, when store owners view their Storefront dashboard, their store link and share buttons will present their dedicated URL (`https://tskdatastore.com/loveagostore`).
 
 ### In `src/app/dashboard/storefront/page.tsx`:
 ```tsx
-const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskstore.net";
+const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskdatastore.com";
 const storeUrl = `https://${storefrontDomain}/${storefront.slug}`;
 
 // In the JSX:
@@ -552,25 +552,25 @@ const storeUrl = `https://${storefrontDomain}/${storefront.slug}`;
 
 ### How Checkout Operates Across Domains:
 1. **Customer Places Order**:
-   - Customer is on `https://tskstore.net/loveagostore/mtn`.
+   - Customer is on `https://tskdatastore.com/loveagostore/mtn`.
    - Buyer fills recipient phone number and clicks "Pay with Mobile Money".
    - Browser calls `POST /api/store/loveagostore/checkout`.
    - Because of Nginx proxying, this POST request hits the Next.js API on the same VPS.
 2. **Paystack Initialization**:
-   - `getRequestOrigin(request)` resolves to `https://tskstore.net`.
+   - `getRequestOrigin(request)` resolves to `https://tskdatastore.com`.
    - Paystack transaction is initialized with:
-     `callbackUrl: https://tskstore.net/api/store/paystack/callback`
+     `callbackUrl: https://tskdatastore.com/api/store/paystack/callback`
    - Customer is redirected to Paystack.
 3. **Paystack Payment Verification**:
    - Customer pays via MoMo.
    - Paystack redirects buyer back to:
-     `https://tskstore.net/api/store/paystack/callback?reference=TSK-...`
+     `https://tskdatastore.com/api/store/paystack/callback?reference=TSK-...`
    - The route settles the order atomically:
      - `StorefrontOrder.status` -> `COMPLETED`
      - Underlying data bundle order dispatched via provider API.
      - `StorefrontWallet.balance` is incremented by the seller's commission.
    - Buyer is redirected to their clean receipt page:
-     `https://tskstore.net/loveagostore/order/TSK-...`
+     `https://tskdatastore.com/loveagostore/order/TSK-...`
 4. **Owner Checks Commission on `tsk05.net`**:
    - The store owner logs in at `https://tsk05.net/dashboard/storefront/wallet`.
    - The commission is immediately visible in their balance.
@@ -584,11 +584,11 @@ const storeUrl = `https://${storefrontDomain}/${storefront.slug}`;
 Test domain routing on the VPS before going public:
 ```bash
 # Test storefront routing
-curl -I -H "Host: tskstore.net" http://127.0.0.1:3000/loveagostore
+curl -I -H "Host: tskdatastore.com" http://127.0.0.1:3000/loveagostore
 # Expected: HTTP 200 (serves store page)
 
 # Test security redirect
-curl -I -H "Host: tskstore.net" http://127.0.0.1:3000/admin
+curl -I -H "Host: tskdatastore.com" http://127.0.0.1:3000/admin
 # Expected: HTTP 307/308 Redirect to https://tsk05.net/login
 
 # Test main platform
@@ -597,11 +597,11 @@ curl -I -H "Host: tsk05.net" http://127.0.0.1:3000/dashboard
 ```
 
 ### 2. Live Browser Testing
-1. Visit `https://tskstore.net/loveagostore` in an incognito window:
+1. Visit `https://tskdatastore.com/loveagostore` in an incognito window:
    - Store banner, products, and prices load correctly.
 2. Select MTN / Telecel and place a test bundle order.
 3. Complete test payment on Paystack.
-4. Verify redirection to `https://tskstore.net/loveagostore/order/TSK-...`.
+4. Verify redirection to `https://tskdatastore.com/loveagostore/order/TSK-...`.
 5. Open `https://tsk05.net/dashboard/storefront/wallet` in another window:
    - Commission is reflected immediately in available balance.
    - Order is listed in Storefront Orders table.

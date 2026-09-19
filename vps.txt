@@ -1,7 +1,7 @@
 ================================================================================
      COMPLETE VPS DEPLOYMENT GUIDE: DUAL-DOMAIN ARCHITECTURE
      • tsk05.net    -> Management Portal, Admin, User Dashboards
-     • tskstore.net -> Customer Storefronts, Orders & Tracking
+     • tskdatastore.com -> Customer Storefronts, Orders & Tracking
 ================================================================================
 OS: Ubuntu 22.04 / 24.04 LTS or Debian 12
 VPS Setup: Single Next.js App (Port 3000) + PM2 + Local PostgreSQL + Nginx + Certbot
@@ -19,7 +19,7 @@ TABLE OF CONTENTS
 6. Step 5: Configure Production Environment (.env)
 7. Step 6: Database Setup & Next.js Production Build
 8. Step 7: Configure PM2 Process Manager
-9. Step 8: Configure Nginx for Both Domains (tsk05.net & tskstore.net)
+9. Step 8: Configure Nginx for Both Domains (tsk05.net & tskdatastore.com)
 10. Step 9: Issue Free SSL Certificates (Certbot HTTPS)
 11. Step 10: Configure Paystack Webhooks & Callbacks
 12. Step 11: Verification & Live Testing
@@ -30,7 +30,7 @@ TABLE OF CONTENTS
 1. DNS CONFIGURATION (BOTH DOMAINS POINT TO SAME VPS IP)
 ================================================================================
 A VPS has one public IP address. Both domains will point to that SAME IP.
-When a visitor visits tskstore.net, Nginx proxies to Next.js with Host: tskstore.net,
+When a visitor visits tskdatastore.com, Nginx proxies to Next.js with Host: tskdatastore.com,
 serving customer storefronts. When a user visits tsk05.net, they access the portal.
 
 In your DNS manager (Namecheap, Cloudflare, GoDaddy, Hostinger, etc.):
@@ -41,7 +41,7 @@ For tsk05.net:
 | A    | @           | <YOUR_VPS_IP>       | Auto / 1 min |
 | A    | www         | <YOUR_VPS_IP>       | Auto / 1 min |
 
-For tskstore.net:
+For tskdatastore.com:
 | Type | Host / Name | Value / Destination | TTL |
 | :--- | :--- | :--- | :--- |
 | A    | @           | <YOUR_VPS_IP>       | Auto / 1 min |
@@ -219,7 +219,7 @@ curl -I http://127.0.0.1:3000
 ================================================================================
 9. STEP 8: CONFIGURE NGINX FOR BOTH DOMAINS
 ================================================================================
-We create two modular Nginx site configs: one for tsk05.net and one for tskstore.net.
+We create two modular Nginx site configs: one for tsk05.net and one for tskdatastore.com.
 
 --- [ 8A: NGINX CONFIG FOR TSK05.NET ] ---
 cat << 'EOF' > /etc/nginx/sites-available/tsk05.net
@@ -259,8 +259,8 @@ server {
 }
 EOF
 
---- [ 8B: NGINX CONFIG FOR TSKSTORE.NET ] ---
-cat << 'EOF' > /etc/nginx/sites-available/tskstore.net
+--- [ 8B: NGINX CONFIG FOR TSKDATASTORE.COM ] ---
+cat << 'EOF' > /etc/nginx/sites-available/tskdatastore.com
 server {
     listen 80;
     listen [::]:80;
@@ -299,7 +299,7 @@ EOF
 
 --- [ 8C: ENABLE SITES & TEST NGINX ] ---
 sudo ln -sf /etc/nginx/sites-available/tsk05.net /etc/nginx/sites-enabled/
-sudo ln -sf /etc/nginx/sites-available/tskstore.net /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/tskdatastore.com /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
 # Test Nginx syntax
@@ -331,7 +331,7 @@ In Paystack Dashboard -> Settings -> API Keys & Webhooks
    (Handles user wallet top-up confirmations)
 
 2. Storefront Webhook URL (if using second webhook or primary):
-   https://tskstore.net/api/store/paystack/callback
+   https://tskdatastore.com/api/store/paystack/callback
    (Handles customer reseller order payments)
 
 3. Default Callback URL:
@@ -344,15 +344,15 @@ In Paystack Dashboard -> Settings -> API Keys & Webhooks
 Run these curl checks directly on the VPS to verify routing:
 
 # 1. Test storefront root (Inquisitive Visitor homepage)
-curl -I -H "Host: tskstore.net" http://127.0.0.1:3000/
+curl -I -H "Host: tskdatastore.com" http://127.0.0.1:3000/
 # Expected: HTTP 200
 
 # 2. Test security redirect (blocks admin on storefront domain)
-curl -I -H "Host: tskstore.net" http://127.0.0.1:3000/admin
+curl -I -H "Host: tskdatastore.com" http://127.0.0.1:3000/admin
 # Expected: HTTP 307/308 Redirect to https://tsk05.net/login
 
 # 3. Test clean store routing
-curl -I -H "Host: tskstore.net" http://127.0.0.1:3000/loveagostore
+curl -I -H "Host: tskdatastore.com" http://127.0.0.1:3000/loveagostore
 # Expected: HTTP 200
 
 # 4. Test main platform

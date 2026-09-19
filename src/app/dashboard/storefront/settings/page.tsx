@@ -6,7 +6,7 @@ import { StoreStatusToggle } from "@/components/storefront/store-status-toggle";
 export default async function StorefrontSettingsPage() {
   const user = await requireUser();
   const storefront = await requireActiveStorefront(user.id);
-  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskstore.net";
+  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskdatastore.com";
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <header>
