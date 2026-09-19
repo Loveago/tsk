@@ -29,19 +29,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const maxActive = parseInt(await getSetting("send_claim_max_active_per_user", "5"), 10);
-    // Count active (PENDING/PROCESSING?) wait, what is an active send-claim? The schema says SendClaim status.
-    // If it's just checking, I can just check how many claims they have in the last 24 hours maybe, or how many claims they have overall that are unapproved. SendClaim usually just has APPROVED/REJECTED. Let's see the schema or just limit recent claims.
-    const activeCount = await prisma.sendClaim.count({
-      where: {
-        userId: user.id,
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-      }
-    });
-    if (activeCount >= maxActive) {
-      return apiError(400, `You have reached the maximum of ${maxActive} claims per day.`);
-    }
-
     const ip = await getClientIp();
     const userAgent = request.headers.get("user-agent") || undefined;
 

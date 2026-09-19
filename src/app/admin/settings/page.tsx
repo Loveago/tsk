@@ -1473,15 +1473,6 @@ export default function AdminSettingsPage() {
                     placeholder="168"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Max Active Claims Per User</Label>
-                  <Input
-                    type="number"
-                    value={settings.send_claim_max_active_per_user ?? "5"}
-                    onChange={(e) => setSettings((s) => ({ ...s, send_claim_max_active_per_user: e.target.value }))}
-                    placeholder="5"
-                  />
-                </div>
               </div>
             </div>
           </div>
