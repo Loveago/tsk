@@ -226,8 +226,7 @@ export async function GET(request: NextRequest) {
               seq: rep.seq,
               code: deliveryReportCode(rep.seq),
               status: rep.status,
-              adminNote: rep.adminNote,
-              adminResponse: rep.adminResponse,
+              adminResponse: sanitizeCustomerRefundNote(rep.adminResponse, r.amount),
               resolvedAt: rep.resolvedAt,
             }
           : null,
@@ -311,24 +310,23 @@ export async function POST(request: NextRequest) {
       newValue: JSON.stringify({ orderId: order.id, seq, reason: input.reason }),
     });
 
-    // Forward to Clickyfied API if enabled and order is associated with Clickyfied
-    const notReceivedSetting = await prisma.systemSetting.findUnique({
-      where: { key: "clickyfied_not_received_enabled" },
-    });
-    const isClickyfiedOrder =
-      order.providerReference?.startsWith("CLICKYFIED:") ||
-      (await prisma.systemSetting.findUnique({ where: { key: `provider_route_${order.network}` } }))?.value === "CLICKYFIED";
+    // Forward to Clickyfied API if enabled and order was genuinely dispatched to Clickyfied
+    const { getProviderRoutingConfig, normalizePhoneLast9 } = await import("@/lib/provider-apis/router");
+    const config = await getProviderRoutingConfig();
 
-    if (notReceivedSetting?.value !== "false" && isClickyfiedOrder) {
+    const isClickyfiedOrder = Boolean(
+      order.providerReference?.startsWith("CLICKYFIED:") ||
+      order.externalReference?.startsWith("CF-BATCH-")
+    );
+
+    if (config.enabled && config.clickyfied.enabled && config.clickyfied.notReceivedEnabled && isClickyfiedOrder) {
       try {
-        const { getProviderRoutingConfig, normalizePhoneLast9 } = await import("@/lib/provider-apis/router");
         const { ClickyfiedClient } = await import("@/lib/provider-apis/clickyfied");
         const { recordOrderApiLog } = await import("@/lib/order-api-logs");
 
-        const config = await getProviderRoutingConfig();
         const client = new ClickyfiedClient(config.clickyfied);
 
-        let clickyfiedOrderId = order.externalReference || `TSK-ORD-${order.id}`;
+        let clickyfiedOrderId = "";
         let orderEntryId: string | number | undefined = undefined;
 
         if (order.providerReference?.startsWith("CLICKYFIED:")) {
@@ -338,45 +336,15 @@ export async function POST(request: NextRequest) {
           if (refEntryId) {
             orderEntryId = !isNaN(Number(refEntryId)) ? Number(refEntryId) : refEntryId;
           }
-        } else if (order.providerReference) {
-          const [refOrderId, refEntryId] = order.providerReference.trim().split(":");
-          if (refOrderId) clickyfiedOrderId = refOrderId;
-          if (refEntryId) {
-            orderEntryId = !isNaN(Number(refEntryId)) ? Number(refEntryId) : refEntryId;
-          }
+        } else if (order.externalReference?.startsWith("CF-BATCH-")) {
+          clickyfiedOrderId = order.externalReference.trim();
         }
 
         // Ensure clickyfiedOrderId is resolved to canonical orderId (e.g. order-1789...)
-        if (!clickyfiedOrderId.startsWith("order-")) {
+        if (clickyfiedOrderId && !clickyfiedOrderId.startsWith("order-")) {
           try {
             clickyfiedOrderId = await client.resolveCanonicalOrderId(clickyfiedOrderId);
           } catch {}
-        }
-
-        // If order does not have a canonical orderId, search Clickyfied by phone number as a last resort
-        if (!clickyfiedOrderId.startsWith("order-")) {
-          try {
-            const matched = await client.findOrderByPhone(order.phoneNumber);
-            if (matched?.orderId) {
-              clickyfiedOrderId = matched.orderId;
-              if (matched.orderEntryId !== undefined) {
-                orderEntryId = matched.orderEntryId;
-              }
-              // Save to database order immediately
-              await prisma.order
-                .update({
-                  where: { id: order.id },
-                  data: {
-                    providerReference: orderEntryId
-                      ? `CLICKYFIED:${clickyfiedOrderId}:${orderEntryId}`
-                      : `CLICKYFIED:${clickyfiedOrderId}`,
-                  },
-                })
-                .catch(() => {});
-            }
-          } catch (lookupPhoneErr) {
-            console.warn("Could not find order by phone on Clickyfied:", lookupPhoneErr);
-          }
         }
 
         // If clickyfiedOrderId STILL does not start with "order-", do NOT call Clickyfied with an internal TSK-ORD ID!
@@ -404,7 +372,7 @@ export async function POST(request: NextRequest) {
             data: {
               reportId: report.id,
               type: "RESPONSE_ADDED",
-              message: "Order was not found on Clickyfied provider. Report logged internally.",
+              message: "Order inquiry logged internally for review.",
               actorLabel: "System",
             },
           });
@@ -412,7 +380,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             success: true,
             report: { ...report, code: deliveryReportCode(report.seq) },
-            message: "Report logged internally. Clickyfied order reference not found.",
+            message: "Report logged internally. Our team will review your order.",
           });
         }
 
@@ -534,8 +502,8 @@ export async function POST(request: NextRequest) {
           data: {
             reportId: report.id,
             type: "INVESTIGATION_STARTED",
-            message: `Report forwarded to Clickyfied API (Order #${clickyfiedOrderId}${orderEntryId ? `, Entry #${orderEntryId}` : ""}${repId ? `, Provider Report #${repId}` : ""})`,
-            actorLabel: "Clickyfied API",
+            message: "Investigation started: report forwarded for automated network verification.",
+            actorLabel: "System",
           },
         });
       } catch (err: any) {
@@ -566,7 +534,7 @@ export async function POST(request: NextRequest) {
             data: {
               reportId: report.id,
               type: "RESPONSE_ADDED",
-              message: `Could not automatically forward to Clickyfied: ${err?.message || "Network error"}`,
+              message: "Report received and queued for investigation.",
               actorLabel: "System",
             },
           })

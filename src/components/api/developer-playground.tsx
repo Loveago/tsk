@@ -42,7 +42,7 @@ const PLAYGROUND_ENDPOINTS: PlaygroundEndpoint[] = [
     hasBody: true,
     scope: "numbers:verify",
     description:
-      "Batch pre-check whether recipient phone numbers are verified before placing orders. Queries local verified database and falls back to Clickyfied if enabled.",
+      "Batch pre-check whether recipient phone numbers are verified before placing orders. Queries local verified database and automated verification system.",
     defaultBody: JSON.stringify(
       {
         numbers: ["0535308873", "0598427212", "0201234567"],

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { deliveryReportCode, sanitizeCustomerRefundNote } from "@/lib/types";
+import { deliveryReportCode, sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "@/lib/types";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
 import { syncClickyfiedDeliveryReport } from "@/lib/provider-apis/router";
@@ -67,11 +67,33 @@ export async function GET(
     if (!isStaff && report.userId !== user.id) return apiError(403, "Not allowed");
     const { userId: _ownerId, ...safeReport } = report;
 
+    const sanitizeActor = (label: string | null | undefined) => {
+      if (!label) return null;
+      if (label.toLowerCase().includes("clickyfied") || label.toLowerCase().includes("bigwin")) {
+        return "Support Team";
+      }
+      return sanitizeCustomerFacingText(label) || "Support Team";
+    };
+
     return NextResponse.json({
       report: {
         ...safeReport,
         code: deliveryReportCode(safeReport.seq),
+        reason: isStaff ? safeReport.reason : sanitizeCustomerFacingText(safeReport.reason),
+        message: isStaff ? safeReport.message : sanitizeCustomerFacingText(safeReport.message),
+        adminNote: isStaff ? safeReport.adminNote : null,
         adminResponse: sanitizeCustomerRefundNote(safeReport.adminResponse, safeReport.order?.amount),
+        respondedBy: isStaff ? safeReport.respondedBy : sanitizeActor(safeReport.respondedBy),
+        resolvedBy: isStaff ? safeReport.resolvedBy : sanitizeActor(safeReport.resolvedBy),
+        events: safeReport.events.map((e) => ({
+          ...e,
+          message: isStaff ? e.message : sanitizeCustomerFacingText(e.message),
+          actorLabel: isStaff
+            ? e.actorLabel
+            : e.actorLabel?.toLowerCase().includes("clickyfied")
+            ? "System"
+            : (sanitizeCustomerFacingText(e.actorLabel) || "System"),
+        })),
       },
     });
   } catch (err) {

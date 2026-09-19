@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
           for (const raw of pendingVerification) {
             const canon = normalizeGhanaPhoneNumber(raw);
             if (validSet.has(canon)) {
-              await addAcceptedMtnNumber(canon, "CLICKYFIED_API", "Clickyfied Verification API").catch(() => {});
+              await addAcceptedMtnNumber(canon, "CLICKYFIED_API", "Automated Verification API").catch(() => {});
               acceptedSet.add(canon);
             }
           }

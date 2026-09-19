@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { changeOrderStatus, deriveCompletedAt } from "@/lib/orders";
-import { reportWindowEnd, isWithinReportWindow, ACTIVE_DELIVERY_REPORT_STATUSES, sanitizeCustomerRefundNote } from "@/lib/types";
+import { reportWindowEnd, isWithinReportWindow, ACTIVE_DELIVERY_REPORT_STATUSES, sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "@/lib/types";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
@@ -83,6 +83,7 @@ export async function GET(
       } catch {}
     }
 
+    const isStaff = user.role === "ADMIN" || user.role === "MANAGER";
     const { deliveryReports, ...safeOrder } = order;
     const activeReport = deliveryReports.find((r) =>
       (ACTIVE_DELIVERY_REPORT_STATUSES as string[]).includes(r.status)
@@ -94,14 +95,28 @@ export async function GET(
     const completedAt = deriveCompletedAt(order);
     const deadline = completedAt ? reportWindowEnd(completedAt, windowHours) : null;
 
+    const sanitizedHistory = isStaff
+      ? safeOrder.history
+      : (safeOrder.history || []).map((h) => ({
+          ...h,
+          note: sanitizeCustomerFacingText(h.note),
+          changedBy: h.changedBy?.toLowerCase().includes("clickyfied")
+            ? "System"
+            : (sanitizeCustomerFacingText(h.changedBy) || "System"),
+        }));
+
     return NextResponse.json({
       order: {
         ...safeOrder,
+        providerReference: isStaff ? safeOrder.providerReference : null,
+        history: sanitizedHistory,
         failureReason: sanitizeCustomerRefundNote(safeOrder.failureReason, safeOrder.amount),
         deliveryReport: activeReport
           ? {
               ...activeReport,
+              adminNote: isStaff ? activeReport.adminNote : null,
               adminResponse: sanitizeCustomerRefundNote(activeReport.adminResponse, safeOrder.amount),
+              reason: isStaff ? activeReport.reason : sanitizeCustomerFacingText(activeReport.reason),
             }
           : null,
         reportWindow: {

@@ -218,7 +218,7 @@ function AdminResponseSection({ report }: { report: NotReceivedReportDetail }) {
       {report.respondedAt && (
         <p className="mt-1 text-[11px] text-teal-600/70 dark:text-teal-400/70">
           {formatDateTime(report.respondedAt)}
-          {report.respondedBy ? ` · by ${report.respondedBy}` : ""}
+          {report.respondedBy ? ` · by ${report.respondedBy.toLowerCase().includes("clickyfied") || report.respondedBy.toLowerCase().includes("bigwin") ? "Support Team" : report.respondedBy}` : ""}
         </p>
       )}
     </section>

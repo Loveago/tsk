@@ -1,6 +1,6 @@
 import { prisma } from "../prisma";
 import { changeOrderStatus } from "../orders";
-import { sanitizeCustomerRefundNote } from "../types";
+import { sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "../types";
 import { recordOrderApiLog } from "../order-api-logs";
 import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_URL } from "./bigwindata";
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
@@ -468,13 +468,13 @@ export async function dispatchOrder(
         durationMs,
       });
 
-      // Maintain identical status between Clickify and Tskconnect
+      // Maintain identical status between provider and Tskconnect
       if (mappedStatus !== order.status) {
         await changeOrderStatus(
           order.id,
           mappedStatus,
-          `Dispatched via Clickyfied API (Order: ${orderId}, Provider Status: ${rawStatus || mappedStatus})`,
-          { id: "system", label: "Clickyfied API" },
+          `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || mappedStatus})`,
+          { id: "system", label: "Automated System" },
           { force: true }
         );
       } else {
@@ -483,8 +483,8 @@ export async function dispatchOrder(
             orderId: order.id,
             status: order.status,
             previousStatus: order.status,
-            note: `Dispatched via Clickyfied API (Order: ${orderId}, Provider Status: ${rawStatus || mappedStatus})`,
-            changedBy: "Clickyfied API",
+            note: `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || mappedStatus})`,
+            changedBy: "Automated System",
           },
         });
       }
@@ -499,7 +499,8 @@ export async function dispatchOrder(
       };
     } catch (err: any) {
       const durationMs = Date.now() - clickyfiedStartTime;
-      const errMsg = err?.message || "Failed to dispatch order to Clickyfied";
+      const rawErrMsg = err?.message || "Failed to dispatch order";
+      const errMsg = sanitizeCustomerFacingText(rawErrMsg) || "Delivery processing failed";
 
       await prisma.order.update({
         where: { id: order.id },
@@ -526,8 +527,8 @@ export async function dispatchOrder(
           orderId: order.id,
           status: order.status,
           previousStatus: order.status,
-          note: `Clickyfied dispatch failed: ${errMsg}`,
-          changedBy: "Clickyfied API",
+          note: `Dispatch failed: ${errMsg}`,
+          changedBy: "Automated System",
         },
       });
       return {
@@ -690,7 +691,7 @@ export async function syncClickyfiedOrder(
     providerReference: string | null;
     updatedAt: Date;
   },
-  actorLabel = "Clickyfied Sync",
+  actorLabel = "System Sync",
   options: { forceCheck?: boolean } = {}
 ): Promise<{ changed: boolean; previousStatus?: string; newStatus?: string; error?: string }> {
   const orderId = typeof orderIdOrRecord === "number" ? orderIdOrRecord : orderIdOrRecord.id;
@@ -828,7 +829,7 @@ export async function syncClickyfiedOrder(
         await changeOrderStatus(
           ord.id,
           targetStatus,
-          `Synced with Clickyfied (${entryStatus || rawStatus || targetStatus})`,
+          `Delivery status synced (${entryStatus || rawStatus || targetStatus})`,
           { id: "system", label: actorLabel },
           { force: true }
         );
@@ -876,7 +877,7 @@ export async function syncClickyfiedOrder(
  */
 export async function syncClickyfiedDeliveryReport(
   reportId: string,
-  actorLabel = "Clickyfied Sync"
+  actorLabel = "System Sync"
 ): Promise<{ changed: boolean; error?: string }> {
   try {
     const report = await prisma.deliveryReport.findUnique({
@@ -904,6 +905,20 @@ export async function syncClickyfiedDeliveryReport(
       return { changed: false };
     }
 
+    const config = await getProviderRoutingConfig();
+    // 1. If API processing is disabled, or Clickyfied is disabled, never sync with Clickyfied
+    if (!config.enabled || !config.clickyfied.enabled || !config.clickyfied.notReceivedEnabled) {
+      return { changed: false };
+    }
+
+    // 2. Strict check: Order MUST have been genuinely dispatched to Clickyfied
+    const isClickyfiedRef = Boolean(report.order.providerReference?.startsWith("CLICKYFIED:"));
+    const isClickyfiedBatch = Boolean(report.order.externalReference?.startsWith("CF-BATCH-"));
+    if (!isClickyfiedRef && !isClickyfiedBatch) {
+      // Order was fulfilled manually or by another provider — do NOT poll Clickyfied!
+      return { changed: false };
+    }
+
     // Only suppress automated background poller / cron if poller is disabled in settings.
     // Explicit admin queue view sync, user on-demand track sync, or manual actions should always run.
     if (actorLabel.includes("Background Poller") || actorLabel.includes("Cron")) {
@@ -922,7 +937,7 @@ export async function syncClickyfiedDeliveryReport(
     }
     lastCheckedReports.set(reportId, Date.now());
 
-    // Parse provider order ID and entry ID
+    // Parse provider order ID and entry ID ONLY from Clickyfied references
     let providerOrderId = "";
     let providerEntryId: string | number | undefined = undefined;
     if (report.order.providerReference?.startsWith("CLICKYFIED:")) {
@@ -930,14 +945,8 @@ export async function syncClickyfiedDeliveryReport(
       const [pId, eId] = rawRef.split(":");
       providerOrderId = pId;
       if (eId) providerEntryId = eId;
-    } else if (report.order.providerReference) {
-      const [pId, eId] = report.order.providerReference.trim().split(":");
-      providerOrderId = pId;
-      if (eId) providerEntryId = eId;
     }
 
-    const config = await getProviderRoutingConfig();
-    if (!config.clickyfied.enabled) return { changed: false };
     const client = new ClickyfiedClient(config.clickyfied);
 
     // If order was part of a batch (e.g. CF-BATCH-000011), resolve its true canonical batch order ID
@@ -951,7 +960,7 @@ export async function syncClickyfiedDeliveryReport(
       } catch {}
     }
 
-    // If order belongs to a batch, prioritize the true batch order ID over any hijacked providerOrderId
+    // If order belongs to a batch, prioritize the true batch order ID over any providerOrderId
     if (batchCanonicalOrderId && providerOrderId !== batchCanonicalOrderId) {
       providerOrderId = batchCanonicalOrderId;
     }
@@ -959,12 +968,12 @@ export async function syncClickyfiedDeliveryReport(
     // Identify all possible Clickify order identifier candidates (batch canonical first)
     const idCandidates: string[] = [];
     if (batchCanonicalOrderId) idCandidates.push(batchCanonicalOrderId);
-    if (providerOrderId) idCandidates.push(providerOrderId);
-    if (report.order.externalReference) {
+    if (providerOrderId && (providerOrderId.startsWith("order-") || providerOrderId.startsWith("CF-BATCH-"))) {
+      idCandidates.push(providerOrderId);
+    }
+    if (report.order.externalReference?.startsWith("CF-BATCH-")) {
       idCandidates.push(report.order.externalReference.trim());
     }
-    idCandidates.push(`TSK-ORD-${report.order.id}`);
-    idCandidates.push(`order-${report.order.id}`);
 
     const uniqueIds = Array.from(new Set(idCandidates.filter(Boolean)));
     if (uniqueIds.length === 0) return { changed: false };
@@ -1092,8 +1101,22 @@ export async function syncClickyfiedDeliveryReport(
     }
 
     if (!repData && !isMultiEntryBatch) {
-      repData = res?.report || res?.data?.report || res?.data || res || {};
-      reportBelongsToOrder = true;
+      const singleCandidate = res?.report || res?.data?.report;
+      if (
+        singleCandidate &&
+        typeof singleCandidate === "object" &&
+        (singleCandidate.status || singleCandidate.reportId || singleCandidate.number)
+      ) {
+        const candPhone =
+          singleCandidate.number ||
+          singleCandidate.phoneNumber ||
+          singleCandidate.phone ||
+          singleCandidate.recipient;
+        if (!candPhone || (orderPhone9 && normalizePhoneLast9(candPhone) === orderPhone9)) {
+          repData = singleCandidate;
+          reportBelongsToOrder = true;
+        }
+      }
     }
 
     const rawStatus = String(repData?.status || repData?.currentStatus || repData?.reportStatus || "").toLowerCase();
@@ -1263,13 +1286,13 @@ export async function syncClickyfiedDeliveryReport(
                 proofImage,
                 proofImageMime,
                 proofImageUploadedAt: new Date(),
-                proofImageUploadedBy: "Clickyfied API",
+                proofImageUploadedBy: "Support Team",
               }
             : {}),
           ...(newStatus === "RESOLVED" || newStatus === "DELIVERED" || newStatus === "CONFIRM_SENT" || newStatus === "REFUNDED"
             ? {
                 resolvedAt: resolutionDate || report.resolvedAt || new Date(),
-                resolvedBy: report.resolvedBy || "Clickyfied API",
+                resolvedBy: report.resolvedBy || "Support Team",
               }
             : {}),
         },
@@ -1303,7 +1326,7 @@ export async function syncClickyfiedDeliveryReport(
           await changeOrderStatus(
             report.order.id,
             "SUCCESS",
-            adminNotes || `Issue resolved by Clickyfied provider (${newStatus})`,
+            adminNotes || `Issue resolved (${newStatus})`,
             { id: "system", label: actorLabel },
             { force: true }
           );
@@ -1317,7 +1340,7 @@ export async function syncClickyfiedDeliveryReport(
           data: {
             reportId: report.id,
             type: "EVIDENCE_UPLOADED",
-            message: `Delivery proof image received from Clickyfied${evidenceUrl ? ` (${evidenceUrl})` : ""}`,
+            message: `Delivery proof image received${evidenceUrl ? ` (${evidenceUrl})` : ""}`,
             actorLabel,
           },
         });
@@ -1328,7 +1351,7 @@ export async function syncClickyfiedDeliveryReport(
           data: {
             reportId: report.id,
             type: (newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED") ? "MARKED_DELIVERED" : newStatus === "REFUNDED" ? "REFUND" : "RESOLVED",
-            message: `Clickyfied report update: ${newStatus}. Notes: ${adminNotes || "None"}`,
+            message: `Report update: ${newStatus}.${adminNotes ? ` Notes: ${sanitizeCustomerRefundNote(adminNotes, report.order?.amount) || adminNotes}` : ""}`,
             actorLabel,
           },
         });

@@ -292,8 +292,8 @@ export function sanitizeCustomerRefundNote(
         /refund(?:ed)?\s+(?:on|by)\s+[a-z0-9_-]+(?:\s*provider)?/gi,
         `Refunded ${websitePriceStr}`
       );
-      if (/order failed on [a-z0-9_-]+ and was refunded/i.test(text)) {
-        text = text.replace(/order failed on [a-z0-9_-]+ and was refunded/gi, `Refunded ${websitePriceStr}`);
+      if (/order failed (?:on|by) [a-z0-9_-]+ and was refunded/i.test(text)) {
+        text = text.replace(/order failed (?:on|by) [a-z0-9_-]+ and was refunded/gi, `Refunded ${websitePriceStr}`);
       }
     } else {
       // If amount is not known, ensure wholesale numbers are masked
@@ -304,24 +304,68 @@ export function sanitizeCustomerRefundNote(
     }
   }
 
-  // Sanitize any remaining provider failure messages
-  text = text.replace(/failed on [a-z0-9_-]+(?:\s*provider)?/gi, "Failed to deliver");
+  return sanitizeCustomerFacingText(text) || (websitePriceStr ? `Refunded ${websitePriceStr}` : "Refunded");
+}
 
-  // Strip internal provider names if still lingering
-  text = text
+/**
+ * Sanitizes any text intended for user/customer display (status notes, history logs,
+ * timeline events, error reasons, dialog labels) to strip all internal API provider
+ * names (Clickyfied, Clickify, Bigwindata, Bigwin) and internal IDs.
+ */
+export function sanitizeCustomerFacingText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  let s = String(text).trim();
+  if (!s) return null;
+
+  // Mask internal batch codes / provider report IDs in notes
+  s = s.replace(/\[PROVIDER_REPORT_ID:[^\]]+\]/gi, "");
+  s = s.replace(/\[?CLICKYFIED_REPORT_ID:[^\]]+\]?/gi, "");
+  s = s.replace(/CLICKYFIED:[a-z0-9_-]+(?::[a-z0-9_-]+)?/gi, "");
+
+  // Convert common provider failure/status phrases into clean customer language
+  s = s.replace(/order marked as failed by [a-z0-9_-]+(?:\s*provider)?/gi, "Order delivery failed");
+  s = s.replace(/marked as failed by [a-z0-9_-]+(?:\s*provider)?/gi, "Delivery failed");
+  s = s.replace(/failed (?:on|by) [a-z0-9_-]+(?:\s*provider)?/gi, "Failed to deliver");
+  s = s.replace(/dispatched via [a-z0-9_-]+ api/gi, "Dispatched for automated delivery");
+  s = s.replace(/dispatched to [a-z0-9_-]+/gi, "Dispatched for delivery");
+  s = s.replace(/updated via [a-z0-9_-]+ callback/gi, "Updated delivery status");
+  s = s.replace(/synced with [a-z0-9_-]+/gi, "Delivery status synced");
+  s = s.replace(/submitted in [a-z0-9_-]+(?: mtn)? batch/gi, "Submitted in automated batch");
+  s = s.replace(/[a-z0-9_-]+ batch attempt \([^)]+\) failed/gi, "Batch delivery attempt failed");
+  s = s.replace(/[a-z0-9_-]+ dispatch failed/gi, "Delivery processing failed");
+  s = s.replace(/[a-z0-9_-]+ request timed out[^.]*/gi, "Delivery processing timed out");
+  s = s.replace(/[a-z0-9_-]+ (?:http|api|request)[^:]*:\s*/gi, "Delivery processing error: ");
+  s = s.replace(/delivery proof image received from [a-z0-9_-]+/gi, "Delivery proof image received");
+  s = s.replace(/order confirmed sent\/resolved by [a-z0-9_-]+(?:\s*provider)?/gi, "Order confirmed delivered");
+  s = s.replace(/issue resolved by [a-z0-9_-]+(?:\s*provider)?/gi, "Issue resolved");
+  s = s.replace(/[a-z0-9_-]+ report update:\s*/gi, "Report update: ");
+
+  // Strip provider names explicitly
+  s = s
     .replace(/on clickyfied/gi, "")
+    .replace(/by clickyfied callback/gi, "")
     .replace(/by clickyfied provider/gi, "")
-    .replace(/clickyfied provider/gi, "")
+    .replace(/clickyfied callback/gi, "System Sync")
+    .replace(/clickyfied api/gi, "System")
+    .replace(/clickyfied provider/gi, "network provider")
     .replace(/clickyfied/gi, "")
-    .replace(/\s+/g, " ")
+    .replace(/clickify/gi, "")
+    .replace(/bigwindata/gi, "")
+    .replace(/bigwin/gi, "");
+
+  // Clean up any double spaces, trailing colons or dashes
+  s = s
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[:\-–\s]+/, "")
+    .replace(/[:\-–\s]+$/, "")
     .trim();
 
-  // If text became empty or just punctuation, fallback to default
-  if (!text || text === ":" || text === "-") {
-    return websitePriceStr ? `Refunded ${websitePriceStr}` : "Refunded";
+  if (!s || s === ":" || s === "-" || s === "–") {
+    return null;
   }
 
-  return text;
+  return s;
 }
 
 export function formatDateTime(date: Date | string): string {

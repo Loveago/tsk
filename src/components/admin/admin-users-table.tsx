@@ -4,7 +4,7 @@ import * as React from "react";
 import { EmptyState, Spinner } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { formatGHS, formatDateTime } from "@/lib/types";
-import { Users, Pencil, PlusCircle, Ticket, Snowflake, ShieldAlert } from "lucide-react";
+import { Users, Pencil, PlusCircle, MinusCircle, Ticket, Snowflake, ShieldAlert } from "lucide-react";
 
 export interface UserRow {
   id: string;
@@ -27,12 +27,14 @@ export function AdminUsersTable({
   loading,
   onEdit,
   onManualCredit,
+  onManualDebit,
   onToggleFreeze,
 }: {
   data: UserRow[];
   loading: boolean;
   onEdit: (u: UserRow) => void;
   onManualCredit?: (u: UserRow) => void;
+  onManualDebit?: (u: UserRow) => void;
   onToggleFreeze?: (u: UserRow) => void;
 }) {
   if (loading) {
@@ -125,6 +127,17 @@ export function AdminUsersTable({
                           title="Manual wallet credit"
                         >
                           <PlusCircle className="h-3 w-3 text-emerald-600" /> Credit
+                        </Button>
+                      )}
+                      {onManualDebit && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onManualDebit(u)}
+                          className="h-7 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-rose-200 dark:border-rose-900/40"
+                          title="Manual wallet debit"
+                        >
+                          <MinusCircle className="h-3 w-3 text-rose-600 dark:text-rose-400" /> Debit
                         </Button>
                       )}
                       <Button size="sm" variant="outline" onClick={() => onEdit(u)} className="h-7 text-xs">

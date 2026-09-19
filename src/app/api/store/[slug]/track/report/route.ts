@@ -121,24 +121,23 @@ export async function POST(
       }),
     });
 
-    // Forward to Clickyfied if enabled and order is routed through Clickyfied
-    const notReceivedSetting = await prisma.systemSetting.findUnique({
-      where: { key: "clickyfied_not_received_enabled" },
-    });
-    const isClickyfiedOrder =
-      order.providerReference?.startsWith("CLICKYFIED:") ||
-      (await prisma.systemSetting.findUnique({ where: { key: `provider_route_${order.network}` } }))?.value === "CLICKYFIED";
+    // Forward to Clickyfied if API routing is enabled and order was genuinely dispatched to Clickyfied
+    const { getProviderRoutingConfig, normalizePhoneLast9 } = await import("@/lib/provider-apis/router");
+    const config = await getProviderRoutingConfig();
 
-    if (notReceivedSetting?.value !== "false" && isClickyfiedOrder) {
+    const isClickyfiedOrder = Boolean(
+      order.providerReference?.startsWith("CLICKYFIED:") ||
+      order.externalReference?.startsWith("CF-BATCH-")
+    );
+
+    if (config.enabled && config.clickyfied.enabled && config.clickyfied.notReceivedEnabled && isClickyfiedOrder) {
       try {
-        const { getProviderRoutingConfig, normalizePhoneLast9 } = await import("@/lib/provider-apis/router");
         const { ClickyfiedClient } = await import("@/lib/provider-apis/clickyfied");
         const { recordOrderApiLog } = await import("@/lib/order-api-logs");
 
-        const config = await getProviderRoutingConfig();
         const client = new ClickyfiedClient(config.clickyfied);
 
-        let clickyfiedOrderId = order.externalReference || `TSK-ORD-${order.id}`;
+        let clickyfiedOrderId = "";
         let orderEntryId: string | number | undefined = undefined;
 
         if (order.providerReference?.startsWith("CLICKYFIED:")) {
@@ -148,47 +147,19 @@ export async function POST(
           if (refEntryId) {
             orderEntryId = !isNaN(Number(refEntryId)) ? Number(refEntryId) : refEntryId;
           }
-        } else if (order.providerReference) {
-          const [refOrderId, refEntryId] = order.providerReference.trim().split(":");
-          if (refOrderId) clickyfiedOrderId = refOrderId;
-          if (refEntryId) {
-            orderEntryId = !isNaN(Number(refEntryId)) ? Number(refEntryId) : refEntryId;
-          }
+        } else if (order.externalReference?.startsWith("CF-BATCH-")) {
+          clickyfiedOrderId = order.externalReference.trim();
         }
 
         // Canonical ID resolution
-        if (!clickyfiedOrderId.startsWith("order-")) {
+        if (clickyfiedOrderId && !clickyfiedOrderId.startsWith("order-")) {
           try {
             clickyfiedOrderId = await client.resolveCanonicalOrderId(clickyfiedOrderId);
           } catch {}
         }
 
-        if (!clickyfiedOrderId.startsWith("order-")) {
-          try {
-            const matched = await client.findOrderByPhone(order.phoneNumber);
-            if (matched?.orderId) {
-              clickyfiedOrderId = matched.orderId;
-              if (matched.orderEntryId !== undefined) {
-                orderEntryId = matched.orderEntryId;
-              }
-              await prisma.order
-                .update({
-                  where: { id: order.id },
-                  data: {
-                    providerReference: orderEntryId
-                      ? `CLICKYFIED:${clickyfiedOrderId}:${orderEntryId}`
-                      : `CLICKYFIED:${clickyfiedOrderId}`,
-                  },
-                })
-                .catch(() => {});
-            }
-          } catch (lookupPhoneErr) {
-            console.warn("Could not find order by phone on Clickyfied:", lookupPhoneErr);
-          }
-        }
-
-        if (clickyfiedOrderId.startsWith("order-")) {
-          // If orderEntryId is undefined, lookup from order status entries
+        if (clickyfiedOrderId && clickyfiedOrderId.startsWith("order-")) {
+          // If orderEntryId is undefined, lookup ONLY from this specific Clickyfied order's entries
           if (orderEntryId === undefined) {
             try {
               const ordStatus = await client.getOrderStatus(clickyfiedOrderId);
@@ -207,7 +178,7 @@ export async function POST(
                 }
               }
             } catch (err) {
-              console.warn("Failed entryId lookup:", err);
+              console.warn("Failed entryId lookup within Clickyfied order:", err);
             }
           }
 

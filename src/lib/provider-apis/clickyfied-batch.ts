@@ -300,7 +300,7 @@ export async function getNextClickyfiedBatchCode(): Promise<string> {
  * statuses reflecting which orders are processing vs pending.
  */
 export async function dispatchClickyfiedMtnBatch(
-  actorLabel = "Clickyfied Batch Trigger",
+  actorLabel = "Batch System",
   options: { onlyFullBatches?: boolean } = {}
 ): Promise<{
   success: boolean;
@@ -546,7 +546,7 @@ export async function dispatchClickyfiedMtnBatch(
             status: targetStatus,
             providerReference: orderProviderRef,
             externalReference: batchCode,
-            failureReason: targetStatus === "FAILED" ? `Failed on Clickyfied: ${rawStatus}` : null,
+            failureReason: targetStatus === "FAILED" ? `Failed to deliver: ${rawStatus}` : null,
           },
         });
 
@@ -555,7 +555,7 @@ export async function dispatchClickyfiedMtnBatch(
             orderId: order.id,
             status: targetStatus,
             previousStatus: "PENDING",
-            note: `Submitted in Clickyfied MTN Batch #${batchCode} (${targetBatch.orders.length} entries, ${targetBatch.totalGb} GB). Provider Order #${batchOrderId}${entryId ? ` (Entry #${entryId})` : ""}. Status: ${entryRawStatus || rawStatus || targetStatus}`,
+            note: `Submitted in automated batch #${batchCode} (${targetBatch.orders.length} entries, ${targetBatch.totalGb} GB). Status: ${entryRawStatus || rawStatus || targetStatus}`,
             changedBy: actorLabel,
           },
         });
@@ -631,7 +631,7 @@ export async function dispatchClickyfiedMtnBatch(
         data: targetBatch.orders.map((o) => ({
           orderId: o.id,
           status: "PENDING",
-          note: `Clickyfied Batch attempt (${batchCode}) failed: ${batchErr?.message || "Network error"}`,
+          note: `Batch delivery attempt (${batchCode}) failed: ${batchErr?.message || "Network error"}`,
           changedBy: actorLabel,
         })),
       });

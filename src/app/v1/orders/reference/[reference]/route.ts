@@ -89,7 +89,6 @@ export async function GET(
         status: order.deliveryReports[0].status,
         reason: order.deliveryReports[0].reason,
         adminResponse: sanitizeCustomerRefundNote(order.deliveryReports[0].adminResponse, order.amount),
-        adminNote: order.deliveryReports[0].adminNote,
         createdAt: order.deliveryReports[0].createdAt.toISOString(),
         resolvedAt: order.deliveryReports[0].resolvedAt?.toISOString() || null,
       } : null,

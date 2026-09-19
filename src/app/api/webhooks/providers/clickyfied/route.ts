@@ -319,13 +319,13 @@ export async function POST(request: NextRequest) {
                     proofImage,
                     proofImageMime,
                     proofImageUploadedAt: new Date(),
-                    proofImageUploadedBy: "Clickyfied Callback",
+                    proofImageUploadedBy: "Support Team",
                   }
                 : {}),
               ...(isTerminal
                 ? {
                     resolvedAt: resolutionDate || report.resolvedAt || new Date(),
-                    resolvedBy: "Clickyfied Callback",
+                    resolvedBy: "Support Team",
                   }
                 : {}),
             },
@@ -341,7 +341,7 @@ export async function POST(request: NextRequest) {
                 targetOrder.id,
                 "FAILED",
                 refundReason,
-                { id: "system", label: "Clickyfied Callback" },
+                { id: "system", label: "System Sync" },
                 { force: true }
               );
             } catch (err) {
@@ -355,8 +355,8 @@ export async function POST(request: NextRequest) {
               await changeOrderStatus(
                 targetOrder.id,
                 "SUCCESS",
-                adminNotes || "Order confirmed sent/resolved by Clickyfied provider",
-                { id: "system", label: "Clickyfied Callback" },
+                adminNotes || "Order confirmed delivered",
+                { id: "system", label: "System Sync" },
                 { force: true }
               );
             } catch (err) {
@@ -369,8 +369,8 @@ export async function POST(request: NextRequest) {
               data: {
                 reportId: report.id,
                 type: "EVIDENCE_UPLOADED",
-                message: `Delivery proof image received from Clickyfied${evidenceUrl ? ` (${evidenceUrl})` : ""}`,
-                actorLabel: "Clickyfied API",
+                message: `Delivery proof image received${evidenceUrl ? ` (${evidenceUrl})` : ""}`,
+                actorLabel: "System",
               },
             });
           }
@@ -379,8 +379,8 @@ export async function POST(request: NextRequest) {
             data: {
               reportId: report.id,
               type: newStatus === "CONFIRM_SENT" ? "MARKED_DELIVERED" : newStatus === "REFUNDED" ? "REFUND" : "RESOLVED",
-              message: `Clickyfied report update: ${newStatus}. Notes: ${adminNotes || "None"}`,
-              actorLabel: "Clickyfied API",
+              message: `Report update: ${newStatus}.${adminNotes ? ` Notes: ${adminNotes}` : ""}`,
+              actorLabel: "System",
             },
           });
         }
@@ -426,14 +426,14 @@ export async function POST(request: NextRequest) {
             targetStatus,
             payload?.failureReason ||
               payload?.notes ||
-              `Updated via Clickyfied Callback: ${entryStatus || rawStatus || targetStatus}`,
-            { id: "system", label: "Clickyfied Callback" },
+              `Updated delivery status: ${entryStatus || rawStatus || targetStatus}`,
+            { id: "system", label: "System Sync" },
             { force: true }
           );
 
           await recordAudit({
             userId: ord.userId,
-            actorLabel: "Clickyfied Callback",
+            actorLabel: "System Sync",
             action: "order.callback_update",
             target: `order:${ord.id}`,
             newValue: JSON.stringify({ event, status: targetStatus, orderId, entryStatus }),

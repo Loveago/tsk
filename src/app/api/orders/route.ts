@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
               const validNorms = new Set(res.validNumbers.map((n) => normalizeGhanaPhoneNumber(n)));
               for (const phone of unverifiedPhones) {
                 if (validNorms.has(phone)) {
-                  await addAcceptedMtnNumber(phone, "CLICKYFIED_API", "Clickyfied Verification API").catch(() => {});
+                  await addAcceptedMtnNumber(phone, "CLICKYFIED_API", "Automated Verification API").catch(() => {});
                   acceptedSet.add(phone);
                 }
               }
@@ -505,11 +505,13 @@ export async function GET(request: NextRequest) {
     const positionOf = new Map<number, number>();
     queueRows.forEach((row, index) => positionOf.set(row.id, index + 1));
 
+    const isStaff = user.role === "ADMIN" || user.role === "MANAGER";
     const dataWithQueue = data.map((order) => {
       const isDelivered = order.status === "SUCCESS" || order.status === "COMPLETED";
       const deliveredAt = isDelivered ? (order.completedAt ?? order.updatedAt) : null;
       return {
         ...order,
+        providerReference: isStaff ? order.providerReference : null,
         completedAt: deliveredAt ? new Date(deliveredAt).toISOString() : null,
         failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount),
         queuePosition: positionOf.get(order.id) ?? null,

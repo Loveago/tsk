@@ -22,8 +22,9 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = React.useState(true);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<UserRow | null>(null);
-  const [creditDialogOpen, setCreditDialogOpen] = React.useState(false);
-  const [creditingUser, setCreditingUser] = React.useState<UserRow | null>(null);
+  const [adjustmentDialogOpen, setAdjustmentDialogOpen] = React.useState(false);
+  const [adjustingUser, setAdjustingUser] = React.useState<UserRow | null>(null);
+  const [adjustmentMode, setAdjustmentMode] = React.useState<"CREDIT" | "DEBIT">("CREDIT");
   const [profiles, setProfiles] = React.useState<{ id: string; name: string }[]>([]);
 
   const load = React.useCallback(async () => {
@@ -123,8 +124,14 @@ export default function AdminUsersPage() {
           setDialogOpen(true);
         }}
         onManualCredit={(u) => {
-          setCreditingUser(u);
-          setCreditDialogOpen(true);
+          setAdjustingUser(u);
+          setAdjustmentMode("CREDIT");
+          setAdjustmentDialogOpen(true);
+        }}
+        onManualDebit={(u) => {
+          setAdjustingUser(u);
+          setAdjustmentMode("DEBIT");
+          setAdjustmentDialogOpen(true);
         }}
         onToggleFreeze={handleFreeze}
       />
@@ -152,13 +159,14 @@ export default function AdminUsersPage() {
       />
 
       <ManualCreditDialog
-        open={creditDialogOpen}
+        open={adjustmentDialogOpen}
+        initialMode={adjustmentMode}
         onClose={() => {
-          setCreditDialogOpen(false);
-          setCreditingUser(null);
+          setAdjustmentDialogOpen(false);
+          setAdjustingUser(null);
         }}
-        user={creditingUser}
-        onCredited={load}
+        user={adjustingUser}
+        onAdjusted={load}
       />
     </div>
   );

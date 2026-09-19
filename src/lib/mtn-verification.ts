@@ -119,7 +119,7 @@ export async function validateMtnOrderRecipient(
         const res = await client.verifyNumbers([normalized]);
         const validNorms = new Set(res.validNumbers.map((n) => normalizeGhanaPhoneNumber(n)));
         if (validNorms.has(normalized)) {
-          await addAcceptedMtnNumber(normalized, "CLICKYFIED_API", "Clickyfied Verification API").catch(() => {});
+          await addAcceptedMtnNumber(normalized, "CLICKYFIED_API", "Automated Verification API").catch(() => {});
           isAccepted = true;
         }
       } catch (err) {

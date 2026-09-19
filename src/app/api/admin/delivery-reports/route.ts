@@ -92,6 +92,7 @@ export async function GET(request: NextRequest) {
               status: true,
               completedAt: true,
               failureReason: true,
+              providerReference: true,
             },
           },
           user: { select: { id: true, name: true, email: true } },
@@ -107,17 +108,20 @@ export async function GET(request: NextRequest) {
     stats["CONFIRM_SENT"] = confirmSentCombined;
     stats["DELIVERED"] = confirmSentCombined;
 
-    // On-demand sync for open reports in the admin queue (so provider updates sync immediately)
+    // On-demand sync for open reports in the admin queue (only for genuinely dispatched Clickyfied orders when API routing is on)
     const syncableReports = data.filter((r) =>
-      ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status)
+      ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status) &&
+      Boolean(r.order?.providerReference?.startsWith("CLICKYFIED:") || r.order?.batch?.batchCode?.startsWith("CF-BATCH-"))
     );
     if (syncableReports.length > 0) {
       try {
-        const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
-        let anyChanged = false;
-        await Promise.allSettled(
-          syncableReports.slice(0, 10).map(async (rep: any) => {
-            const res = await syncClickyfiedDeliveryReport(rep.id, "Admin Queue View Sync");
+        const { getProviderRoutingConfig, syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+        const config = await getProviderRoutingConfig();
+        if (config.enabled && config.clickyfied.enabled && config.clickyfied.notReceivedEnabled) {
+          let anyChanged = false;
+          await Promise.allSettled(
+            syncableReports.slice(0, 10).map(async (rep: any) => {
+              const res = await syncClickyfiedDeliveryReport(rep.id, "Admin Queue View Sync");
             if (res.changed) {
               anyChanged = true;
               const refreshed = await prisma.deliveryReport.findUnique({
@@ -147,10 +151,11 @@ export async function GET(request: NextRequest) {
             }
           })
         );
-        if (anyChanged) {
-          const freshByStatus = await prisma.deliveryReport.groupBy({ by: ["status"], _count: { _all: true } });
-          for (const k of Object.keys(stats)) delete stats[k];
-          for (const row of freshByStatus) stats[row.status] = row._count._all;
+          if (anyChanged) {
+            const freshByStatus = await prisma.deliveryReport.groupBy({ by: ["status"], _count: { _all: true } });
+            for (const k of Object.keys(stats)) delete stats[k];
+            for (const row of freshByStatus) stats[row.status] = row._count._all;
+          }
         }
       } catch {}
     }

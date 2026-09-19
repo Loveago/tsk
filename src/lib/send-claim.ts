@@ -707,3 +707,83 @@ export async function adminManualCreditWallet(input: {
     };
   }, { maxWait: 15000, timeout: 20000 });
 }
+
+/**
+ * Manual wallet debit by administrator
+ */
+export async function adminManualDebitWallet(input: {
+  adminId: string;
+  adminEmail: string;
+  userId: string;
+  amount: number;
+  reason: string;
+  reference?: string;
+  ip?: string | null;
+}) {
+  if (input.amount <= 0) {
+    throw new Error("Debit amount must be positive");
+  }
+
+  return prisma.$transaction(
+    async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: input.userId } });
+      if (!user) throw new Error("User not found");
+
+      if (user.balance < input.amount) {
+        throw new Error(
+          `Insufficient balance. User has GHS ${user.balance.toFixed(2)}, cannot debit GHS ${input.amount.toFixed(2)}.`
+        );
+      }
+
+      const ref = input.reference?.trim() || `DEBIT-${Date.now()}`;
+
+      const walletTx = await tx.walletTransaction.create({
+        data: {
+          userId: input.userId,
+          type: "ADJUSTMENT",
+          amount: -Math.abs(input.amount),
+          status: "APPROVED",
+          reference: ref,
+          note: input.reason,
+        },
+      });
+
+      const updatedUser = await tx.user.update({
+        where: { id: input.userId },
+        data: { balance: { decrement: input.amount } },
+        select: { balance: true, email: true, name: true },
+      });
+
+      try {
+        await tx.auditLog.create({
+          data: {
+            userId: input.userId,
+            actorLabel: input.adminEmail,
+            action: "wallet.admin_manual_debit",
+            target: `user:${input.userId}`,
+            previousValue: JSON.stringify({ balance: user.balance }),
+            newValue: JSON.stringify({
+              amount: input.amount,
+              newBalance: updatedUser.balance,
+              reason: input.reason,
+              reference: ref,
+              walletTransactionId: walletTx.id,
+            }),
+            ip: input.ip ?? null,
+          },
+        });
+      } catch {
+        // Audit log fallback
+      }
+
+      return {
+        success: true,
+        amount: input.amount,
+        newBalance: updatedUser.balance,
+        walletTransactionId: walletTx.id,
+        reference: ref,
+      };
+    },
+    { maxWait: 15000, timeout: 20000 }
+  );
+}

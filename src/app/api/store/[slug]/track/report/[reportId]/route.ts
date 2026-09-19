@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
-import { getEnabledStorefrontBySlug } from "@/lib/storefront";
-import { deliveryReportCode } from "@/lib/types";
+import { getEnabledStorefrontBySlug, fromPesewas } from "@/lib/storefront";
+import { deliveryReportCode, sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "@/lib/types";
 import { syncClickyfiedDeliveryReport } from "@/lib/provider-apis/router";
 
 /**
@@ -33,7 +33,7 @@ export async function GET(
         storefrontId: storefront.id,
         paymentReference: reference,
       },
-      select: { underlyingOrderId: true, customerPhone: true },
+      select: { underlyingOrderId: true, customerPhone: true, sellingPrice: true },
     });
 
     if (!storefrontOrder || !storefrontOrder.underlyingOrderId) {
@@ -88,9 +88,9 @@ export async function GET(
         seq: report.seq,
         code: deliveryReportCode(report.seq),
         status: report.status,
-        reason: report.reason,
-        message: report.message,
-        adminResponse: report.adminResponse,
+        reason: sanitizeCustomerFacingText(report.reason),
+        message: sanitizeCustomerFacingText(report.message),
+        adminResponse: sanitizeCustomerRefundNote(report.adminResponse, fromPesewas(storefrontOrder.sellingPrice)),
         respondedAt: report.respondedAt ? report.respondedAt.toISOString() : null,
         hasProof: Boolean(report.proofImageMime),
         proofImageUploadedAt: report.proofImageUploadedAt ? report.proofImageUploadedAt.toISOString() : null,
@@ -100,8 +100,10 @@ export async function GET(
         events: report.events.map((e) => ({
           id: e.id,
           type: e.type,
-          message: e.message,
-          actorLabel: e.actorLabel,
+          message: sanitizeCustomerFacingText(e.message),
+          actorLabel: e.actorLabel?.toLowerCase().includes("clickyfied")
+            ? "System"
+            : (sanitizeCustomerFacingText(e.actorLabel) || "System"),
           createdAt: e.createdAt.toISOString(),
         })),
       },

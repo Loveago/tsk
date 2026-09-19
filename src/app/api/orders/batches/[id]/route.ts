@@ -99,6 +99,7 @@ export async function GET(
       .filter(Boolean)
       .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? (batch.status === "COMPLETED" ? batch.updatedAt : null);
 
+    const isStaff = user.role === "ADMIN" || user.role === "MANAGER";
     return NextResponse.json({
       batch: {
         ...batch,
@@ -109,6 +110,7 @@ export async function GET(
         const deliveredAt = isDelivered ? (o.completedAt ?? o.updatedAt) : null;
         return {
           ...o,
+          providerReference: isStaff ? o.providerReference : null,
           completedAt: deliveredAt ? new Date(deliveredAt).toISOString() : null,
           failureReason: sanitizeCustomerRefundNote(o.failureReason, o.amount),
         };

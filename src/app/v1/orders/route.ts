@@ -11,6 +11,7 @@ import { isOrderProcessingHalted, getDefaultProfileId, getPricingForProfile } fr
 import { dispatchWebhookEvent } from "@/lib/webhooks";
 import { phoneSchema } from "@/lib/validation";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
+import { sanitizeCustomerRefundNote } from "@/lib/types";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
       recipient: o.phoneNumber,
       amount: o.amount,
       status: o.isSandbox ? (o.status === "SUCCESS" ? "TEST_COMPLETED" : o.status) : (o.status === "SUCCESS" ? "COMPLETED" : o.status),
-      failureReason: o.failureReason || null,
+      failureReason: sanitizeCustomerRefundNote(o.failureReason, o.amount) || null,
       isSandbox: o.isSandbox,
       createdAt: o.createdAt.toISOString(),
       completedAt: o.completedAt?.toISOString() || null,

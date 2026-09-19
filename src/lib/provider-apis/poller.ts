@@ -30,11 +30,17 @@ export function startProviderSyncPoller() {
     if (isPolling) return;
     isPolling = true;
     try {
-      // 1. Check if automated poller is enabled in system settings (default: true)
+      // 1. Check if automated poller and API routing are enabled
       const setting = await prisma.systemSetting.findUnique({
         where: { key: "provider_sync_poller_enabled" },
       });
       if (setting && setting.value === "false") {
+        return;
+      }
+
+      const { getProviderRoutingConfig } = await import("./router");
+      const config = await getProviderRoutingConfig();
+      if (!config.enabled || !config.clickyfied.enabled) {
         return;
       }
 
@@ -52,14 +58,14 @@ export function startProviderSyncPoller() {
         orderBy: { updatedAt: "asc" },
       });
 
-      // Find active open delivery reports on Clickify orders (only truly unresolved reports)
+      // Find active open delivery reports on Clickify orders (only truly unresolved Clickyfied reports)
       const openReports = await prisma.deliveryReport.findMany({
         where: {
           status: { in: ["OPEN", "INVESTIGATING", "UNDER_REVIEW"] },
           order: {
             OR: [
               { providerReference: { startsWith: "CLICKYFIED:" } },
-              { externalReference: { not: null } },
+              { externalReference: { startsWith: "CF-BATCH-" } },
             ],
           },
           updatedAt: { lte: twoMinutesAgo },

@@ -9,6 +9,7 @@ import {
   storefrontOrderCode,
   verifyAndSettleStorefrontOrder,
 } from "@/lib/storefront";
+import { sanitizeCustomerRefundNote } from "@/lib/types";
 
 /**
  * Public order tracking for the storefront (§37 buyer-facing view). A query
@@ -167,7 +168,7 @@ export async function POST(
                 code: `NR-${String(latestReport.seq).padStart(5, "0")}`,
                 status: latestReport.status,
                 reason: latestReport.reason,
-                adminResponse: latestReport.adminResponse,
+                adminResponse: sanitizeCustomerRefundNote(latestReport.adminResponse, fromPesewas(o.sellingPrice)),
                 hasProof: Boolean(latestReport.proofImageMime),
                 createdAt: latestReport.createdAt.toISOString(),
               }

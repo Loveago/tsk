@@ -4,7 +4,7 @@ import * as React from "react";
 import { useToast } from "@/components/toast";
 import { QueueList, SendSummary, type Line } from "@/components/send/queue-list";
 import { NETWORKS, formatGHS } from "@/lib/types";
-import { NETWORK_LABELS, parseOrderLine, normalizeTextNumbers, splitOrderLines } from "@/lib/order-parse";
+import { NETWORK_LABELS, parseOrderLine, normalizeTextNumbers, splitOrderLines, isHeaderLine } from "@/lib/order-parse";
 import { isMtnPrefix, detectNetworkNameByPrefix } from "@/lib/phone-utils";
 import { cn } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
@@ -316,6 +316,7 @@ export default function SendOrderPage() {
     const parsed: Line[] = [];
     let skipped = 0;
     rawLines.forEach((line) => {
+      if (isHeaderLine(line)) return;
       const parsedLine = parseOrderLine(line, packages, network);
       if (parsedLine) parsed.push(parsedLine);
       else skipped++;
@@ -350,6 +351,7 @@ export default function SendOrderPage() {
         const rawLine = row.join(",").trim();
         if (!rawLine) continue;
         const line = normalizeTextNumbers(rawLine);
+        if (isHeaderLine(line)) continue;
         const parsedLine = parseOrderLine(line, packages, network);
         if (parsedLine) parsed.push(parsedLine);
         else skipped++;

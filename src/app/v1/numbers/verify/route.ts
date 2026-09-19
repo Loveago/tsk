@@ -105,7 +105,7 @@ async function executeVerification(rawNumbers: unknown[], authContext: any) {
           const validNorms = new Set(res.validNumbers.map((n) => normalizeGhanaPhoneNumber(n)));
           for (const num of missingFromLocal) {
             if (validNorms.has(num)) {
-              await addAcceptedMtnNumber(num, "CLICKYFIED_API", "Clickyfied Verification API").catch(() => {});
+              await addAcceptedMtnNumber(num, "CLICKYFIED_API", "Automated Verification API").catch(() => {});
               acceptedSet.add(num);
             }
           }

@@ -7,6 +7,7 @@ import {
   logApiRequestEntry,
   ApiError,
 } from "@/lib/developer-api";
+import { sanitizeCustomerRefundNote } from "@/lib/types";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -122,7 +123,7 @@ export async function POST(request: NextRequest) {
         package: order.dataPackage?.name || `${order.gbAmount}GB`,
         recipient: order.phoneNumber,
         status: displayStatus,
-        failureReason: order.failureReason || null,
+        failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount) || null,
         createdAt: order.createdAt.toISOString(),
         completedAt: order.completedAt?.toISOString() || null,
       };

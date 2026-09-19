@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
+import { sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "@/lib/types";
 
 interface DeliveryReportSummary {
   id: string;
@@ -327,7 +328,7 @@ export function TrackForm({ slug }: { slug: string }) {
           id="track-query"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="024 XXX XXXX · CF-ST-00001 · CLQ-XXXXXXXX"
+          placeholder="024 XXX XXXX · CF-ST-00001 · pay_..."
           className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-yellow-400 caret-yellow-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:caret-yellow-400"
         />
         <button
@@ -458,7 +459,9 @@ export function TrackForm({ slug }: { slug: string }) {
                         <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                         Investigation Response
                       </div>
-                      <p className="text-blue-800 dark:text-blue-200">{reportDetail.adminResponse}</p>
+                      <p className="text-blue-800 dark:text-blue-200">
+                        {sanitizeCustomerRefundNote(reportDetail.adminResponse, viewReportOrder?.amount)}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -498,9 +501,13 @@ export function TrackForm({ slug }: { slug: string }) {
                           <span className="h-1.5 w-1.5 rounded-full bg-slate-400 mt-1.5 shrink-0" />
                           <div className="min-w-0 flex-1">
                             <span className="font-medium text-slate-900 dark:text-white">
-                              {EVENT_LABELS[evt.type] || evt.type}
+                              {sanitizeCustomerFacingText(EVENT_LABELS[evt.type] || evt.type)}
                             </span>
-                            {evt.message && <p className="text-slate-500 dark:text-slate-400">{evt.message}</p>}
+                            {evt.message && (
+                              <p className="text-slate-500 dark:text-slate-400">
+                                {sanitizeCustomerFacingText(evt.message)}
+                              </p>
+                            )}
                           </div>
                           <span className="text-[10px] text-slate-400 shrink-0">
                             {new Date(evt.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
