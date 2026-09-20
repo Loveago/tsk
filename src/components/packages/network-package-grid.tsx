@@ -38,11 +38,18 @@ const NETWORK_META: Record<
     pill: "bg-red-500/10 text-red-600 dark:text-red-400",
   },
   AIRTELTIGO: {
-    label: "AirtelTigo",
+    label: "AT iShare",
     dot: "bg-blue-500",
     icon: "from-blue-500 to-indigo-600 text-white",
     card: "hover:border-blue-400/70 dark:hover:border-blue-400/40",
     pill: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  },
+  AIRTELTIGO_BIGTIME: {
+    label: "AT Big Time",
+    dot: "bg-cyan-500",
+    icon: "from-cyan-500 to-blue-600 text-white",
+    card: "hover:border-cyan-400/70 dark:hover:border-cyan-400/40",
+    pill: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   },
 };
 

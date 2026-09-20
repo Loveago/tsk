@@ -485,7 +485,7 @@ export default function SendOrderPage() {
             <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
               Network
             </p>
-            <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-100 p-1.5 dark:bg-white/5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-xl bg-slate-100 p-1.5 dark:bg-white/5">
               {NETWORKS.map((n) => {
                 const unavailable =
                   !loading && packages.length > 0 && !packages.some((p) => p.network === n);
@@ -498,6 +498,9 @@ export default function SendOrderPage() {
                 } else if (n === "TELECEL") {
                   activeStyle = "bg-red-600 text-white font-bold shadow-md shadow-red-600/30 ring-2 ring-red-500 border border-red-700";
                   inactiveStyle = "text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10";
+                } else if (n === "AIRTELTIGO_BIGTIME") {
+                  activeStyle = "bg-cyan-600 text-white font-bold shadow-md shadow-cyan-600/30 ring-2 ring-cyan-500 border border-cyan-700";
+                  inactiveStyle = "text-cyan-700 hover:bg-cyan-50 dark:text-cyan-400 dark:hover:bg-cyan-500/10";
                 } else {
                   activeStyle = "bg-blue-600 text-white font-bold shadow-md shadow-blue-600/30 ring-2 ring-blue-500 border border-blue-700";
                   inactiveStyle = "text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10";
@@ -510,7 +513,7 @@ export default function SendOrderPage() {
                     disabled={unavailable || !submissionEnabled}
                     title={unavailable ? "No packages available for this network" : undefined}
                     className={cn(
-                      "flex h-10 items-center justify-center rounded-lg text-sm font-bold transition-all duration-150",
+                      "flex h-10 items-center justify-center rounded-lg text-xs sm:text-sm font-bold transition-all duration-150",
                       isSelected ? activeStyle : inactiveStyle,
                       unavailable &&
                         "cursor-not-allowed opacity-40 hover:text-slate-500 dark:hover:text-slate-400"

@@ -1,4 +1,4 @@
-export type ProviderType = "MANUAL" | "BIGWINDATA" | "CLICKYFIED";
+export type ProviderType = "MANUAL" | "BIGWINDATA" | "CLICKYFIED" | "GHCONNECT";
 
 export interface BigwindataConfig {
   enabled: boolean;
@@ -17,13 +17,20 @@ export interface ClickyfiedConfig {
   notReceivedEnabled: boolean;
 }
 
+export interface GhconnectConfig {
+  enabled: boolean;
+  apiKey: string;
+  baseUrl: string;
+}
+
 export interface ProviderRoutingConfig {
   enabled: boolean; // Master switch: if false, everything is manual export
   defaultProvider: ProviderType;
   autoDispatch: boolean; // Dispatch immediately on order creation
-  networkRoutes: Record<string, ProviderType>; // e.g. { "MTN": "BIGWINDATA", "TELECEL": "CLICKYFIED", "AIRTELTIGO": "CLICKYFIED", "AIRTELTIGO_ISHARE": "CLICKYFIED", "AIRTELTIGO_BIGTIME": "CLICKYFIED" }
+  networkRoutes: Record<string, ProviderType>; // e.g. { "MTN": "CLICKYFIED", "TELECEL": "BIGWINDATA", "AIRTELTIGO_ISHARE": "GHCONNECT", "AIRTELTIGO_BIGTIME": "BIGWINDATA" }
   bigwindata: BigwindataConfig;
   clickyfied: ClickyfiedConfig;
+  ghconnect: GhconnectConfig;
 }
 
 export interface BigwindataBundle {

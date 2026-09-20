@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { BigwindataClient } from "@/lib/provider-apis/bigwindata";
 import { ClickyfiedClient, generateClickyfiedReference } from "@/lib/provider-apis/clickyfied";
+import { GhconnectClient } from "@/lib/provider-apis/ghconnect";
 import { getProviderRoutingConfig } from "@/lib/provider-apis/router";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
@@ -15,6 +16,12 @@ export async function POST(request: NextRequest) {
 
     if (action === "test_bigwindata_balance") {
       const client = new BigwindataClient(config.bigwindata);
+      const balance = await client.getBalance();
+      return NextResponse.json({ success: true, balance });
+    }
+
+    if (action === "test_ghconnect_balance") {
+      const client = new GhconnectClient(config.ghconnect);
       const balance = await client.getBalance();
       return NextResponse.json({ success: true, balance });
     }
@@ -58,6 +65,18 @@ export async function POST(request: NextRequest) {
           idempotencyKey: externalReference,
         });
         return NextResponse.json({ success: true, provider: "CLICKYFIED", order });
+      }
+
+      if (provider === "GHCONNECT") {
+        const client = new GhconnectClient(config.ghconnect);
+        const reference = `TEST-GHC-${Date.now()}`;
+        const order = await client.purchaseBundle({
+          network: "atishare",
+          reference,
+          msisdn: recipient,
+          capacity: gbAmount,
+        });
+        return NextResponse.json({ success: true, provider: "GHCONNECT", order });
       }
 
       return apiError(400, "Unsupported provider for test order");

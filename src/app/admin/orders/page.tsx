@@ -17,7 +17,7 @@ import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-bat
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import { OrderDateFilter, getTodayRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 
-const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
+const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
 const STOREFRONT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "AWAITING_PAYMENT", "FAILED", "REFUNDED"];
 
@@ -403,7 +403,10 @@ export default function AdminOrdersPage() {
           <ScrollableTabs
             tabs={[
               { key: "", label: "All Networks" },
-              ...NETWORKS.map((n) => ({ key: n, label: n })),
+              ...NETWORKS.map((n) => ({
+                key: n,
+                label: n === "AIRTELTIGO" ? "AT iShare" : n === "AIRTELTIGO_BIGTIME" ? "AT Big Time" : n,
+              })),
             ]}
             activeTab={network}
             onChange={(n) => {

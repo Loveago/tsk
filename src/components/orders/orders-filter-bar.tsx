@@ -3,7 +3,12 @@
 import { Input, Select, Label } from "@/components/ui/input";
 import { STATUS_META } from "@/lib/types";
 
-const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"];
+const NETWORKS = [
+  { key: "MTN", label: "MTN" },
+  { key: "TELECEL", label: "Telecel" },
+  { key: "AIRTELTIGO", label: "AT iShare" },
+  { key: "AIRTELTIGO_BIGTIME", label: "AT Big Time" },
+];
 
 export function OrdersFilterBar({
   status,
@@ -33,7 +38,7 @@ export function OrdersFilterBar({
         <Select value={network} onChange={(e) => onChange({ network: e.target.value })}>
           <option value="">All</option>
           {NETWORKS.map((n) => (
-            <option key={n} value={n}>{n}</option>
+            <option key={n.key} value={n.key}>{n.label}</option>
           ))}
         </Select>
       </div>

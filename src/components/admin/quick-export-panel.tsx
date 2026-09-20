@@ -7,7 +7,7 @@ import { NetworkExportDialog } from "@/components/admin/network-export-dialog";
 import { formatGHS } from "@/lib/types";
 import { Download, Layers } from "lucide-react";
 
-const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
+const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const;
 
 interface Stat {
   network: string;
@@ -71,17 +71,18 @@ export function QuickExportPanel({ onChanged }: { onChanged?: () => void | Promi
             <Spinner className="h-5 w-5 text-brand-600" />
           </div>
         ) : (
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {NETWORKS.map((network) => {
               const pending = pendingFor(network);
               const stat = stats.find((s) => s.network === network);
+              const label = network === "AIRTELTIGO" ? "AT iShare" : network === "AIRTELTIGO_BIGTIME" ? "AT Big Time" : network;
               return (
                 <div
                   key={network}
                   className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-slate-900"
                 >
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{network}</p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</p>
                     <p className="truncate text-xs text-slate-400">
                       {pending} pending · {stat?.pendingGb ?? 0} GB · {formatGHS(stat?.pendingAmount ?? 0)}
                     </p>

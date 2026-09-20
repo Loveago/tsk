@@ -348,6 +348,12 @@ export const settingsSchema = z.object({
   clickyfied_callback_signing_secret: z.string().max(255).optional(),
   clickyfied_mtn_verification_enabled: z.enum(["true", "false"]).optional(),
   clickyfied_not_received_enabled: z.enum(["true", "false"]).optional(),
+
+  // GHConnect Settings
+  ghconnect_enabled: z.enum(["true", "false"]).optional(),
+  ghconnect_api_key: z.string().max(255).optional(),
+  ghconnect_base_url: z.string().max(255).optional(),
+
   app_base_url: z.string().max(255).optional(),
 }).passthrough();
 

@@ -39,9 +39,15 @@ const NETWORKS = [
   },
   {
     id: "AIRTELTIGO",
-    label: "AirtelTigo",
+    label: "AT iShare",
     badge: "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300",
     tabActive: "border-blue-500 text-blue-700 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-500/10",
+  },
+  {
+    id: "AIRTELTIGO_BIGTIME",
+    label: "AT Big Time",
+    badge: "bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-300",
+    tabActive: "border-cyan-500 text-cyan-700 dark:text-cyan-400 bg-cyan-50/50 dark:bg-cyan-500/10",
   },
 ] as const;
 
@@ -67,6 +73,7 @@ export function PricingProfileDialog({
     MTN: [{ gb: "1", price: "" }],
     TELECEL: [{ gb: "1", price: "" }],
     AIRTELTIGO: [{ gb: "1", price: "" }],
+    AIRTELTIGO_BIGTIME: [{ gb: "1", price: "" }],
   });
   const [saving, setSaving] = React.useState(false);
 
@@ -104,10 +111,19 @@ export function PricingProfileDialog({
             { gb: "5", price: "12.0" },
           ];
 
+      const defaultAirtelTigoBigtime = profile
+        ? (profile.networkTiers?.AIRTELTIGO_BIGTIME ?? []).map((t) => ({ gb: String(t.gbAmount), price: String(t.priceGHS) }))
+        : [
+            { gb: "1", price: "2.8" },
+            { gb: "2", price: "5.0" },
+            { gb: "5", price: "12.0" },
+          ];
+
       setNetTiers({
         MTN: defaultMtn,
         TELECEL: defaultTelecel,
         AIRTELTIGO: defaultAirtelTigo,
+        AIRTELTIGO_BIGTIME: defaultAirtelTigoBigtime,
       });
     }
   }, [open, profile]);

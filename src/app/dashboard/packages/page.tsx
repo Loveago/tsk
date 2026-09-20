@@ -43,7 +43,7 @@ export default async function PackagesPage() {
     }
   }
 
-  const groups: PackageGroup[] = (["MTN", "TELECEL", "AIRTELTIGO"] as const)
+  const groups: PackageGroup[] = (["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const)
     .map((network) => ({
       network,
       packages: packages
@@ -102,7 +102,7 @@ export default async function PackagesPage() {
                 <Layers className="h-3 w-3" /> Tiered Pricing
               </span>
               <span className="inline-flex items-center rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-sm dark:bg-white/5 dark:text-slate-300">
-                3 Networks (MTN · Telecel · AirtelTigo)
+                Networks (MTN · Telecel · AT iShare · AT Big Time)
               </span>
               <span className="inline-flex items-center rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-sm dark:bg-white/5 dark:text-slate-300">
                 {packages.length} Bundles
@@ -149,7 +149,7 @@ export default async function PackagesPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-sm text-slate-900 dark:text-white">
-                      {g.network === "MTN" ? "MTN" : g.network === "TELECEL" ? "Telecel" : "AirtelTigo"}
+                      {g.network === "MTN" ? "MTN" : g.network === "TELECEL" ? "Telecel" : g.network === "AIRTELTIGO_BIGTIME" ? "AT Big Time" : "AT iShare"}
                     </span>
                     <span className="text-xs text-slate-400">({g.packages.length} bundles)</span>
                   </div>

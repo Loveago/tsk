@@ -7,10 +7,11 @@ export const NETWORK_BRANDS: Record<
 > = {
   MTN: { label: "MTN", slug: "mtn", tile: "bg-[#FFCB05]", dim: "bg-[#a5830b]" },
   TELECEL: { label: "Telecel", slug: "telecel", tile: "bg-[#E4002B]", dim: "bg-[#9c0020]" },
-  AIRTELTIGO: { label: "AirtelTigo", slug: "airteltigo", tile: "bg-white ring-1 ring-slate-200", dim: "bg-slate-300" },
+  AIRTELTIGO: { label: "AT iShare", slug: "airteltigo", tile: "bg-white ring-1 ring-slate-200", dim: "bg-slate-300" },
+  AIRTELTIGO_BIGTIME: { label: "AT Big Time", slug: "at-bigtime", tile: "bg-[#00A3E0]", dim: "bg-[#007099]" },
 };
 
-export const NETWORK_ORDER: NetworkProvider[] = ["MTN", "TELECEL", "AIRTELTIGO"];
+export const NETWORK_ORDER: NetworkProvider[] = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"];
 
 export function networkBySlug(slug: string): NetworkProvider | null {
   const entry = (Object.entries(NETWORK_BRANDS) as [NetworkProvider, { slug: string }][]).find(

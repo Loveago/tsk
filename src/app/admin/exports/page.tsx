@@ -12,7 +12,7 @@ import { FileSpreadsheet, Download, RefreshCw, ChevronRight } from "lucide-react
 
 import { useToast } from "@/components/toast";
 
-const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
+const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const;
 const EXPORT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
 const QUICK_RANGES = [
   { key: "today", label: "Today" },
@@ -231,7 +231,7 @@ export default function AdminExportsPage() {
             <option value="">All Networks</option>
             {NETWORKS.map((n) => (
               <option key={n} value={n}>
-                {n}
+                {n === "AIRTELTIGO" ? "AT iShare" : n === "AIRTELTIGO_BIGTIME" ? "AT Big Time" : n}
               </option>
             ))}
           </select>

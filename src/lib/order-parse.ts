@@ -16,7 +16,9 @@ export interface ParsedOrderLine {
 export const NETWORK_LABELS: Record<string, string> = {
   MTN: "MTN",
   TELECEL: "Telecel",
-  AIRTELTIGO: "AirtelTigo",
+  AIRTELTIGO: "AT iShare",
+  AIRTELTIGO_ISHARE: "AT iShare",
+  AIRTELTIGO_BIGTIME: "AT Big Time",
 };
 
 function splitTokens(line: string): string[] {
@@ -40,7 +42,8 @@ function normalizeNetworkToken(token: string): string | null {
   if (letters === "MTN") return "MTN";
   if (letters === "TELECEL" || letters === "VODAFONE" || letters === "VOD")
     return "TELECEL";
-  if (["AIRTELTIGO", "AIRTEL", "TIGO", "AT"].includes(letters)) return "AIRTELTIGO";
+  if (letters.includes("BIGTIME") || letters === "ATBT") return "AIRTELTIGO_BIGTIME";
+  if (["AIRTELTIGO", "AIRTEL", "TIGO", "AT", "ISHARE", "ATISHARE"].includes(letters)) return "AIRTELTIGO";
   return null;
 }
 
@@ -183,12 +186,13 @@ export function parseOrderLine(
   let network: string | null = null;
   if (/\bMTN\b/i.test(rem)) network = "MTN";
   else if (/\b(?:TELECEL|VODAFONE|VOD)\b/i.test(rem)) network = "TELECEL";
-  else if (/\b(?:AIRTELTIGO|AIRTEL|TIGO|AT)\b/i.test(rem)) network = "AIRTELTIGO";
+  else if (/\b(?:BIGTIME|BIG\s*TIME|ATBT)\b/i.test(rem)) network = "AIRTELTIGO_BIGTIME";
+  else if (/\b(?:AIRTELTIGO|AIRTEL|TIGO|AT|ISHARE|I-SHARE)\b/i.test(rem)) network = "AIRTELTIGO";
 
   if (network) {
     rem = rem.replace(new RegExp(`\\b${network}\\b`, "gi"), " ");
   }
-  rem = rem.replace(/\b(?:MTN|TELECEL|VODAFONE|AIRTELTIGO|AIRTEL|TIGO|AT)\b/gi, " ");
+  rem = rem.replace(/\b(?:MTN|TELECEL|VODAFONE|AIRTELTIGO|AIRTEL|TIGO|AT|BIGTIME|BIG\s*TIME|ISHARE)\b/gi, " ");
 
   // 5. Remove common label words: "number", "numbers", "phone", "recipient", "size", etc.
   rem = rem.replace(

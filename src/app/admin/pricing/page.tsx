@@ -56,11 +56,19 @@ const NETWORKS = [
   },
   {
     id: "AIRTELTIGO",
-    label: "AirtelTigo",
+    label: "AT iShare",
     badge: "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300",
     border: "border-blue-400/40",
     accent: "text-blue-600 dark:text-blue-400",
     bgLight: "bg-blue-50/50 dark:bg-blue-500/5",
+  },
+  {
+    id: "AIRTELTIGO_BIGTIME",
+    label: "AT Big Time",
+    badge: "bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-300",
+    border: "border-cyan-400/40",
+    accent: "text-cyan-600 dark:text-cyan-400",
+    bgLight: "bg-cyan-50/50 dark:bg-cyan-500/5",
   },
 ] as const;
 

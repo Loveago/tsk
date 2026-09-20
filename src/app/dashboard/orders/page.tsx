@@ -14,7 +14,7 @@ import { ChevronRight, FileWarning, Layers, Search, Clock, Eye, CheckCircle2, Sm
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
 import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 
-const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"] as const;
+const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
 
 type ViewMode = "batches" | "single";
@@ -368,7 +368,7 @@ export default function OrdersPage() {
                 : "border-slate-200 bg-white text-slate-600 hover:border-brand-300 dark:border-white/10 dark:bg-transparent dark:text-slate-300")
             }
           >
-            {n || "All networks"}
+            {n ? (n === "AIRTELTIGO" ? "AT iShare" : n === "AIRTELTIGO_BIGTIME" ? "AT Big Time" : n) : "All networks"}
           </button>
         ))}
         <div className="flex flex-1 flex-wrap items-center justify-end gap-2">

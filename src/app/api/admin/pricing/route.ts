@@ -31,6 +31,7 @@ export async function GET() {
         MTN: [],
         TELECEL: [],
         AIRTELTIGO: [],
+        AIRTELTIGO_BIGTIME: [],
       };
 
       const raw = settingsMap.get(`pricing_profile_network_rates:${p.id}`);
@@ -46,6 +47,7 @@ export async function GET() {
         const mtnPkgs = packages.filter((x) => x.network === "MTN");
         const telecelPkgs = packages.filter((x) => x.network === "TELECEL");
         const atPkgs = packages.filter((x) => x.network === "AIRTELTIGO");
+        const atbtPkgs = packages.filter((x) => x.network === "AIRTELTIGO_BIGTIME");
 
         networkTiers.MTN = p.tiers.map((t) => ({ gbAmount: t.gbAmount, priceGHS: t.priceGHS }));
 
@@ -64,6 +66,14 @@ export async function GET() {
             priceGHS: pkg.retailPriceGHS ?? tierMatch?.priceGHS ?? 0,
           };
         });
+
+        networkTiers.AIRTELTIGO_BIGTIME = atbtPkgs.map((pkg) => {
+          const tierMatch = p.tiers.find((t) => t.gbAmount === pkg.gbAmount);
+          return {
+            gbAmount: pkg.gbAmount,
+            priceGHS: pkg.retailPriceGHS ?? tierMatch?.priceGHS ?? 0,
+          };
+        });
       }
 
       return {
@@ -75,7 +85,7 @@ export async function GET() {
     return NextResponse.json({
       profiles: enrichedProfiles,
       packages,
-      networks: ["MTN", "TELECEL", "AIRTELTIGO"],
+      networks: ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"],
     });
   } catch (err) {
     return handleRouteError(err);

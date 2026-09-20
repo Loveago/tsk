@@ -10,7 +10,7 @@ import { useToast } from "@/components/toast";
 import Link from "next/link";
 import { Package, Pencil, Trash2, Plus, Receipt } from "lucide-react";
 
-const DEFAULT_NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"];
+const DEFAULT_NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"];
 
 export default function AdminPackagesPage() {
   const { toast } = useToast();
@@ -28,21 +28,13 @@ export default function AdminPackagesPage() {
       fetch("/api/admin/settings"),
     ]);
     const pkgJson = await pkgRes.json();
+    const setJson = await setRes.json();
     setPackages(pkgJson.packages ?? []);
-
-    if (setRes.ok) {
-      const setJson = await setRes.json();
-      const raw = setJson.settings?.custom_package_categories;
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            setCustomCategories(parsed.map((c) => String(c).trim().toUpperCase()));
-          }
-        } catch {
-          // ignore parsing error
-        }
-      }
+    if (setJson.settings?.custom_package_categories) {
+      try {
+        const parsed = JSON.parse(setJson.settings.custom_package_categories);
+        if (Array.isArray(parsed)) setCustomCategories(parsed);
+      } catch {}
     }
     setLoading(false);
   }, []);
@@ -53,18 +45,21 @@ export default function AdminPackagesPage() {
 
   const allCategories = React.useMemo(() => {
     const set = new Set([...DEFAULT_NETWORKS, ...customCategories]);
-    packages.forEach((p) => {
+    for (const p of packages) {
       if (p.network) set.add(p.network);
-    });
+    }
     return Array.from(set);
   }, [customCategories, packages]);
 
-  const remove = async (pkg: AdminPackage) => {
-    if (!confirm(`Delete "${pkg.name}"? Packages with orders are deactivated instead.`)) return;
-    const res = await fetch(`/api/admin/packages/${pkg.id}`, { method: "DELETE" });
-    const json = await res.json();
-    if (!res.ok) return toast(json.error ?? "Delete failed", "error");
-    toast(json.deactivated ? "Package deactivated (has orders)" : "Package deleted", "success");
+  const remove = async (pkgOrId: AdminPackage | string) => {
+    const id = typeof pkgOrId === "object" ? pkgOrId.id : pkgOrId;
+    if (!confirm("Are you sure you want to delete this package?")) return;
+    const res = await fetch(`/api/admin/packages/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const j = await res.json();
+      return toast(j.error ?? "Delete failed", "error");
+    }
+    toast("Package deleted", "success");
     load();
   };
 
@@ -91,7 +86,7 @@ export default function AdminPackagesPage() {
           <div className="flex items-center gap-2">
             <Link href="/admin/pricing">
               <Button variant="outline">
-                <Receipt className="h-4 w-4 mr-1.5" /> 3-Network Pricing Matrix
+                <Receipt className="h-4 w-4 mr-1.5" /> Pricing Matrix
               </Button>
             </Link>
             <Button
@@ -111,7 +106,7 @@ export default function AdminPackagesPage() {
           { key: "", label: "All Networks", badge: packages.length },
           ...allCategories.map((n) => ({
             key: n,
-            label: n,
+            label: n === "AIRTELTIGO" ? "AT iShare" : n === "AIRTELTIGO_BIGTIME" ? "AT Big Time" : n,
             badge: packages.filter((p) => p.network === n).length,
           })),
         ]}

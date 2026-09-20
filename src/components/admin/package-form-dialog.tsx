@@ -19,7 +19,7 @@ export interface AdminPackage {
   sortOrder: number;
 }
 
-const DEFAULT_NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO"];
+const DEFAULT_NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"];
 
 export function PackageFormDialog({
   open,
@@ -125,7 +125,9 @@ export function PackageFormDialog({
               }}
             >
               {availableCategories.map((n) => (
-                <option key={n} value={n}>{n}</option>
+                <option key={n} value={n}>
+                  {n === "AIRTELTIGO" ? "AT iShare (AIRTELTIGO)" : n === "AIRTELTIGO_BIGTIME" ? "AT Big Time (AIRTELTIGO_BIGTIME)" : n}
+                </option>
               ))}
               <option value="__CUSTOM__">+ Custom Category...</option>
             </Select>

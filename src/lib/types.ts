@@ -9,7 +9,7 @@ export type NavigationTab =
 export type UserRole = "ADMIN" | "MANAGER" | "SECRETARY" | "RESELLER" | "USER";
 export type UserStatus = "ACTIVE" | "DISABLED" | "FROZEN" | "PENDING_PAYMENT";
 
-export type NetworkProvider = "MTN" | "TELECEL" | "AIRTELTIGO";
+export type NetworkProvider = "MTN" | "TELECEL" | "AIRTELTIGO" | "AIRTELTIGO_BIGTIME";
 
 export type OrderStatus =
   | "PENDING"
@@ -31,7 +31,7 @@ export const ORDER_STATUSES: OrderStatus[] = [
   "REFUNDED",
 ];
 
-export const NETWORKS: NetworkProvider[] = ["MTN", "TELECEL", "AIRTELTIGO"];
+export const NETWORKS: NetworkProvider[] = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"];
 
 export const ROLES: UserRole[] = ["ADMIN", "MANAGER", "SECRETARY", "RESELLER", "USER"];
 
@@ -405,9 +405,14 @@ export const NETWORK_META: Record<NetworkProvider, { label: string; className: s
     dot: "bg-red-500",
   },
   AIRTELTIGO: {
-    label: "AirtelTigo",
+    label: "AT iShare",
     className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
     dot: "bg-blue-500",
+  },
+  AIRTELTIGO_BIGTIME: {
+    label: "AT Big Time",
+    className: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20",
+    dot: "bg-cyan-500",
   },
 };
 
