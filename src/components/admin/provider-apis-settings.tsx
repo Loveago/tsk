@@ -1049,24 +1049,13 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
               <Label className="flex items-center gap-1.5">
                 Callback Signing Secret
                 <span className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.5 rounded">
-                  Required by Clickyfied
+                  Provided by Clickyfied
                 </span>
               </Label>
-              <button
-                type="button"
-                onClick={() => {
-                  const randomSecret = "cf_sec_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-                  setSettings((s) => ({ ...s, clickyfied_callback_signing_secret: randomSecret }));
-                  toast("Generated new signing secret. Click 'Save All Changes' to apply.", "info");
-                }}
-                className="text-[11px] text-brand-600 hover:text-brand-700 font-medium"
-              >
-                + Generate Secret
-              </button>
             </div>
             <Input
               type="text"
-              placeholder="e.g. cf_sec_abc123xyz (strictly required by Clickify to activate callbacks)"
+              placeholder="Paste the signing secret provided by Clickyfied"
               value={settings.clickyfied_callback_signing_secret ?? ""}
               onChange={(e) =>
                 setSettings((s) => ({ ...s, clickyfied_callback_signing_secret: e.target.value }))
@@ -1076,12 +1065,12 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
             {settings.clickyfied_callback_signing_secret ? (
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                 <Check className="h-3 w-3" />
-                Signing secret is set. Orders dispatched to Clickyfied will include your callback endpoint.
+                Signing secret is set. Webhook payloads from Clickyfied will be verified using this secret.
               </p>
             ) : (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" />
-                Signing secret is required. Clickyfied will not send webhook callbacks without it.
+                Signing secret is required. Clickyfied will not send callbacks or callbacks cannot be verified without it.
               </p>
             )}
           </div>

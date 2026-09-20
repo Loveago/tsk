@@ -27,10 +27,29 @@ export async function POST(request: NextRequest) {
     try {
       const config = await getProviderRoutingConfig();
       const signingSecret = (config.clickyfied.callbackSigningSecret || process.env.CLICKYFIED_CALLBACK_SECRET || "").trim();
-      const incomingSignature = request.headers.get("x-external-signature") || "";
+      const incomingSignature = (
+        request.headers.get("x-external-signature") ||
+        request.headers.get("x-signature") ||
+        request.headers.get("x-clickyfied-signature") ||
+        request.headers.get("signature") ||
+        ""
+      ).trim();
+
       if (signingSecret) {
         if (!incomingSignature) {
-          console.warn("[ClickyfiedWebhook] Rejecting: Missing X-External-Signature header while signingSecret is configured.");
+          console.warn("[ClickyfiedWebhook] Rejecting: Missing signature header while signingSecret is configured.");
+          await recordOrderApiLog({
+            orderId: null,
+            provider: "CLICKYFIED",
+            action: "WEBHOOK",
+            endpoint: "/api/webhooks/providers/clickyfied",
+            method: "POST",
+            requestPayload: payload,
+            statusCode: 401,
+            success: false,
+            errorMessage: "Missing required callback signature header (expected X-External-Signature)",
+            durationMs: Date.now() - startTime,
+          });
           return NextResponse.json({ error: "Missing required callback signature" }, { status: 401 });
         }
         const computed = crypto
@@ -39,10 +58,22 @@ export async function POST(request: NextRequest) {
           .digest("hex");
         if (computed.toLowerCase() !== incomingSignature.toLowerCase()) {
           console.warn("[ClickyfiedWebhook] Signature mismatch:", { computed, incomingSignature });
+          await recordOrderApiLog({
+            orderId: null,
+            provider: "CLICKYFIED",
+            action: "WEBHOOK",
+            endpoint: "/api/webhooks/providers/clickyfied",
+            method: "POST",
+            requestPayload: payload,
+            statusCode: 401,
+            success: false,
+            errorMessage: `Invalid callback signature (received: ${incomingSignature.slice(0, 10)}...)`,
+            durationMs: Date.now() - startTime,
+          });
           return NextResponse.json({ error: "Invalid callback signature" }, { status: 401 });
         }
       }
-    } catch (sigErr) {
+    } catch (sigErr: any) {
       console.warn("[ClickyfiedWebhook] Signature check error:", sigErr);
     }
 
