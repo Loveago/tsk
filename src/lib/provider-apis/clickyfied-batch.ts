@@ -406,7 +406,7 @@ export async function dispatchClickyfiedMtnBatch(
 
     const isPublicUrl = appBaseUrl.startsWith("https://") && !appBaseUrl.includes("localhost");
     const signingSecret = config.clickyfied.callbackSigningSecret?.trim();
-    const callbackUrl = isPublicUrl && signingSecret
+    const callbackUrl = isPublicUrl
       ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
       : undefined;
 
@@ -475,7 +475,7 @@ export async function dispatchClickyfiedMtnBatch(
       });
 
       let batchOrderId = String(submitRes.orderId || "");
-      if (!batchOrderId || !batchOrderId.startsWith("order-")) {
+      if (!batchOrderId) {
         try {
           batchOrderId = await client.resolveCanonicalOrderId(batchCode);
         } catch {}
@@ -493,33 +493,56 @@ export async function dispatchClickyfiedMtnBatch(
       const overallStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
       // Check if Clickyfied provided individual entry statuses and entry IDs
-      let returnedEntries: Array<{ id?: string | number; orderEntryId?: string | number; entryId?: string | number; number?: string; status?: string }> =
+      let returnedEntries: Array<any> =
         rawAny?.order?.entries || rawAny?.entries || submitRes.entries || [];
 
-      const entryStatusMap = new Map<string, string>();
-      const entryIdMap = new Map<string, string | number>();
+      const parsedEntries: Array<{
+        id?: string | number;
+        number?: string;
+        normPhone: string;
+        allocationGb?: number;
+        status?: string;
+      }> = [];
 
       for (const re of returnedEntries) {
-        if (re.number) {
-          const norm = normalizePhoneLast9(re.number);
-          if (re.status) entryStatusMap.set(norm, re.status);
-          const eId = re.orderEntryId ?? re.entryId ?? re.id ?? (re as any)._id;
-          if (eId !== undefined && eId !== null) entryIdMap.set(norm, eId);
+        const num = re.number || re.phoneNumber || re.phone || "";
+        const norm = normalizePhoneLast9(String(num));
+        const st = re.status || re.currentStatus || re.deliveryStatus;
+        const eId = re.id ?? re.orderEntryId ?? re.entryId ?? re._id;
+        const alloc = typeof re.allocationGB === "number" ? re.allocationGB : typeof re.allocationGb === "number" ? re.allocationGb : undefined;
+        if (norm) {
+          parsedEntries.push({
+            id: eId !== undefined && eId !== null ? eId : undefined,
+            number: num,
+            normPhone: norm,
+            allocationGb: alloc,
+            status: st,
+          });
         }
       }
 
       // If entry IDs were not included in the immediate submit response, query the order details once to get them
-      if (entryIdMap.size === 0 && batchOrderId && batchOrderId.startsWith("order-")) {
+      const hasAnyEntryId = parsedEntries.some((e) => e.id !== undefined && e.id !== null);
+      if (!hasAnyEntryId && batchOrderId && !batchOrderId.startsWith("CF-BATCH-")) {
         try {
           const ordDetails = await client.getOrderStatus(batchOrderId);
           const rawD = ordDetails.raw as any;
           const freshEntries: any[] = rawD?.order?.entries || rawD?.entries || [];
+          parsedEntries.length = 0;
           for (const fe of freshEntries) {
-            if (fe.number) {
-              const norm = normalizePhoneLast9(fe.number);
-              if (fe.status) entryStatusMap.set(norm, fe.status);
-              const eId = fe.orderEntryId ?? fe.entryId ?? fe.id ?? fe._id;
-              if (eId !== undefined && eId !== null) entryIdMap.set(norm, eId);
+            const num = fe.number || fe.phoneNumber || fe.phone || "";
+            const norm = normalizePhoneLast9(String(num));
+            const st = fe.status || fe.currentStatus || fe.deliveryStatus;
+            const eId = fe.id ?? fe.orderEntryId ?? fe.entryId ?? fe._id;
+            const alloc = typeof fe.allocationGB === "number" ? fe.allocationGB : typeof fe.allocationGb === "number" ? fe.allocationGb : undefined;
+            if (norm) {
+              parsedEntries.push({
+                id: eId !== undefined && eId !== null ? eId : undefined,
+                number: num,
+                normPhone: norm,
+                allocationGb: alloc,
+                status: st,
+              });
             }
           }
         } catch {
@@ -527,10 +550,33 @@ export async function dispatchClickyfiedMtnBatch(
         }
       }
 
+      // Keep track of claimed entries so duplicate phone numbers in same batch map to distinct entries
+      const claimedEntryIndices = new Set<number>();
+
       for (const order of targetBatch.orders) {
         const phoneNorm = normalizePhoneLast9(order.phoneNumber);
-        const entryRawStatus = entryStatusMap.get(phoneNorm);
-        const entryId = entryIdMap.get(phoneNorm);
+
+        // Disambiguate by phone + matching allocationGB, otherwise first available phone match
+        let matchedIdx = parsedEntries.findIndex(
+          (pe, idx) =>
+            !claimedEntryIndices.has(idx) &&
+            pe.normPhone === phoneNorm &&
+            pe.allocationGb !== undefined &&
+            Math.abs(pe.allocationGb - order.gbAmount) <= 0.1
+        );
+        if (matchedIdx === -1) {
+          matchedIdx = parsedEntries.findIndex(
+            (pe, idx) => !claimedEntryIndices.has(idx) && pe.normPhone === phoneNorm
+          );
+        }
+
+        const matchedEntry = matchedIdx !== -1 ? parsedEntries[matchedIdx] : null;
+        if (matchedIdx !== -1) {
+          claimedEntryIndices.add(matchedIdx);
+        }
+
+        const entryRawStatus = matchedEntry?.status;
+        const entryId = matchedEntry?.id;
         const targetStatus = entryRawStatus
           ? mapClickyfiedStatus(entryRawStatus)
           : overallStatus;

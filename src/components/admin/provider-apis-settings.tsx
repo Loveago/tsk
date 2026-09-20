@@ -38,6 +38,7 @@ import {
   DEFAULT_CLICKYFIED_SANDBOX_URL,
   DEFAULT_CLICKYFIED_PROD_URL,
 } from "@/lib/provider-apis/clickyfied";
+import { DEFAULT_GHCONNECT_BASE_URL } from "@/lib/provider-apis/ghconnect";
 import { SUPPORTED_ROUTING_NETWORKS } from "@/lib/provider-apis/router";
 
 interface Props {
@@ -52,9 +53,11 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
 
   const [showBigwinKey, setShowBigwinKey] = React.useState(false);
   const [showClickyfiedKey, setShowClickyfiedKey] = React.useState(false);
+  const [showGhcKey, setShowGhcKey] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
   const [testingBigwin, setTestingBigwin] = React.useState(false);
   const [testingClickyfied, setTestingClickyfied] = React.useState(false);
+  const [testingGhc, setTestingGhc] = React.useState(false);
   const [batchStatus, setBatchStatus] = React.useState<{
     batchEnabled: boolean;
     pendingCount: number;
@@ -138,6 +141,23 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast(`${label} copied to clipboard!`, "success");
+  };
+
+  const applyThreeWayPreset = () => {
+    setSettings((s) => ({
+      ...s,
+      provider_routing_enabled: "true",
+      provider_route_MTN: "CLICKYFIED",
+      provider_route_MTN_XPRESS: "CLICKYFIED",
+      provider_route_TELECEL: "BIGWINDATA",
+      provider_route_AIRTELTIGO_BIGTIME: "BIGWINDATA",
+      provider_route_AIRTELTIGO_ISHARE: "GHCONNECT",
+      clickyfied_enabled: "true",
+      bigwindata_enabled: "true",
+      ghconnect_enabled: "true",
+      ghconnect_base_url: s.ghconnect_base_url || DEFAULT_GHCONNECT_BASE_URL,
+    }));
+    toast("Preset applied: MTN → Clickyfied | Telecel & AT Big Time → Bigwin | AT iShare → GHConnect", "success");
   };
 
   // Preset helper matching user's requested configuration
@@ -256,6 +276,35 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
     }
   };
 
+  const testGhconnect = async () => {
+    setTestingGhc(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/admin/provider-apis/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test_ghconnect_balance" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "GHConnect check failed");
+      setTestResult({
+        provider: "GHConnect",
+        success: true,
+        message: `Connected successfully! Balance: GHS ${json.balance?.balance ?? json.balance?.rawBalance}`,
+      });
+      toast("GHConnect connection verified!", "success");
+    } catch (err: any) {
+      setTestResult({
+        provider: "GHConnect",
+        success: false,
+        message: err.message,
+      });
+      toast(`GHConnect error: ${err.message}`, "error");
+    } finally {
+      setTestingGhc(false);
+    }
+  };
+
   const testSingleOrder = async (provider: "BIGWINDATA" | "CLICKYFIED") => {
     const isBigwin = provider === "BIGWINDATA";
     const msg = isBigwin
@@ -300,8 +349,8 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
       { key: "MTN", label: "MTN (Regular)", network: "MTN" },
       { key: "MTN_XPRESS", label: "MTN Xpress", network: "MTN" },
       { key: "TELECEL", label: "Telecel", network: "TELECEL" },
-      { key: "AIRTELTIGO_ISHARE", label: "AirtelTigo iShare", network: "AIRTELTIGO" },
-      { key: "AIRTELTIGO_BIGTIME", label: "AirtelTigo Big Time", network: "AIRTELTIGO" },
+      { key: "AIRTELTIGO_ISHARE", label: "AT iShare", network: "AIRTELTIGO" },
+      { key: "AIRTELTIGO_BIGTIME", label: "AT Big Time", network: "AIRTELTIGO_BIGTIME" },
     ];
 
     // Add any custom package categories configured in admin
@@ -388,10 +437,19 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 type="button"
                 variant="outline"
                 size="sm"
+                onClick={applyThreeWayPreset}
+                className="text-xs text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 bg-emerald-50/50 dark:bg-emerald-950/30 font-semibold"
+              >
+                <Zap className="h-3.5 w-3.5 mr-1 text-emerald-600" /> Apply 3-Way Split Preset
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={applyPreset}
                 className="text-xs text-brand-600 dark:text-brand-400 border-brand-200 dark:border-brand-800 hover:bg-brand-50"
               >
-                <Zap className="h-3.5 w-3.5 mr-1 text-brand-600" /> Apply Split Preset
+                <Zap className="h-3.5 w-3.5 mr-1 text-brand-600" /> Split (MTN Bigwin)
               </Button>
               <Button
                 type="button"
@@ -414,62 +472,115 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
               </Button>
             </div>
             <p className="text-[11px] text-slate-400">
-              Presets: <strong>Split</strong> (MTN → Bigwin, Telecel/AirtelTigo → Clickyfied) or <strong>Route All</strong> (All networks → Clickyfied).
+              Presets: <strong>3-Way Split</strong> (MTN → Clickyfied, Telecel/Big Time → Bigwin, AT iShare → GHConnect), <strong>Split</strong> (MTN → Bigwin, Telecel/AT → Clickyfied), or <strong>Route All</strong> (All networks → Clickyfied).
             </p>
           </div>
         </div>
 
         {/* Background Status Poller Setting */}
-        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/40">
-          <div className="space-y-0.5">
-            <div className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <RefreshCw
-                className={`h-4 w-4 ${
+        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    settings.provider_sync_poller_enabled !== "false"
+                      ? "text-brand-600"
+                      : "text-slate-400"
+                  }`}
+                />
+                Automated Background Status Poller
+                <span
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                    settings.provider_sync_poller_enabled !== "false"
+                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                      : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  {settings.provider_sync_poller_enabled !== "false"
+                    ? `Active (Every ${parseInt(settings.provider_sync_poller_interval_seconds || "30", 10) || 30}s)`
+                    : "Paused"}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xl leading-relaxed">
+                When <strong>ON</strong>, the server automatically queries Clickify and providers every {parseInt(settings.provider_sync_poller_interval_seconds || "30", 10) || 30} seconds for in-flight orders and syncs their status. If there are no in-flight orders or reports to poll, it skips provider queries entirely.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.provider_sync_poller_enabled !== "false"}
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  provider_sync_poller_enabled:
+                    s.provider_sync_poller_enabled === "false" ? "true" : "false",
+                }))
+              }
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                settings.provider_sync_poller_enabled !== "false"
+                  ? "bg-brand-600"
+                  : "bg-slate-300 dark:bg-slate-700"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
                   settings.provider_sync_poller_enabled !== "false"
-                    ? "text-brand-600"
-                    : "text-slate-400"
+                    ? "left-[22px]"
+                    : "left-0.5"
                 }`}
               />
-              Automated Background Status Poller
-              <span
-                className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                  settings.provider_sync_poller_enabled !== "false"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                    : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                }`}
-              >
-                {settings.provider_sync_poller_enabled !== "false" ? "Active (Every 120s)" : "Paused"}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xl leading-relaxed">
-              When <strong>ON</strong>, the server automatically queries Clickify every 120 seconds (2 minutes) for in-flight orders and syncs their status. If there are no in-flight orders or reports to poll, it skips polling entirely. Turn <strong>OFF</strong> if you want to pause polling and rely strictly on callbacks and manual sync.
-            </p>
+            </button>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={settings.provider_sync_poller_enabled !== "false"}
-            onClick={() =>
-              setSettings((s) => ({
-                ...s,
-                provider_sync_poller_enabled:
-                  s.provider_sync_poller_enabled === "false" ? "true" : "false",
-              }))
-            }
-            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-              settings.provider_sync_poller_enabled !== "false"
-                ? "bg-brand-600"
-                : "bg-slate-300 dark:bg-slate-700"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                settings.provider_sync_poller_enabled !== "false"
-                  ? "left-[22px]"
-                  : "left-0.5"
-              }`}
-            />
-          </button>
+
+          {settings.provider_sync_poller_enabled !== "false" && (
+            <div className="pt-2.5 border-t border-slate-200/60 dark:border-slate-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="space-y-0.5">
+                <span className="font-medium text-slate-700 dark:text-slate-300">Polling Interval:</span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Timer frequency for checking in-flight batches (Clickyfied recommends 30s minimum).
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {[30, 60, 120].map((sec) => (
+                  <button
+                    key={sec}
+                    type="button"
+                    onClick={() =>
+                      setSettings((s) => ({
+                        ...s,
+                        provider_sync_poller_interval_seconds: String(sec),
+                      }))
+                    }
+                    className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                      (parseInt(settings.provider_sync_poller_interval_seconds || "30", 10) || 30) === sec
+                        ? "bg-brand-600 text-white shadow-sm"
+                        : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {sec}s {sec === 30 ? "(Default)" : ""}
+                  </button>
+                ))}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="15"
+                    max="600"
+                    value={parseInt(settings.provider_sync_poller_interval_seconds || "30", 10) || 30}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSettings((s) => ({
+                        ...s,
+                        provider_sync_poller_interval_seconds: val,
+                      }));
+                    }}
+                    className="w-16 px-2 py-1 text-xs text-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  />
+                  <span className="text-[11px] text-slate-500">sec</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -543,6 +654,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 <th className="py-2.5 px-3 font-medium text-center">Manual File Export</th>
                 <th className="py-2.5 px-3 font-medium text-center">Bigwindata API</th>
                 <th className="py-2.5 px-3 font-medium text-center">Clickyfied API</th>
+                <th className="py-2.5 px-3 font-medium text-center">GHConnect API</th>
                 <th className="py-2.5 px-3 font-medium text-right">Active Mode</th>
               </tr>
             </thead>
@@ -610,6 +722,24 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       </label>
                     </td>
 
+                    <td className="py-3 px-3 text-center">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={settingKey}
+                          value="GHCONNECT"
+                          checked={currentVal === "GHCONNECT"}
+                          onChange={() =>
+                            setSettings((s) => ({ ...s, [settingKey]: "GHCONNECT" }))
+                          }
+                          className="text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-emerald-700 dark:text-emerald-400 font-medium text-xs">
+                          GHConnect
+                        </span>
+                      </label>
+                    </td>
+
                     <td className="py-3 px-3 text-right">
                       {!isRoutingEnabled ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
@@ -622,6 +752,10 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       ) : currentVal === "CLICKYFIED" ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300">
                           🚀 Clickyfied
+                        </span>
+                      ) : currentVal === "GHCONNECT" ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                          🟢 GHConnect
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
@@ -1237,6 +1371,114 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
             <div id="clickyfied-billing-section" className="pt-4 border-t border-slate-200 dark:border-white/5">
               <ClickyfiedBillingChecker />
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. GHConnect API Configuration */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-600">
+              🟢
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                GHConnect API Configuration
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Automated fulfillment for AT iShare bundles with automated 120s status checking.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={testGhconnect}
+              disabled={testingGhc || !settings.ghconnect_api_key}
+              className="text-xs h-8"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${testingGhc ? "animate-spin" : ""}`} />
+              Test Balance
+            </Button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.ghconnect_enabled !== "false"}
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  ghconnect_enabled: s.ghconnect_enabled === "false" ? "true" : "false",
+                }))
+              }
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                settings.ghconnect_enabled !== "false"
+                  ? "bg-emerald-600"
+                  : "bg-slate-300 dark:bg-slate-700"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                  settings.ghconnect_enabled !== "false" ? "left-[22px]" : "left-0.5"
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <div className="space-y-1.5">
+            <Label>API Token / Key (Authorization: Bearer)</Label>
+            <div className="relative">
+              <Input
+                type={showGhcKey ? "text" : "password"}
+                placeholder="Enter your GHConnect API token"
+                value={settings.ghconnect_api_key ?? ""}
+                onChange={(e) =>
+                  setSettings((s) => ({ ...s, ghconnect_api_key: e.target.value }))
+                }
+                className="pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowGhcKey(!showGhcKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                {showGhcKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Obtained from your GHDataConnect dashboard account.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>API Base URL</Label>
+            <Input
+              type="text"
+              placeholder={DEFAULT_GHCONNECT_BASE_URL}
+              value={settings.ghconnect_base_url ?? DEFAULT_GHCONNECT_BASE_URL}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, ghconnect_base_url: e.target.value }))
+              }
+              className="font-mono text-xs"
+            />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Default is <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded">{DEFAULT_GHCONNECT_BASE_URL}</code>.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-3.5 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300 flex items-start gap-2.5">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold">Automatic Status Poller Active</p>
+            <p className="text-[11px] text-emerald-800/90 dark:text-emerald-300/90">
+              In-flight orders dispatched to GHConnect are automatically polled every 120 seconds via <code className="px-1 bg-white/60 dark:bg-black/20 rounded">GET /v1/checkOrderStatus/:reference</code>. When GHConnect returns completed, the order is updated to Completed. If failed, it is automatically marked Failed and the customer is refunded.
+            </p>
           </div>
         </div>
       </div>

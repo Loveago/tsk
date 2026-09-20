@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { changeOrderStatus } from "@/lib/orders";
 import { recordAudit } from "@/lib/audit";
-import { mapClickyfiedStatus, normalizePhoneLast9 } from "@/lib/provider-apis/router";
+import { mapClickyfiedStatus, normalizePhoneLast9, getProviderRoutingConfig } from "@/lib/provider-apis/router";
+import { ClickyfiedClient } from "@/lib/provider-apis/clickyfied";
+import { recordOrderApiLog } from "@/lib/order-api-logs";
 import { sanitizeCustomerRefundNote } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
     const rawBody = await request.text();
-    const event = request.headers.get("x-external-event") || "";
+    const event = (request.headers.get("x-external-event") || "").toLowerCase();
 
     let payload: any;
     try {
@@ -17,12 +21,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
     }
 
+    const effectiveEvent = (event || payload?.event || "").toLowerCase();
+
+    // Verify HMAC-SHA256 signature if callbackSigningSecret is configured
+    try {
+      const config = await getProviderRoutingConfig();
+      const signingSecret = (config.clickyfied.callbackSigningSecret || process.env.CLICKYFIED_CALLBACK_SECRET || "").trim();
+      const incomingSignature = request.headers.get("x-external-signature") || "";
+      if (signingSecret && incomingSignature) {
+        const computed = crypto
+          .createHmac("sha256", signingSecret)
+          .update(rawBody)
+          .digest("hex");
+        if (computed.toLowerCase() !== incomingSignature.toLowerCase()) {
+          console.warn("[ClickyfiedWebhook] Signature mismatch:", { computed, incomingSignature });
+          return NextResponse.json({ error: "Invalid callback signature" }, { status: 401 });
+        }
+      }
+    } catch (sigErr) {
+      console.warn("[ClickyfiedWebhook] Signature check error:", sigErr);
+    }
+
     const orderId =
       payload?.orderId ||
+      payload?.order?.orderId ||
       payload?.order?.id ||
       payload?.id ||
       payload?.externalReference;
-    const externalRef = payload?.externalReference || payload?.reference;
+    const externalRef = payload?.externalReference || payload?.reference || payload?.order?.externalReference;
 
     // Search for orders in our database (single order or batch)
     let orders: any[] = [];
@@ -33,7 +59,7 @@ export async function POST(request: NextRequest) {
           OR: [
             ...searchKeys.map((k) => ({ providerReference: `CLICKYFIED:${k}` })),
             ...searchKeys.map((k) => ({ providerReference: { startsWith: `CLICKYFIED:${k}:` } })),
-            ...searchKeys.map((k) => ({ providerReference: k })),
+            ...searchKeys.map((k) => ({ providerReference: { contains: k } })),
             ...searchKeys.map((k) => ({ externalReference: k })),
             ...searchKeys
               .filter((k) => k.startsWith("TSK-ORD-"))
@@ -42,6 +68,56 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
+    // Fallback: If not found by orderId/externalRef, check if payload entries phone numbers match active orders
+    if (orders.length === 0) {
+      const rawEntriesList = payload?.entries || payload?.order?.entries || [];
+      const entryPhones = rawEntriesList
+        .map((e: any) => normalizePhoneLast9(e.number || e.phoneNumber || e.phone))
+        .filter(Boolean);
+
+      if (entryPhones.length > 0) {
+        const candidates = await prisma.order.findMany({
+          where: {
+            status: { in: ["PENDING", "PROCESSING"] },
+            OR: [
+              { providerReference: { startsWith: "CLICKYFIED" } },
+              { externalReference: { startsWith: "CF-BATCH-" } },
+            ],
+          },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        });
+
+        const matched = candidates.filter((c) =>
+          entryPhones.includes(normalizePhoneLast9(c.phoneNumber))
+        );
+        if (matched.length > 0) {
+          orders = matched;
+        }
+      }
+    }
+
+    // Fallback 2: If still not found and orderId is provided, query Clickyfied API to resolve externalReference
+    if (orders.length === 0 && orderId && !effectiveEvent.includes("report")) {
+      try {
+        const config = await getProviderRoutingConfig();
+        const client = new ClickyfiedClient(config.clickyfied);
+        const remote = await client.getOrderStatus(orderId);
+        const remoteRef = (remote.raw as any)?.order?.externalReference || (remote.raw as any)?.externalReference;
+        if (remoteRef) {
+          orders = await prisma.order.findMany({
+            where: {
+              OR: [
+                { externalReference: remoteRef },
+                { providerReference: { contains: remoteRef } },
+              ],
+            },
+          });
+        }
+      } catch {}
+    }
+
     const order = orders[0] ?? null;
 
     // -----------------------------------------------------------------------
@@ -397,25 +473,101 @@ export async function POST(request: NextRequest) {
       const rawStatus =
         payload?.order?.status ||
         payload?.status ||
-        (event === "order.accepted" ? "pending" : "");
+        (effectiveEvent === "order.accepted" ? "pending" : "");
       const processedAt = payload?.order?.processedAt || payload?.processedAt;
       const overallTargetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
       // Check if per-entry status list is provided in webhook payload
-      const rawEntries: Array<{ number?: string; currentStatus?: string; status?: string }> =
+      const rawEntries: Array<any> =
         payload?.entries || payload?.order?.entries || [];
 
-      const entryStatusMap = new Map<string, string>();
+      const parsedEntries: Array<{
+        id?: string | number;
+        normPhone: string;
+        allocationGb?: number;
+        status?: string;
+      }> = [];
+
       for (const re of rawEntries) {
-        const ph = normalizePhoneLast9(re.number);
-        const st = re.currentStatus || re.status;
-        if (ph && st) {
-          entryStatusMap.set(ph, st);
+        const num = re.number || re.phoneNumber || re.phone || "";
+        const norm = normalizePhoneLast9(String(num));
+        const st = re.currentStatus || re.status || re.deliveryStatus;
+        const eId = re.id ?? re.orderEntryId ?? re.entryId ?? re._id;
+        const alloc =
+          typeof re.allocationGB === "number"
+            ? re.allocationGB
+            : typeof re.allocationGb === "number"
+            ? re.allocationGb
+            : undefined;
+        if (norm) {
+          parsedEntries.push({
+            id: eId !== undefined && eId !== null ? eId : undefined,
+            normPhone: norm,
+            allocationGb: alloc,
+            status: st,
+          });
         }
       }
 
+      const canonicalOrderId = String(orderId || payload?.order?.orderId || "");
+      const claimedIndices = new Set<number>();
+
       for (const ord of orders) {
-        const entryStatus = entryStatusMap.get(normalizePhoneLast9(ord.phoneNumber));
+        const ordNormPhone = normalizePhoneLast9(ord.phoneNumber);
+        const cachedParts = (ord.providerReference || "").replace("CLICKYFIED:", "").trim().split(":");
+        const cachedEntryId = cachedParts.length >= 2 ? cachedParts[cachedParts.length - 1] : null;
+
+        // 1. Match by cached entry ID if available
+        let matchedIdx = -1;
+        if (cachedEntryId) {
+          matchedIdx = parsedEntries.findIndex(
+            (pe, idx) =>
+              !claimedIndices.has(idx) &&
+              pe.id !== undefined &&
+              String(pe.id) === String(cachedEntryId)
+          );
+        }
+
+        // 2. Match by phone + allocation GB
+        if (matchedIdx === -1) {
+          matchedIdx = parsedEntries.findIndex(
+            (pe, idx) =>
+              !claimedIndices.has(idx) &&
+              pe.normPhone === ordNormPhone &&
+              pe.allocationGb !== undefined &&
+              Math.abs(pe.allocationGb - ord.gbAmount) <= 0.1
+          );
+        }
+
+        // 3. Fallback match by phone
+        if (matchedIdx === -1) {
+          matchedIdx = parsedEntries.findIndex(
+            (pe, idx) => !claimedIndices.has(idx) && pe.normPhone === ordNormPhone
+          );
+        }
+
+        const matchedEntry = matchedIdx !== -1 ? parsedEntries[matchedIdx] : null;
+        if (matchedIdx !== -1) {
+          claimedIndices.add(matchedIdx);
+        }
+
+        const entryStatus = matchedEntry?.status;
+        const eId = matchedEntry?.id;
+
+        // Cache canonical orderId & entryId in providerReference (format CLICKYFIED:orderId:entryId)
+        if (eId !== undefined && eId !== null && canonicalOrderId) {
+          const expectedRef = `CLICKYFIED:${canonicalOrderId}:${eId}`;
+          if (ord.providerReference !== expectedRef) {
+            await prisma.order
+              .update({
+                where: { id: ord.id },
+                data: { providerReference: expectedRef },
+              })
+              .catch(() => {});
+            ord.providerReference = expectedRef;
+          }
+        }
+
         const targetStatus = entryStatus
           ? mapClickyfiedStatus(entryStatus)
           : overallTargetStatus;
@@ -426,7 +578,7 @@ export async function POST(request: NextRequest) {
             targetStatus,
             payload?.failureReason ||
               payload?.notes ||
-              `Updated delivery status: ${entryStatus || rawStatus || targetStatus}`,
+              `Updated delivery status via callback (${entryStatus || rawStatus || targetStatus})`,
             { id: "system", label: "System Sync" },
             { force: true }
           );
@@ -436,15 +588,43 @@ export async function POST(request: NextRequest) {
             actorLabel: "System Sync",
             action: "order.callback_update",
             target: `order:${ord.id}`,
-            newValue: JSON.stringify({ event, status: targetStatus, orderId, entryStatus }),
+            newValue: JSON.stringify({ event: effectiveEvent, status: targetStatus, orderId, entryStatus }),
           });
         }
       }
     }
 
-    return NextResponse.json({ received: true, orderId: order?.id ?? null });
+    // Record incoming webhook to OrderApiLog for complete visibility
+    const durationMs = Date.now() - startTime;
+    await recordOrderApiLog({
+      orderId: order?.id ?? null,
+      provider: "CLICKYFIED",
+      action: "WEBHOOK",
+      endpoint: "/api/webhooks/providers/clickyfied",
+      method: "POST",
+      requestPayload: payload,
+      responsePayload: { received: true, event: effectiveEvent, matchedOrders: orders.length },
+      statusCode: 200,
+      success: true,
+      errorMessage: orders.length === 0 ? "No local orders matched callback payload" : null,
+      providerReference: orderId ? `CLICKYFIED:${orderId}` : null,
+      durationMs,
+    });
+
+    return NextResponse.json({ received: true, orderId: order?.id ?? null, matchedOrders: orders.length });
   } catch (err: any) {
     console.error("Clickyfied callback error:", err);
+    await recordOrderApiLog({
+      orderId: null,
+      provider: "CLICKYFIED",
+      action: "WEBHOOK",
+      endpoint: "/api/webhooks/providers/clickyfied",
+      method: "POST",
+      statusCode: 500,
+      success: false,
+      errorMessage: err?.message || "Callback processing error",
+      durationMs: Date.now() - startTime,
+    });
     return NextResponse.json({ error: err?.message || "Callback processing error" }, { status: 500 });
   }
 }

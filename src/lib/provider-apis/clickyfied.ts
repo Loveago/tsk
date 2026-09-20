@@ -155,10 +155,11 @@ export class ClickyfiedClient {
     };
 
     const signingSecret = (params.callbackSigningSecret || this.callbackSigningSecret || "").trim();
-    // Clickify strictly requires callbackSigningSecret whenever callbackUrl is provided
-    if (params.callbackUrl && signingSecret) {
+    if (params.callbackUrl) {
       body.callbackUrl = params.callbackUrl;
-      body.callbackSigningSecret = signingSecret;
+      if (signingSecret) {
+        body.callbackSigningSecret = signingSecret;
+      }
     }
 
     const res = await this.request<any>(
@@ -202,7 +203,11 @@ export class ClickyfiedClient {
    */
   async resolveCanonicalOrderId(idOrRef: string | number): Promise<string> {
     const raw = String(idOrRef).trim();
-    if (raw.startsWith("order-")) {
+    if (raw.startsWith("order-") || raw.startsWith("ext-")) {
+      return raw;
+    }
+    // If it is not a local batch code (like CF-BATCH-), and has length >= 10, it is already a canonical provider ID
+    if (!raw.startsWith("CF-BATCH-") && !raw.startsWith("TSK-") && raw.length > 10) {
       return raw;
     }
 
@@ -284,7 +289,7 @@ export class ClickyfiedClient {
     raw: unknown;
   }> {
     let targetId = String(orderId).trim();
-    if (!targetId.startsWith("order-")) {
+    if (targetId.startsWith("CF-BATCH-") || targetId.startsWith("TSK-")) {
       try {
         targetId = await this.resolveCanonicalOrderId(targetId);
       } catch {}

@@ -1,11 +1,31 @@
 import { prisma } from "../prisma";
-import { syncClickyfiedOrder, syncClickyfiedDeliveryReport } from "./router";
+import { syncClickyfiedOrder, syncClickyfiedDeliveryReport, syncGhconnectOrder } from "./router";
 
 let isPolling = false;
 
+export async function getPollerIntervalSeconds(): Promise<number> {
+  try {
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_sync_poller_interval_seconds" },
+    });
+    if (setting && setting.value) {
+      const val = parseInt(setting.value, 10);
+      if (!isNaN(val) && val >= 10) return val;
+    }
+  } catch {}
+
+  const envVal = process.env.PROVIDER_SYNC_POLLER_INTERVAL_SECONDS;
+  if (envVal) {
+    const val = parseInt(envVal, 10);
+    if (!isNaN(val) && val >= 10) return val;
+  }
+
+  return 30; // Default: 30 seconds
+}
+
 /**
- * Self-scheduling background poller for in-flight Clickyfied orders and open delivery reports.
- * Automatically synchronizes pending/processing orders and reports with Clickify every 120 seconds (2 minutes).
+ * Self-scheduling background poller for in-flight Clickyfied and GHConnect orders and open delivery reports.
+ * Automatically synchronizes pending/processing orders and reports (default every 30 seconds, configurable).
  * If there is nothing to poll, it completely skips any provider communication.
  */
 export function startProviderSyncPoller() {
@@ -24,7 +44,7 @@ export function startProviderSyncPoller() {
   }
   g.__providerSyncPollerStarted = true;
 
-  console.log("[ProviderSyncPoller] Automated background status poller initialized (120s interval).");
+  console.log("[ProviderSyncPoller] Automated background status poller initialized (30s default interval).");
 
   const poll = async () => {
     if (isPolling) return;
@@ -40,77 +60,104 @@ export function startProviderSyncPoller() {
 
       const { getProviderRoutingConfig } = await import("./router");
       const config = await getProviderRoutingConfig();
-      if (!config.enabled || !config.clickyfied.enabled) {
+      if (!config.enabled || (!config.clickyfied.enabled && !config.ghconnect?.enabled)) {
         return;
       }
 
-      // 2. Strict 120s rate limit: only check orders last updated >= 120 seconds ago
-      const twoMinutesAgo = new Date(Date.now() - 120 * 1000);
+      // 2. Configurable rate limit window (default 30 seconds)
+      const intervalSeconds = await getPollerIntervalSeconds();
+      const cutoffTime = new Date(Date.now() - intervalSeconds * 1000);
 
       // Find in-flight Clickyfied orders (PENDING or PROCESSING)
-      const inFlightOrders = await prisma.order.findMany({
-        where: {
-          status: { in: ["PENDING", "PROCESSING"] },
-          providerReference: { startsWith: "CLICKYFIED:" },
-          updatedAt: { lte: twoMinutesAgo },
-        },
-        take: 20,
-        orderBy: { updatedAt: "asc" },
-      });
-
-      // Find active open delivery reports on Clickify orders (only truly unresolved Clickyfied reports)
-      const openReports = await prisma.deliveryReport.findMany({
-        where: {
-          status: { in: ["OPEN", "INVESTIGATING", "UNDER_REVIEW"] },
-          order: {
+      if (config.clickyfied.enabled) {
+        const inFlightOrders = await prisma.order.findMany({
+          where: {
+            status: { in: ["PENDING", "PROCESSING"] },
             OR: [
-              { providerReference: { startsWith: "CLICKYFIED:" } },
+              { providerReference: { startsWith: "CLICKYFIED" } },
               { externalReference: { startsWith: "CF-BATCH-" } },
             ],
+            updatedAt: { lte: cutoffTime },
           },
-          updatedAt: { lte: twoMinutesAgo },
-        },
-        take: 10,
-        orderBy: { updatedAt: "asc" },
-      });
+          take: 200,
+          orderBy: { updatedAt: "asc" },
+        });
 
-      // CRITICAL: If there is nothing in-flight and no open reports, do NOT poll anything!
-      if (inFlightOrders.length === 0 && openReports.length === 0) {
-        return;
-      }
+        // Find active open delivery reports on Clickify orders (only truly unresolved Clickyfied reports)
+        const openReports = await prisma.deliveryReport.findMany({
+          where: {
+            status: { in: ["OPEN", "INVESTIGATING", "UNDER_REVIEW"] },
+            order: {
+              OR: [
+                { providerReference: { startsWith: "CLICKYFIED" } },
+                { externalReference: { startsWith: "CF-BATCH-" } },
+              ],
+            },
+            updatedAt: { lte: cutoffTime },
+          },
+          take: 20,
+          orderBy: { updatedAt: "asc" },
+        });
 
-      // Deduplicate by provider reference so we don't query the same Clickyfied batch multiple times
-      const seenProviderIds = new Set<string>();
-      for (const order of inFlightOrders) {
-        try {
-          const rawRef = order.providerReference?.replace("CLICKYFIED:", "").trim();
-          const [providerId] = (rawRef || "").split(":");
-          if (providerId) {
-            if (seenProviderIds.has(providerId)) {
-              continue;
+        // Deduplicate by provider reference or batch code so we don't query the same batch multiple times
+        const seenProviderIds = new Set<string>();
+        for (const order of inFlightOrders) {
+          try {
+            const rawRef = order.providerReference?.replace(/^CLICKYFIED(_CLAIMED)?:/, "").trim();
+            const [providerId] = (rawRef || "").split(":");
+            const queryKey = providerId || order.externalReference;
+            if (queryKey) {
+              if (seenProviderIds.has(queryKey)) {
+                continue;
+              }
+              seenProviderIds.add(queryKey);
             }
-            seenProviderIds.add(providerId);
+            await syncClickyfiedOrder(order, "Automatic Background Poller");
+          } catch {
+            // continue
           }
-          await syncClickyfiedOrder(order, "Automatic Background Poller");
-        } catch {
-          // continue
         }
-      }
 
-      for (const rep of openReports) {
+        for (const rep of openReports) {
+          try {
+            await syncClickyfiedDeliveryReport(rep.id, "Automatic Background Poller");
+          } catch {
+            // continue
+          }
+        }
+
+        // Check Clickyfied MTN Batch timer window trigger
         try {
-          await syncClickyfiedDeliveryReport(rep.id, "Automatic Background Poller");
-        } catch {
-          // continue
+          const { checkAndTriggerMtnBatch } = await import("./clickyfied-batch");
+          await checkAndTriggerMtnBatch("TIMER");
+        } catch (batchErr) {
+          // Ignore background transient errors
         }
       }
 
-      // Check Clickyfied MTN Batch timer window trigger
-      try {
-        const { checkAndTriggerMtnBatch } = await import("./clickyfied-batch");
-        await checkAndTriggerMtnBatch("TIMER");
-      } catch (batchErr) {
-        // Ignore background transient errors
+      // Find in-flight GHConnect orders (PENDING or PROCESSING)
+      if (config.ghconnect?.enabled && config.ghconnect?.apiKey) {
+        try {
+          const inFlightGhcOrders = await prisma.order.findMany({
+            where: {
+              status: { in: ["PENDING", "PROCESSING"] },
+              providerReference: { startsWith: "GHC:" },
+              updatedAt: { lte: cutoffTime },
+            },
+            take: 50,
+            orderBy: { updatedAt: "asc" },
+          });
+
+          for (const ghcOrder of inFlightGhcOrders) {
+            try {
+              await syncGhconnectOrder(ghcOrder, "Automatic Background Poller");
+            } catch {
+              // ignore per-order error and continue
+            }
+          }
+        } catch {
+          // ignore transient GHConnect errors
+        }
       }
 
       // Auto-reconcile any pending Paystack wallet top-ups
@@ -127,7 +174,23 @@ export function startProviderSyncPoller() {
     }
   };
 
-  // Run initial poll after 30 seconds, then recurring every 120 seconds (2 minutes)
-  setTimeout(poll, 30000);
-  setInterval(poll, 120000);
+  // Self-scheduling loop respecting the dynamic interval
+  const scheduleNext = async (delayMs?: number) => {
+    try {
+      const intervalSec = await getPollerIntervalSeconds();
+      const delay = delayMs ?? intervalSec * 1000;
+      setTimeout(async () => {
+        try {
+          await poll();
+        } finally {
+          scheduleNext();
+        }
+      }, delay);
+    } catch {
+      setTimeout(() => scheduleNext(), 30000);
+    }
+  };
+
+  // Initial poll runs after 5s, then dynamically repeats every intervalSeconds
+  scheduleNext(5000);
 }

@@ -4,7 +4,8 @@ import { sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "../types
 import { recordOrderApiLog } from "../order-api-logs";
 import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_URL } from "./bigwindata";
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
-import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig } from "./types";
+import { GhconnectClient, DEFAULT_GHCONNECT_BASE_URL } from "./ghconnect";
+import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig, GhconnectConfig } from "./types";
 
 /**
  * Standard Ghanaian network keys supported in routing
@@ -30,14 +31,14 @@ export async function getProviderRoutingConfig(): Promise<ProviderRoutingConfig>
   const networkRoutes: Record<string, ProviderType> = {};
   for (const net of SUPPORTED_ROUTING_NETWORKS) {
     const routeVal = getVal(`provider_route_${net}`, "MANUAL") as ProviderType;
-    networkRoutes[net] = ["MANUAL", "BIGWINDATA", "CLICKYFIED"].includes(routeVal) ? routeVal : "MANUAL";
+    networkRoutes[net] = ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT"].includes(routeVal) ? routeVal : "MANUAL";
   }
 
   // Also include any dynamically saved routes for custom categories
   for (const [key, val] of map.entries()) {
     if (key.startsWith("provider_route_")) {
       const net = key.replace("provider_route_", "").toUpperCase();
-      if (!networkRoutes[net] && ["MANUAL", "BIGWINDATA", "CLICKYFIED"].includes(val)) {
+      if (!networkRoutes[net] && ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT"].includes(val)) {
         networkRoutes[net] = val as ProviderType;
       }
     }
@@ -62,6 +63,11 @@ export async function getProviderRoutingConfig(): Promise<ProviderRoutingConfig>
       callbackSigningSecret: getVal("clickyfied_callback_signing_secret", ""),
       mtnVerificationEnabled: getVal("clickyfied_mtn_verification_enabled", "false") === "true",
       notReceivedEnabled: getVal("clickyfied_not_received_enabled", "true") === "true",
+    },
+    ghconnect: {
+      enabled: getVal("ghconnect_enabled", "true") === "true",
+      apiKey: getVal("ghconnect_api_key", ""),
+      baseUrl: getVal("ghconnect_base_url", DEFAULT_GHCONNECT_BASE_URL),
     },
   };
 }
@@ -128,25 +134,35 @@ export async function getProviderForNetwork(
   if (net === "MTN" && (sub.includes("XPRESS") || net.includes("XPRESS"))) {
     if (config.networkRoutes["MTN_XPRESS"]) return config.networkRoutes["MTN_XPRESS"];
   }
+
+  // AT Big Time matching
   if (
-    net === "AIRTELTIGO" &&
-    (sub.includes("BIGTIME") || net.includes("BIGTIME") || sub.includes("BIG TIME"))
+    net === "AIRTELTIGO_BIGTIME" ||
+    net === "AT_BIGTIME" ||
+    net.includes("BIGTIME") ||
+    sub.includes("BIGTIME") ||
+    sub.includes("BIG TIME")
   ) {
     if (config.networkRoutes["AIRTELTIGO_BIGTIME"]) {
       return config.networkRoutes["AIRTELTIGO_BIGTIME"];
     }
   }
+
+  // AT iShare matching
   if (
-    net === "AIRTELTIGO" &&
-    (sub.includes("ISHARE") || net.includes("ISHARE") || sub.includes("I-SHARE"))
+    net === "AIRTELTIGO_ISHARE" ||
+    net === "AT_ISHARE" ||
+    net.includes("ISHARE") ||
+    sub.includes("ISHARE") ||
+    sub.includes("I-SHARE")
   ) {
     if (config.networkRoutes["AIRTELTIGO_ISHARE"]) {
       return config.networkRoutes["AIRTELTIGO_ISHARE"];
     }
   }
 
-  // If network is AIRTELTIGO without explicit sub-identifier, default to ISHARE then BIGTIME
-  if (net === "AIRTELTIGO") {
+  // If network is AIRTELTIGO or AT without explicit sub-identifier, default to ISHARE then BIGTIME
+  if (net === "AIRTELTIGO" || net === "AT") {
     if (config.networkRoutes["AIRTELTIGO_ISHARE"]) return config.networkRoutes["AIRTELTIGO_ISHARE"];
     if (config.networkRoutes["AIRTELTIGO_BIGTIME"]) return config.networkRoutes["AIRTELTIGO_BIGTIME"];
   }
@@ -218,7 +234,11 @@ export async function dispatchOrder(
   if (order.providerReference && !options.force) {
     return {
       success: true,
-      provider: order.providerReference.startsWith("CLICKYFIED:") ? "CLICKYFIED" : "BIGWINDATA",
+      provider: order.providerReference.startsWith("CLICKYFIED:")
+        ? "CLICKYFIED"
+        : order.providerReference.startsWith("GHC:")
+        ? "GHCONNECT"
+        : "BIGWINDATA",
       status: order.status,
       error: `Order already dispatched to provider (${order.providerReference})`,
     };
@@ -407,8 +427,8 @@ export async function dispatchOrder(
         !appBaseUrl.includes("localhost") &&
         !appBaseUrl.includes("127.0.0.1");
 
-      // Clickify strictly requires callbackSigningSecret whenever callbackUrl is provided
-      const callbackUrl = isPublicUrl && signingSecret
+      // Clickify allows callbackUrl for event notifications (signingSecret is optional)
+      const callbackUrl = isPublicUrl
         ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
         : undefined;
 
@@ -534,6 +554,132 @@ export async function dispatchOrder(
       return {
         success: false,
         provider: "CLICKYFIED",
+        error: errMsg,
+      };
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Dispatched to GHCONNECT
+  // -------------------------------------------------------------------------
+  if (provider === "GHCONNECT") {
+    if (!config.ghconnect?.enabled) {
+      return {
+        success: false,
+        provider: "GHCONNECT",
+        error: "GHConnect integration is disabled in settings.",
+      };
+    }
+    if (!config.ghconnect?.apiKey) {
+      return {
+        success: false,
+        provider: "GHCONNECT",
+        error: "GHConnect API key is not configured.",
+      };
+    }
+
+    const client = new GhconnectClient(config.ghconnect);
+    const ghcStartTime = Date.now();
+    let purchasePayload: any = null;
+    try {
+      const externalRef = `TSK-${order.id}-${Date.now().toString(36)}`;
+      purchasePayload = {
+        network: "atishare",
+        reference: externalRef,
+        msisdn: order.phoneNumber,
+        capacity: order.gbAmount,
+      };
+
+      const purchaseRes = await client.purchaseBundle(purchasePayload);
+      const durationMs = Date.now() - ghcStartTime;
+      const providerRef = `GHC:${purchaseRes.reference || externalRef}`;
+
+      // Update provider reference
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          providerReference: providerRef,
+          failureReason: null,
+        },
+      });
+
+      // Record Order API Log
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "GHCONNECT",
+        action: "SUBMIT_ORDER",
+        endpoint: `${config.ghconnect.baseUrl || DEFAULT_GHCONNECT_BASE_URL}/v1/purchaseBundle`,
+        method: "POST",
+        requestPayload: purchasePayload,
+        responsePayload: purchaseRes.raw,
+        statusCode: 200,
+        success: true,
+        providerReference: providerRef,
+        durationMs,
+      });
+
+      const resStatus = (purchaseRes.status || "").toLowerCase();
+      if (resStatus === "completed" || resStatus === "success" || resStatus === "delivered") {
+        await changeOrderStatus(
+          order.id,
+          "SUCCESS",
+          `Fulfilled instantly via GHConnect API (ref: ${purchaseRes.reference || externalRef})`,
+          { id: "system", label: "GHConnect API" },
+          { force: true }
+        );
+      } else {
+        await changeOrderStatus(
+          order.id,
+          "PROCESSING",
+          `Dispatched via GHConnect API (ref: ${purchaseRes.reference || externalRef})`,
+          { id: "system", label: "GHConnect API" },
+          { force: true }
+        );
+      }
+
+      return {
+        success: true,
+        provider: "GHCONNECT",
+        providerReference: providerRef,
+        status: resStatus === "completed" || resStatus === "success" ? "SUCCESS" : "PROCESSING",
+        raw: purchaseRes.raw,
+      };
+    } catch (err: any) {
+      const durationMs = Date.now() - ghcStartTime;
+      const errMsg = err?.message || "Failed to dispatch order to GHConnect";
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { failureReason: errMsg },
+      });
+
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "GHCONNECT",
+        action: "SUBMIT_ORDER",
+        endpoint: `${config.ghconnect?.baseUrl || DEFAULT_GHCONNECT_BASE_URL}/v1/purchaseBundle`,
+        method: "POST",
+        requestPayload: purchasePayload,
+        responsePayload: err?.rawResponse || err?.rawText || { error: errMsg },
+        statusCode: err?.status || 500,
+        success: false,
+        errorMessage: errMsg,
+        durationMs,
+      });
+
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: order.status,
+          previousStatus: order.status,
+          note: `GHConnect dispatch failed: ${errMsg}`,
+          changedBy: "GHConnect API",
+        },
+      });
+
+      return {
+        success: false,
+        provider: "GHCONNECT",
         error: errMsg,
       };
     }
@@ -678,7 +824,7 @@ const lastCheckedProviderBatches = new Map<string, number>();
 // Cache of last checked timestamp per delivery report (120s)
 const lastCheckedReports = new Map<string, number>();
 
-export const CLICKYFIED_POLL_INTERVAL_MS = 120_000; // 120 seconds (2 minutes)
+export const CLICKYFIED_POLL_INTERVAL_MS = 30_000; // 30 seconds default (Clickyfied allowed rate limit)
 
 /**
  * Synchronizes an order's status with Clickyfied provider API.
@@ -690,6 +836,9 @@ export async function syncClickyfiedOrder(
     status: string;
     providerReference: string | null;
     updatedAt: Date;
+    externalReference?: string | null;
+    phoneNumber?: string;
+    gbAmount?: number;
   },
   actorLabel = "System Sync",
   options: { forceCheck?: boolean } = {}
@@ -710,9 +859,16 @@ export async function syncClickyfiedOrder(
     }
   }
 
+  const pollerIntervalSetting = await prisma.systemSetting.findUnique({
+    where: { key: "provider_sync_poller_interval_seconds" },
+  });
+  const configuredIntervalMs = pollerIntervalSetting?.value
+    ? Math.max(15, parseInt(pollerIntervalSetting.value, 10)) * 1000
+    : CLICKYFIED_POLL_INTERVAL_MS;
+
   const now = Date.now();
   const lastChecked = lastCheckedOrders.get(orderId) || 0;
-  if (!options.forceCheck && now - lastChecked < CLICKYFIED_POLL_INTERVAL_MS) {
+  if (!options.forceCheck && now - lastChecked < configuredIntervalMs) {
     return { changed: false };
   }
 
@@ -737,9 +893,9 @@ export async function syncClickyfiedOrder(
     const [providerId, orderEntryId] = rawRef.split(":");
     if (!providerId) return { changed: false };
 
-    // Batch deduplication: If this exact providerId was already queried within 120s, skip duplicate request
+    // Batch deduplication: If this exact providerId was already queried within the configured window, skip duplicate request
     const lastCheckedBatch = lastCheckedProviderBatches.get(providerId) || 0;
-    if (!options.forceCheck && now - lastCheckedBatch < CLICKYFIED_POLL_INTERVAL_MS) {
+    if (!options.forceCheck && now - lastCheckedBatch < configuredIntervalMs) {
       lastCheckedOrders.set(orderId, now);
       return { changed: false };
     }
@@ -764,48 +920,107 @@ export async function syncClickyfiedOrder(
         OR: [
           { providerReference: `CLICKYFIED:${providerId}` },
           { providerReference: { startsWith: `CLICKYFIED:${providerId}:` } },
-          { externalReference: rawAny?.order?.externalReference || undefined },
+          ...(order.externalReference ? [{ externalReference: order.externalReference }] : []),
+          ...(rawAny?.order?.externalReference ? [{ externalReference: rawAny.order.externalReference }] : []),
+          ...(rawAny?.externalReference ? [{ externalReference: rawAny.externalReference }] : []),
           { id: order.id },
         ],
       },
     });
 
-    const entriesList: Array<{ id?: string | number; orderEntryId?: string | number; entryId?: string | number; number?: string; status?: string }> =
-      rawAny?.order?.entries || rawAny?.entries || [];
+    const entriesList: Array<any> =
+      rawAny?.order?.entries || rawAny?.entries || rawAny?.data?.entries || [];
 
-    const entryMap = new Map<string, string>();
-    const entryIdMap = new Map<string, string | number>();
+    const parsedEntries: Array<{
+      id?: string | number;
+      normPhone: string;
+      allocationGb?: number;
+      status?: string;
+    }> = [];
+
     for (const e of entriesList) {
-      if (e.number) {
-        const norm = normalizePhoneLast9(e.number);
-        if (e.status) entryMap.set(norm, e.status);
-        const eId = e.orderEntryId ?? e.entryId ?? e.id ?? (e as any)._id;
-        if (eId !== undefined && eId !== null) entryIdMap.set(norm, eId);
+      const num = e.number || e.phoneNumber || e.phone || "";
+      const norm = normalizePhoneLast9(String(num));
+      const st = e.status || e.currentStatus || e.deliveryStatus;
+      const eId = e.id ?? e.orderEntryId ?? e.entryId ?? e._id;
+      const alloc = typeof e.allocationGB === "number" ? e.allocationGB : typeof e.allocationGb === "number" ? e.allocationGb : undefined;
+      if (norm) {
+        parsedEntries.push({
+          id: eId !== undefined && eId !== null ? eId : undefined,
+          normPhone: norm,
+          allocationGb: alloc,
+          status: st,
+        });
       }
     }
+
+    const canonicalOrderId = String(rawAny?.order?.orderId || rawAny?.orderId || providerId);
 
     let thisOrderChanged = false;
     let thisOrderNewStatus = order.status;
     const thisOrderPreviousStatus = order.status;
 
+    // Track which entries in this batch have already been assigned to an order
+    const claimedEntryIndices = new Set<number>();
+
     for (const ord of linkedOrders) {
       lastCheckedOrders.set(ord.id, now);
 
       const ordNormPhone = normalizePhoneLast9(ord.phoneNumber);
-      const entryStatus = entryMap.get(ordNormPhone);
-      const eId = entryIdMap.get(ordNormPhone);
+      const cachedParts = (ord.providerReference || "").replace("CLICKYFIED:", "").trim().split(":");
+      const cachedEntryId = cachedParts.length >= 2 ? cachedParts[cachedParts.length - 1] : null;
 
-      // Cache entryId in providerReference if not already saved (format is CLICKYFIED:orderId:entryId)
-      // The check must look for a SECOND colon after "CLICKYFIED:" prefix — not just any colon.
-      const hasEntryIdCached = (ord.providerReference || "").split(":").length >= 3;
-      if (eId !== undefined && eId !== null && !hasEntryIdCached) {
-        await prisma.order
-          .update({
-            where: { id: ord.id },
-            data: { providerReference: `CLICKYFIED:${providerId}:${eId}` },
-          })
-          .catch(() => {});
+      // 1. Primary match: Match on cached entry ID if present
+      let matchedIdx = -1;
+      if (cachedEntryId) {
+        matchedIdx = parsedEntries.findIndex(
+          (pe, idx) =>
+            !claimedEntryIndices.has(idx) &&
+            pe.id !== undefined &&
+            String(pe.id) === String(cachedEntryId)
+        );
       }
+
+      // 2. Secondary match: Match on phone + matching allocationGB
+      if (matchedIdx === -1) {
+        matchedIdx = parsedEntries.findIndex(
+          (pe, idx) =>
+            !claimedEntryIndices.has(idx) &&
+            pe.normPhone === ordNormPhone &&
+            pe.allocationGb !== undefined &&
+            Math.abs(pe.allocationGb - ord.gbAmount) <= 0.1
+        );
+      }
+
+      // 3. Fallback match: First available matching phone
+      if (matchedIdx === -1) {
+        matchedIdx = parsedEntries.findIndex(
+          (pe, idx) => !claimedEntryIndices.has(idx) && pe.normPhone === ordNormPhone
+        );
+      }
+
+      const matchedEntry = matchedIdx !== -1 ? parsedEntries[matchedIdx] : null;
+      if (matchedIdx !== -1) {
+        claimedEntryIndices.add(matchedIdx);
+      }
+
+      const entryStatus = matchedEntry?.status;
+      const eId = matchedEntry?.id;
+
+      // Cache canonical orderId & entryId in providerReference (format CLICKYFIED:orderId:entryId)
+      if (eId !== undefined && eId !== null) {
+        const expectedRef = `CLICKYFIED:${canonicalOrderId}:${eId}`;
+        if (ord.providerReference !== expectedRef) {
+          await prisma.order
+            .update({
+              where: { id: ord.id },
+              data: { providerReference: expectedRef },
+            })
+            .catch(() => {});
+          ord.providerReference = expectedRef;
+        }
+      }
+
       const targetStatus = entryStatus
         ? mapClickyfiedStatus(entryStatus)
         : overallTargetStatus;
@@ -865,6 +1080,126 @@ export async function syncClickyfiedOrder(
     });
 
     return { changed: false, error: err?.message || "Sync failed" };
+  } finally {
+    syncingOrders.delete(orderId);
+  }
+}
+
+const lastCheckedGhcOrders = new Map<number, number>();
+export const GHCONNECT_POLL_INTERVAL_MS = 60_000; // 60 seconds
+
+/**
+ * Synchronizes an order's status with GHConnect provider API.
+ * Updates the database order if the status has changed.
+ */
+export async function syncGhconnectOrder(
+  orderIdOrRecord: number | {
+    id: number;
+    status: string;
+    providerReference: string | null;
+    updatedAt: Date;
+  },
+  actorLabel = "GHConnect Sync",
+  options: { forceCheck?: boolean } = {}
+): Promise<{ changed: boolean; previousStatus?: string; newStatus?: string; error?: string }> {
+  const orderId = typeof orderIdOrRecord === "number" ? orderIdOrRecord : orderIdOrRecord.id;
+
+  if (syncingOrders.has(orderId)) {
+    return { changed: false };
+  }
+
+  // If poller is disabled in settings, do NOT perform automated background or on-demand sync
+  if (!options.forceCheck) {
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_sync_poller_enabled" },
+    });
+    if (pollerSetting && pollerSetting.value === "false") {
+      return { changed: false };
+    }
+  }
+
+  const now = Date.now();
+  const lastChecked = lastCheckedGhcOrders.get(orderId) || 0;
+  if (!options.forceCheck && now - lastChecked < GHCONNECT_POLL_INTERVAL_MS) {
+    return { changed: false };
+  }
+
+  syncingOrders.add(orderId);
+  try {
+    const order = typeof orderIdOrRecord === "number"
+      ? await prisma.order.findUnique({ where: { id: orderId } })
+      : orderIdOrRecord;
+
+    if (!order) return { changed: false, error: "Order not found" };
+
+    // Terminal statuses do not need further polling
+    if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(order.status)) {
+      return { changed: false, newStatus: order.status };
+    }
+
+    if (!order.providerReference || !order.providerReference.startsWith("GHC:")) {
+      return { changed: false };
+    }
+
+    const reference = order.providerReference.replace("GHC:", "").trim();
+    if (!reference) return { changed: false };
+
+    lastCheckedGhcOrders.set(orderId, now);
+
+    const config = await getProviderRoutingConfig();
+    if (!config.ghconnect?.apiKey) {
+      return { changed: false, error: "GHConnect API key not configured" };
+    }
+
+    const client = new GhconnectClient(config.ghconnect);
+    const statusRes = await client.checkOrderStatus(reference);
+    const rawStatus = (statusRes.status || "").toLowerCase().trim();
+
+    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | null = null;
+    if (rawStatus === "completed" || rawStatus === "success" || rawStatus === "delivered") {
+      targetStatus = "SUCCESS";
+    } else if (rawStatus === "failed" || rawStatus === "rejected" || rawStatus === "error") {
+      targetStatus = "FAILED";
+    } else if (rawStatus === "processing" || rawStatus === "in_progress") {
+      targetStatus = "PROCESSING";
+    } else if (rawStatus === "pending") {
+      targetStatus = "PENDING";
+    }
+
+    if (targetStatus && targetStatus !== order.status) {
+      if (targetStatus === "FAILED") {
+        await recordOrderApiLog({
+          orderId: order.id,
+          provider: "GHCONNECT",
+          action: "SYNC_ORDER",
+          endpoint: `${config.ghconnect.baseUrl || DEFAULT_GHCONNECT_BASE_URL}/v1/checkOrderStatus/${reference}`,
+          method: "GET",
+          statusCode: 200,
+          success: false,
+          errorMessage: `Order marked as failed by GHConnect (Status: ${rawStatus})`,
+          responsePayload: statusRes.raw,
+          providerReference: order.providerReference,
+        });
+      }
+
+      await changeOrderStatus(
+        order.id,
+        targetStatus,
+        `Delivery status synced from GHConnect (${rawStatus})`,
+        { id: "system", label: actorLabel },
+        { force: true }
+      );
+
+      return {
+        changed: true,
+        previousStatus: order.status,
+        newStatus: targetStatus,
+      };
+    }
+
+    return { changed: false, newStatus: order.status };
+  } catch (err: any) {
+    return { changed: false, error: err?.message || "GHConnect sync failed" };
   } finally {
     syncingOrders.delete(orderId);
   }
