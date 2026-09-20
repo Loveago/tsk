@@ -7,7 +7,7 @@ export type NavigationTab =
   | "api_docs";
 
 export type UserRole = "ADMIN" | "MANAGER" | "SECRETARY" | "RESELLER" | "USER";
-export type UserStatus = "ACTIVE" | "DISABLED" | "FROZEN";
+export type UserStatus = "ACTIVE" | "DISABLED" | "FROZEN" | "PENDING_PAYMENT";
 
 export type NetworkProvider = "MTN" | "TELECEL" | "AIRTELTIGO";
 

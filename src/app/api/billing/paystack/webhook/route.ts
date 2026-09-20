@@ -57,6 +57,59 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, settled: result.settled });
     }
 
+    // Signup registration fee check
+    if (reference.startsWith("REG-") || (event.data as any)?.metadata?.type === "SIGNUP_FEE") {
+      const verification = await verifyTransaction(reference);
+      if (verification.status !== "success" || verification.currency !== PAYSTACK_CURRENCY) {
+        return NextResponse.json({ received: true, note: "signup fee verification mismatch" });
+      }
+
+      let tx = await prisma.walletTransaction.findFirst({
+        where: { reference, type: "SIGNUP_FEE" },
+        include: { user: true },
+      });
+      if (!tx && (event.data as any)?.metadata?.walletTransactionId) {
+        tx = await prisma.walletTransaction.findUnique({
+          where: { id: String((event.data as any).metadata.walletTransactionId) },
+          include: { user: true },
+        });
+      }
+
+      if (!tx || !tx.user) {
+        return NextResponse.json({ received: true, note: "registration transaction not found" });
+      }
+
+      if (tx.status === "APPROVED" && tx.user.status === "ACTIVE") {
+        return NextResponse.json({ received: true, note: "already activated" });
+      }
+
+      await prisma.$transaction(async (prismaTx) => {
+        await prismaTx.user.update({
+          where: { id: tx.user.id },
+          data: { status: "ACTIVE" },
+        });
+        await prismaTx.walletTransaction.update({
+          where: { id: tx.id },
+          data: {
+            status: "APPROVED",
+            note: `${tx.note || "Signup registration fee"} — Verified via webhook${
+              verification.channel ? ` (${verification.channel})` : ""
+            }`,
+          },
+        });
+      });
+
+      await recordAudit({
+        userId: tx.user.id,
+        actorLabel: "paystack-webhook",
+        action: "auth.register_fee_settled",
+        target: `user:${tx.user.id}`,
+        newValue: JSON.stringify({ reference, amount: tx.amount, channel: verification.channel }),
+      });
+
+      return NextResponse.json({ received: true, activated: true });
+    }
+
     let tx = await prisma.walletTransaction.findFirst({ where: { reference } });
     if (!tx && (event.data as any)?.metadata?.walletTransactionId) {
       tx = await prisma.walletTransaction.findUnique({

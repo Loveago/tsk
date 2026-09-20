@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/input";
 import { AuthShell, AuthFooterLink } from "@/components/auth/auth-shell";
 import { useToast } from "@/components/toast";
 import { Spinner } from "@/components/shared";
-import { ArrowLeft, KeyRound, RefreshCw } from "lucide-react";
+import { ArrowLeft, KeyRound, RefreshCw, CreditCard } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,6 +26,8 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState<string>("");
   const [verifyingOtp, setVerifyingOtp] = useState<boolean>(false);
   const [resending, setResending] = useState<boolean>(false);
+  const [pendingPaymentData, setPendingPaymentData] = useState<{ email: string; password?: string } | null>(null);
+  const [retryingPayment, setRetryingPayment] = useState<boolean>(false);
 
   const {
     register,
@@ -44,9 +46,16 @@ export default function LoginPage() {
     });
     const json = await res.json();
     if (!res.ok) {
+      if (res.status === 402 || json.code === "ACCOUNT_PENDING_PAYMENT") {
+        setPendingPaymentData({ email: data.email, password: data.password });
+        setServerError("Your account is pending registration payment. Please complete payment to activate your account.");
+        return;
+      }
+      setPendingPaymentData(null);
       setServerError(json.error ?? "Login failed");
       return;
     }
+    setPendingPaymentData(null);
 
     if (json.requireOtp) {
       setOtpTicket(json.ticket);
@@ -144,6 +153,56 @@ export default function LoginPage() {
       {serverError && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           {serverError}
+        </div>
+      )}
+
+      {pendingPaymentData && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200 space-y-2.5">
+          <p className="font-semibold text-sm flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+            <CreditCard className="h-4 w-4" /> Account Pending Activation Fee
+          </p>
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Your account was created but requires payment before it can be activated. Click below to proceed to Paystack.
+          </p>
+          <Button
+            type="button"
+            className="w-full gap-1.5"
+            disabled={retryingPayment}
+            onClick={async () => {
+              setRetryingPayment(true);
+              try {
+                const retryRes = await fetch("/api/auth/register-fee/retry", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    email: pendingPaymentData.email,
+                    password: pendingPaymentData.password || "",
+                  }),
+                });
+                const retryJson = await retryRes.json();
+                if (!retryRes.ok) {
+                  toast(retryJson.error || "Failed to initialize payment", "error");
+                  return;
+                }
+                if (retryJson.alreadyActivated) {
+                  toast(retryJson.message || "Account activated! You may now sign in.", "success");
+                  setPendingPaymentData(null);
+                  setServerError(null);
+                  return;
+                }
+                if (retryJson.authorizationUrl) {
+                  toast("Redirecting to Paystack...", "info");
+                  window.location.href = retryJson.authorizationUrl;
+                }
+              } catch {
+                toast("Network error initializing payment", "error");
+              } finally {
+                setRetryingPayment(false);
+              }
+            }}
+          >
+            {retryingPayment ? <Spinner /> : <CreditCard className="h-4 w-4" />} Pay Activation Fee Now
+          </Button>
         </div>
       )}
 

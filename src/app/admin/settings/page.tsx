@@ -215,6 +215,10 @@ export default function AdminSettingsPage() {
   const loginOtpEnabled = settings.login_otp_enabled === "true";
   const apiFeatureEnabled = settings.api_feature_enabled === "true";
   const defaultRole = settings.default_register_role || "USER";
+  const signupFeeEnabled = settings.signup_fee_enabled === "true";
+  const signupFeeAmount = settings.signup_fee_amount || "";
+  const signupFeeDesc = settings.signup_fee_description || "Account Activation Fee";
+  const hasPaystackConfigured = !!(settings.paystack_secret_key?.trim());
 
   return (
     <div className="space-y-6">
@@ -567,6 +571,115 @@ export default function AdminSettingsPage() {
                   />
                 </button>
               </div>
+            </div>
+
+            {/* Signup Monetization & Registration Fee */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Signup Monetization &amp; Registration Fee
+                    </h3>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        signupFeeEnabled
+                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                      }`}
+                    >
+                      {signupFeeEnabled ? "ACTIVE" : "DISABLED"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Require new users to pay an activation fee via Paystack before their account is activated and granted dashboard access.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={signupFeeEnabled}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      signup_fee_enabled: signupFeeEnabled ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    signupFeeEnabled ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      signupFeeEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {signupFeeEnabled && (
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                  {!hasPaystackConfigured && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                      <div>
+                        <p className="font-semibold">Paystack Secret Key is missing or not saved</p>
+                        <p className="mt-0.5">
+                          Make sure to configure your Paystack Secret Key under the Billing &amp; Payments tab (or in .env) so customers can be redirected to pay.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="signup_fee_amount">Registration Fee Amount (GHS)</Label>
+                      <Input
+                        id="signup_fee_amount"
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        placeholder="e.g. 50.00"
+                        value={signupFeeAmount}
+                        onChange={(e) =>
+                          setSettings((s) => ({ ...s, signup_fee_amount: e.target.value }))
+                        }
+                      />
+                      <p className="text-[11px] text-slate-400">
+                        Amount in Ghana Cedis (GHS) charged at registration.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="signup_fee_description">Fee Label / Purpose</Label>
+                      <Input
+                        id="signup_fee_description"
+                        type="text"
+                        placeholder="e.g. Account Activation Fee"
+                        value={signupFeeDesc}
+                        onChange={(e) =>
+                          setSettings((s) => ({ ...s, signup_fee_description: e.target.value }))
+                        }
+                      />
+                      <p className="text-[11px] text-slate-400">
+                        Shown to the customer on the signup page and Paystack checkout summary.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                    <p className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      Activation Flow Summary
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                      1. User completes the registration form and clicks Sign Up.<br />
+                      2. User is prompted and redirected to Paystack hosted checkout.<br />
+                      3. Once payment of GHS {signupFeeAmount || "0.00"} is confirmed, account status becomes ACTIVE and user is redirected to the dashboard.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Secretary Role & Permissions */}

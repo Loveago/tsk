@@ -79,6 +79,8 @@ export function AdminUsersTable({
                           ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
                           : u.status === "FROZEN"
                           ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/20"
+                          : u.status === "PENDING_PAYMENT"
+                          ? "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20"
                           : "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400"
                       }`}
                     >

@@ -85,6 +85,16 @@ export async function POST(request: NextRequest) {
     if (user.status === "FROZEN") {
       return apiError(403, "Your account is frozen. Please contact administrator.");
     }
+    if (user.status === "PENDING_PAYMENT") {
+      return NextResponse.json(
+        {
+          error: "Your account is pending registration payment. Please complete payment to activate your account.",
+          code: "ACCOUNT_PENDING_PAYMENT",
+          email: user.email,
+        },
+        { status: 402 }
+      );
+    }
     if (user.status !== "ACTIVE") {
       return apiError(403, "This account has been disabled. Contact support.");
     }

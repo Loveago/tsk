@@ -130,6 +130,7 @@ export function UserFormDialog({
             <Label>Status</Label>
             <Select value={status} onChange={(e) => setStatus(e.target.value)} disabled={!!user && user.role === "ADMIN"}>
               <option value="ACTIVE">ACTIVE</option>
+              <option value="PENDING_PAYMENT">PENDING_PAYMENT</option>
               <option value="DISABLED">DISABLED</option>
               <option value="FROZEN">FROZEN</option>
             </Select>
