@@ -600,13 +600,16 @@ export async function POST(request: NextRequest) {
           const mapped = mapClickyfiedStatus(entryStatus);
           if (["SUCCESS", "FAILED", "CANCELLED"].includes(mapped)) {
             targetStatus = mapped;
-          } else if (mapped === "PROCESSING" || overallTargetStatus === "PROCESSING") {
-            targetStatus = "PROCESSING";
           } else {
-            targetStatus = mapped;
+            // Any active entry reported by Clickyfied is PROCESSING
+            targetStatus = "PROCESSING";
           }
         } else if (hasExplicitBatchStatus) {
-          targetStatus = overallTargetStatus;
+          if (["SUCCESS", "FAILED", "CANCELLED"].includes(overallTargetStatus)) {
+            targetStatus = overallTargetStatus;
+          } else {
+            targetStatus = "PROCESSING";
+          }
         }
 
         if (targetStatus && targetStatus !== ord.status) {

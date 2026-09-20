@@ -582,13 +582,14 @@ export async function dispatchClickyfiedMtnBatch(
           const mappedEntry = mapClickyfiedStatus(entryRawStatus);
           if (["SUCCESS", "FAILED", "CANCELLED"].includes(mappedEntry)) {
             targetStatus = mappedEntry;
-          } else if (mappedEntry === "PROCESSING" || overallStatus === "PROCESSING") {
-            targetStatus = "PROCESSING";
           } else {
-            targetStatus = mappedEntry;
+            // Any entry successfully submitted and accepted in a Clickyfied batch is actively PROCESSING
+            targetStatus = "PROCESSING";
           }
-        } else {
+        } else if (["SUCCESS", "FAILED", "CANCELLED"].includes(overallStatus)) {
           targetStatus = overallStatus;
+        } else {
+          targetStatus = "PROCESSING";
         }
 
         const orderProviderRef =

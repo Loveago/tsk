@@ -487,12 +487,15 @@ export async function dispatchOrder(
         durationMs,
       });
 
-      // Maintain identical status between provider and Tskconnect
-      if (mappedStatus !== order.status) {
+      // Dispatched to Clickyfied: advance to PROCESSING (or terminal status if immediately resolved)
+      const targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" =
+        ["SUCCESS", "FAILED", "CANCELLED"].includes(mappedStatus) ? mappedStatus : "PROCESSING";
+
+      if (targetStatus !== order.status) {
         await changeOrderStatus(
           order.id,
-          mappedStatus,
-          `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || mappedStatus})`,
+          targetStatus,
+          `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || targetStatus})`,
           { id: "system", label: "Automated System" },
           { force: true }
         );
@@ -502,7 +505,7 @@ export async function dispatchOrder(
             orderId: order.id,
             status: order.status,
             previousStatus: order.status,
-            note: `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || mappedStatus})`,
+            note: `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || targetStatus})`,
             changedBy: "Automated System",
           },
         });
@@ -512,7 +515,7 @@ export async function dispatchOrder(
         success: !hasErrors,
         provider: "CLICKYFIED",
         providerReference: providerRef,
-        status: mappedStatus,
+        status: targetStatus,
         raw: submitRes,
         error: errorDetail || undefined,
       };
@@ -809,6 +812,32 @@ export async function splitMultiDispatchBatches(): Promise<void> {
         await recomputeBatchStatus(b.id);
       }
     }
+
+    // Reconcile any dispatched Clickyfied orders that were left in PENDING
+    const staleDispatchedOrders = await prisma.order.findMany({
+      where: {
+        status: "PENDING",
+        OR: [
+          { providerReference: { startsWith: "CLICKYFIED" } },
+          { externalReference: { startsWith: "CF-BATCH-" } },
+        ],
+      },
+      select: { id: true, batchId: true },
+    });
+    if (staleDispatchedOrders.length > 0) {
+      const ids = staleDispatchedOrders.map((o) => o.id);
+      await prisma.order.updateMany({
+        where: { id: { in: ids } },
+        data: { status: "PROCESSING" },
+      });
+      const batchIds = Array.from(
+        new Set(staleDispatchedOrders.map((o) => o.batchId).filter(Boolean))
+      ) as string[];
+      const { recomputeBatchStatus } = await import("../orders");
+      for (const bId of batchIds) {
+        await recomputeBatchStatus(bId);
+      }
+    }
   } catch (err) {
     console.error("[splitMultiDispatchBatches] Error:", err);
   }
@@ -1095,13 +1124,14 @@ export async function syncClickyfiedOrder(
           const mappedEntry = mapClickyfiedStatus(entryStatus);
           if (["SUCCESS", "FAILED", "CANCELLED"].includes(mappedEntry)) {
             targetStatus = mappedEntry;
-          } else if (mappedEntry === "PROCESSING" || overallTargetStatus === "PROCESSING") {
-            targetStatus = "PROCESSING";
           } else {
-            targetStatus = mappedEntry;
+            // Any active entry in Clickyfied is PROCESSING
+            targetStatus = "PROCESSING";
           }
-        } else {
+        } else if (["SUCCESS", "FAILED", "CANCELLED"].includes(overallTargetStatus)) {
           targetStatus = overallTargetStatus;
+        } else {
+          targetStatus = "PROCESSING";
         }
 
         if (targetStatus && targetStatus !== ord.status) {
