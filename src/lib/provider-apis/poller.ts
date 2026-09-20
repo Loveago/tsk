@@ -20,12 +20,12 @@ export async function getPollerIntervalSeconds(): Promise<number> {
     if (!isNaN(val) && val >= 10) return val;
   }
 
-  return 30; // Default: 30 seconds
+  return 60; // Default: 60 seconds (1 minute per Clickyfied requirement)
 }
 
 /**
  * Self-scheduling background poller for in-flight Clickyfied and GHConnect orders and open delivery reports.
- * Automatically synchronizes pending/processing orders and reports (default every 30 seconds, configurable).
+ * Automatically synchronizes pending/processing orders and reports (default every 60 seconds, configurable).
  * If there is nothing to poll, it completely skips any provider communication.
  */
 export function startProviderSyncPoller() {
@@ -44,7 +44,7 @@ export function startProviderSyncPoller() {
   }
   g.__providerSyncPollerStarted = true;
 
-  console.log("[ProviderSyncPoller] Automated background status poller initialized (30s default interval).");
+  console.log("[ProviderSyncPoller] Automated background status poller initialized (60s default interval).");
 
   const poll = async () => {
     if (isPolling) return;
@@ -64,8 +64,31 @@ export function startProviderSyncPoller() {
         return;
       }
 
-      // 2. Configurable rate limit window (default 30 seconds)
+      // Distributed DB lock to guarantee only 1 PM2 worker executes this poll cycle across cluster
       const intervalSeconds = await getPollerIntervalSeconds();
+      const lockKey = "provider_sync_poller_distributed_lock";
+      const now = Date.now();
+      const lockExpiry = Math.max(20, intervalSeconds - 5) * 1000;
+
+      try {
+        const existingLock = await prisma.systemSetting.findUnique({ where: { key: lockKey } });
+        if (existingLock && existingLock.value) {
+          const lockExpiresAt = parseInt(existingLock.value, 10);
+          if (!isNaN(lockExpiresAt) && now < lockExpiresAt) {
+            // Another cluster worker or instance is actively handling this cycle
+            return;
+          }
+        }
+        await prisma.systemSetting.upsert({
+          where: { key: lockKey },
+          create: { key: lockKey, value: String(now + lockExpiry) },
+          update: { value: String(now + lockExpiry) },
+        });
+      } catch {
+        // If DB lock fails transiently, continue cautiously
+      }
+
+      // 2. Configurable rate limit cutoff
       const cutoffTime = new Date(Date.now() - intervalSeconds * 1000);
 
       // Find in-flight Clickyfied orders (PENDING or PROCESSING)

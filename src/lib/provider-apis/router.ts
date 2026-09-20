@@ -824,7 +824,7 @@ const lastCheckedProviderBatches = new Map<string, number>();
 // Cache of last checked timestamp per delivery report (120s)
 const lastCheckedReports = new Map<string, number>();
 
-export const CLICKYFIED_POLL_INTERVAL_MS = 30_000; // 30 seconds default (Clickyfied allowed rate limit)
+export const CLICKYFIED_POLL_INTERVAL_MS = 60_000; // 60 seconds default (1 minute per Clickyfied requirement)
 
 /**
  * Synchronizes an order's status with Clickyfied provider API.
@@ -939,6 +939,7 @@ export async function syncClickyfiedOrder(
         if (resolvedId && resolvedId !== providerId) {
           console.log(`[ClickyfiedSync] Resolved canonical orderId: ${resolvedId} for externalRef=${externalRef}. Updating providerReference in DB.`);
           resolvedProviderId = resolvedId;
+          lastCheckedProviderBatches.set(resolvedId, now);
           // Update all orders in this batch to use the canonical orderId
           try {
             await prisma.order.updateMany({
@@ -979,6 +980,8 @@ export async function syncClickyfiedOrder(
         OR: [
           { providerReference: `CLICKYFIED:${providerId}` },
           { providerReference: { startsWith: `CLICKYFIED:${providerId}:` } },
+          { providerReference: `CLICKYFIED:${resolvedProviderId}` },
+          { providerReference: { startsWith: `CLICKYFIED:${resolvedProviderId}:` } },
           ...(order.externalReference ? [{ externalReference: order.externalReference }] : []),
           ...(rawAny?.order?.externalReference ? [{ externalReference: rawAny.order.externalReference }] : []),
           ...(rawAny?.externalReference ? [{ externalReference: rawAny.externalReference }] : []),
