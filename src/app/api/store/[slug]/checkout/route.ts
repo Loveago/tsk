@@ -116,6 +116,9 @@ export async function POST(
       },
     });
 
+    const feePesewas = Math.round(sellingPrice * 0.02);
+    const totalPesewas = sellingPrice + feePesewas;
+
     try {
       const origin = getRequestOrigin(request);
       const storefrontDomain = resolveStorefrontDomain(request.headers);
@@ -123,7 +126,7 @@ export async function POST(
 
       const authorization = await initializeTransaction({
         email: guestEmail, // Guest buyer checkout - does not leak admin/reseller email
-        amountPesewas: sellingPrice,
+        amountPesewas: totalPesewas,
         reference: paymentReference,
         callbackUrl: `${origin}/api/store/paystack/callback`,
         metadata: {
@@ -132,12 +135,17 @@ export async function POST(
           seq,
           guestEmail,
           customerPhone: input.customerPhone,
+          sellingPrice,
+          feePesewas,
+          totalPesewas,
         },
       });
       return NextResponse.json({
         reference: paymentReference,
         orderCode: paymentReference, // same as Paystack reference for easy tracking
-        amount: fromPesewas(sellingPrice),
+        amount: fromPesewas(totalPesewas),
+        basePrice: fromPesewas(sellingPrice),
+        fee: fromPesewas(feePesewas),
         authorizationUrl: authorization.authorization_url,
       });
     } catch (initErr) {

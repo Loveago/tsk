@@ -215,11 +215,23 @@ export default async function StorefrontOrderPage({
             </dd>
           </div>
 
-          {/* Amount */}
+          {/* Amount Breakdown */}
           <div className="flex items-start justify-between gap-4">
-            <dt className="font-medium text-slate-500 dark:text-slate-400">Amount paid</dt>
-            <dd className="font-bold text-slate-900 dark:text-white">
+            <dt className="font-medium text-slate-500 dark:text-slate-400">Bundle price</dt>
+            <dd className="font-semibold text-slate-900 dark:text-white">
               ₵{amountGhs.toFixed(2)}
+            </dd>
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <dt className="font-medium text-slate-500 dark:text-slate-400">Paystack fee (2%)</dt>
+            <dd className="font-medium text-amber-600 dark:text-amber-400">
+              +₵{(Math.round(amountGhs * 0.02 * 100) / 100).toFixed(2)}
+            </dd>
+          </div>
+          <div className="flex items-start justify-between gap-4 font-bold">
+            <dt className="text-slate-900 dark:text-white">Total paid</dt>
+            <dd className="text-slate-900 dark:text-white">
+              ₵{(amountGhs + Math.round(amountGhs * 0.02 * 100) / 100).toFixed(2)}
             </dd>
           </div>
 

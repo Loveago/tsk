@@ -12,6 +12,29 @@ const PAYSTACK_BASE = "https://api.paystack.co";
 export const PAYSTACK_CURRENCY = "GHS";
 export const PAYSTACK_MIN_AMOUNT = 1; // GHS
 export const PAYSTACK_MAX_AMOUNT = 5000; // GHS
+export const PAYSTACK_FEE_PERCENT = 0.02; // 2% gateway processing fee
+
+/**
+ * Calculates the 2% Paystack processing fee and total payable.
+ */
+export function calculatePaystackFee(amountGhs: number): {
+  feeGhs: number;
+  totalGhs: number;
+  feePesewas: number;
+  totalPesewas: number;
+  basePesewas: number;
+} {
+  const basePesewas = Math.round(amountGhs * 100);
+  const feePesewas = Math.round(basePesewas * PAYSTACK_FEE_PERCENT);
+  const totalPesewas = basePesewas + feePesewas;
+  return {
+    feeGhs: feePesewas / 100,
+    totalGhs: totalPesewas / 100,
+    feePesewas,
+    totalPesewas,
+    basePesewas,
+  };
+}
 
 export async function getPaystackSecretKey(): Promise<string | null> {
   const dbKey = (await getSetting("paystack_secret_key")).trim();
@@ -214,12 +237,18 @@ export async function verifyAndSettlePaystackTopup(
     };
   }
 
-  const expectedPesewas = Math.round(tx.amount * 100);
+  const depositPesewas = Math.round(tx.amount * 100);
+  const feePesewas = Math.round(depositPesewas * PAYSTACK_FEE_PERCENT);
+  const chargedWithFeePesewas = depositPesewas + feePesewas;
+
+  const isAmountValid =
+    verification.amount === chargedWithFeePesewas ||
+    verification.amount === depositPesewas;
 
   if (
     verification.status === "success" &&
     verification.currency === PAYSTACK_CURRENCY &&
-    verification.amount === expectedPesewas
+    isAmountValid
   ) {
     const result = await settlePaystackTopup(tx.id, lookupRef, verification.channel);
     return {
@@ -236,7 +265,7 @@ export async function verifyAndSettlePaystackTopup(
     settled: false,
     alreadySettled: false,
     status: verification.status,
-    reason: `Verification mismatch: status=${verification.status}, amount=${verification.amount} (expected ${expectedPesewas})`,
+    reason: `Verification mismatch: status=${verification.status}, amount=${verification.amount} (expected ${chargedWithFeePesewas} or ${depositPesewas})`,
     transactionId: tx.id,
   };
 }

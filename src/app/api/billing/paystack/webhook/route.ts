@@ -127,7 +127,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, note: `unhandled status ${tx.status}` });
     }
 
-    const expectedPesewas = Math.round(tx.amount * 100);
+    const depositPesewas = Math.round(tx.amount * 100);
+    const feePesewas = Math.round(depositPesewas * 0.02);
+    const chargedWithFeePesewas = depositPesewas + feePesewas;
+    const isAmountMatch = (amt?: number) =>
+      typeof amt === "number" && (amt === chargedWithFeePesewas || amt === depositPesewas);
+
     const eventData = event.data as {
       status?: string;
       amount?: number;
@@ -143,7 +148,7 @@ export async function POST(request: NextRequest) {
       if (
         verification.status === "success" &&
         verification.currency === PAYSTACK_CURRENCY &&
-        verification.amount === expectedPesewas
+        isAmountMatch(verification.amount)
       ) {
         isVerified = true;
         channel = verification.channel || channel;
@@ -153,7 +158,7 @@ export async function POST(request: NextRequest) {
       if (
         eventData.status === "success" &&
         eventData.currency === PAYSTACK_CURRENCY &&
-        eventData.amount === expectedPesewas
+        isAmountMatch(eventData.amount)
       ) {
         isVerified = true;
       }

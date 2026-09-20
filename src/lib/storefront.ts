@@ -414,7 +414,13 @@ export async function settleStorefrontPayment(
   if (!row) return { settled: false, reason: "unknown reference" };
   if (row.underlyingOrderId) return { settled: true }; // already settled — idempotent
 
-  if (!input.paystackAmount || input.paystackAmount <= 0 || input.paystackAmount !== row.sellingPrice) {
+  const expectedWithFee = row.sellingPrice + Math.round(row.sellingPrice * 0.02);
+  const isAmountValid =
+    Boolean(input.paystackAmount) &&
+    input.paystackAmount > 0 &&
+    (input.paystackAmount === expectedWithFee || input.paystackAmount === row.sellingPrice);
+
+  if (!isAmountValid) {
     return { settled: false, reason: "Invalid payment amount or amount mismatch" };
   }
 
@@ -504,19 +510,23 @@ export async function verifyAndSettleStorefrontOrder(reference: string): Promise
       return { settled: true, alreadySettled: true, orderId: row.underlyingOrderId };
     }
 
-    // Strict Paystack verification: status must be success, currency GHS, amount exact match
+    // Strict Paystack verification: status must be success, currency GHS, amount match
     const verification = await verifyTransaction(reference);
+    const expectedWithFee = row.sellingPrice + Math.round(row.sellingPrice * 0.02);
+    const isAmountMatch =
+      typeof verification.amount === "number" &&
+      verification.amount > 0 &&
+      (verification.amount === expectedWithFee || verification.amount === row.sellingPrice);
+
     if (
       verification.status !== "success" ||
       verification.currency !== PAYSTACK_CURRENCY ||
-      !verification.amount ||
-      verification.amount <= 0 ||
-      verification.amount !== row.sellingPrice
+      !isAmountMatch
     ) {
       return {
         settled: false,
         alreadySettled: false,
-        reason: `Payment unverified or invalid amount (status: ${verification.status}, amount: ${verification.amount ?? 0}, expected: ${row.sellingPrice})`,
+        reason: `Payment unverified or invalid amount (status: ${verification.status}, amount: ${verification.amount ?? 0}, expected: ${expectedWithFee} or ${row.sellingPrice})`,
       };
     }
 

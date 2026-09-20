@@ -48,6 +48,9 @@ export function NetworkBuyForm({ slug, products }: { slug: string; products: Pro
     }
   }
 
+  const fee = selected ? Math.round(selected.price * 0.02 * 100) / 100 : 0;
+  const total = selected ? Math.round((selected.price + fee) * 100) / 100 : 0;
+
   return (
     <form onSubmit={buy} className="mt-6">
       <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Data size</p>
@@ -94,10 +97,28 @@ export function NetworkBuyForm({ slug, products }: { slug: string; products: Pro
         </p>
       )}
 
+
+      {selected && (
+        <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs space-y-1 dark:border-white/10 dark:bg-white/5">
+          <div className="flex justify-between text-slate-600 dark:text-slate-400">
+            <span>Bundle Price ({selected.gbAmount}GB):</span>
+            <span className="font-semibold text-slate-900 dark:text-white">₵{selected.price.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-slate-600 dark:text-slate-400">
+            <span>Paystack Fee (2%):</span>
+            <span className="font-medium text-amber-600 dark:text-amber-400">+₵{fee.toFixed(2)}</span>
+          </div>
+          <div className="border-t border-slate-200/60 pt-1 flex justify-between font-bold text-slate-900 dark:text-white">
+            <span>Total to Pay:</span>
+            <span className="text-yellow-600 dark:text-yellow-400">₵{total.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+
       <button
         type="submit"
         disabled={busy || !selected || !phoneValid}
-        className="mt-5 h-13 w-full rounded-full bg-yellow-300 text-sm font-bold tracking-wide text-slate-900 shadow-md shadow-yellow-400/30 transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-4 h-13 w-full rounded-full bg-yellow-300 text-sm font-bold tracking-wide text-slate-900 shadow-md shadow-yellow-400/30 transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
         style={{ height: 52 }}
       >
         {busy ? (
@@ -106,13 +127,13 @@ export function NetworkBuyForm({ slug, products }: { slug: string; products: Pro
             <span>Starting payment…</span>
           </span>
         ) : selected ? (
-          `BUY — ₵${selected.price.toFixed(2)}`
+          `BUY — ₵${total.toFixed(2)}`
         ) : (
           "BUY"
         )}
       </button>
-      <p className="mt-3 text-center text-[11px] text-slate-400">
-        You will be redirected to Paystack to complete payment.
+      <p className="mt-2.5 text-center text-[11px] text-slate-400">
+        You will be redirected to Paystack to complete payment (₵{total.toFixed(2)}).
       </p>
     </form>
   );
