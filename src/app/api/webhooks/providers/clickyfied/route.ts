@@ -44,25 +44,46 @@ export async function POST(request: NextRequest) {
 
       if (signingSecret && incomingSignature) {
         const cleanSig = incomingSignature.replace(/^sha256=/i, "").trim();
-        const payloadToSign = incomingTimestamp ? `${incomingTimestamp}.${rawBody}` : rawBody;
-        const computed = crypto
+        const rawBuffer = Buffer.from(rawBody, "utf-8");
+        const payloadBuffer = incomingTimestamp
+          ? Buffer.concat([Buffer.from(`${incomingTimestamp}.`, "utf-8"), rawBuffer])
+          : rawBuffer;
+
+        const computedHex = crypto
           .createHmac("sha256", signingSecret)
-          .update(payloadToSign)
+          .update(payloadBuffer)
           .digest("hex");
 
-        if (computed.toLowerCase() === cleanSig.toLowerCase()) {
+        const computedBase64 = crypto
+          .createHmac("sha256", signingSecret)
+          .update(payloadBuffer)
+          .digest("base64");
+
+        const isValid =
+          computedHex.toLowerCase() === cleanSig.toLowerCase() ||
+          computedBase64 === cleanSig;
+
+        if (isValid) {
           console.log("[ClickyfiedWebhook] HMAC signature verified successfully with X-External-Timestamp.");
         } else {
-          // Fallback check against raw body without timestamp
-          const fallbackComputed = crypto
+          // Fallback check against raw body bytes directly without timestamp
+          const fallbackHex = crypto
             .createHmac("sha256", signingSecret)
-            .update(rawBody)
+            .update(rawBuffer)
             .digest("hex");
-          if (fallbackComputed.toLowerCase() === cleanSig.toLowerCase()) {
+          const fallbackBase64 = crypto
+            .createHmac("sha256", signingSecret)
+            .update(rawBuffer)
+            .digest("base64");
+
+          if (
+            fallbackHex.toLowerCase() === cleanSig.toLowerCase() ||
+            fallbackBase64 === cleanSig
+          ) {
             console.log("[ClickyfiedWebhook] HMAC signature verified successfully with raw body fallback.");
           } else {
             console.warn(
-              `[ClickyfiedWebhook] Signature mismatch (received: ${incomingSignature.slice(0, 15)}..., computed: ${computed.slice(0, 15)}...). Processing in permissive mode.`
+              `[ClickyfiedWebhook] Signature mismatch (received: ${incomingSignature.slice(0, 15)}..., computed: ${computedHex.slice(0, 15)}...). Processing in permissive mode.`
             );
           }
         }
