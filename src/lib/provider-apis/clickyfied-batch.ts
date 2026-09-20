@@ -21,8 +21,11 @@ export interface PendingMtnBatchStats {
   gbThreshold: number;
   timerMinutes: number;
   lastDispatchedAt: string | null;
+  firstOrderAt: string | null;
   minutesElapsed: number;
   minutesRemaining: number;
+  secondsRemaining: number;
+  secondsElapsed: number;
   batchEnabled: boolean;
   clickyfiedEnabled: boolean;
   currentBatchCount: number;
@@ -210,15 +213,24 @@ export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> 
   const { orders, count, totalGb } = await getPendingMtnClickyfiedOrders();
 
   const now = Date.now();
-  let baseTime = batchConfig.lastDispatchedAt ? batchConfig.lastDispatchedAt.getTime() : 0;
+  const windowSeconds = Math.max(1, batchConfig.timerMinutes) * 60;
+  let firstOrderAt: string | null = null;
+  let secondsElapsed = 0;
+  let secondsRemaining = windowSeconds;
+  let minutesElapsed = 0;
+  let minutesRemaining = batchConfig.timerMinutes;
+  let timerExpired = false;
 
-  // If never dispatched before, base on the oldest pending order
-  if (!baseTime && orders.length > 0) {
-    baseTime = new Date(orders[0].createdAt).getTime();
+  // The countdown window is strictly bound to the oldest pending order in the current queue
+  if (orders.length > 0) {
+    const oldestOrderTime = new Date(orders[0].createdAt).getTime();
+    firstOrderAt = orders[0].createdAt.toISOString();
+    secondsElapsed = Math.max(0, Math.floor((now - oldestOrderTime) / 1000));
+    secondsRemaining = Math.max(0, windowSeconds - secondsElapsed);
+    minutesElapsed = Math.floor(secondsElapsed / 60);
+    minutesRemaining = Math.ceil(secondsRemaining / 60);
+    timerExpired = secondsRemaining === 0;
   }
-
-  const minutesElapsed = baseTime ? Math.max(0, Math.floor((now - baseTime) / 60000)) : 0;
-  const minutesRemaining = Math.max(0, batchConfig.timerMinutes - minutesElapsed);
 
   // Partition queue to understand current batch vs roll-over next batch
   const upperCap = Math.max(batchConfig.gbThreshold, batchConfig.gbThreshold + 20);
@@ -229,8 +241,10 @@ export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> 
   const nextBatchCount = count - currentBatchCount;
   const nextBatchGb = Math.max(0, totalGb - currentBatchGb);
 
-  const thresholdMet = currentBatchGb >= batchConfig.gbThreshold || totalGb >= batchConfig.gbThreshold || currentBatchCount >= 100;
-  const timerExpired = minutesRemaining === 0 && count > 0;
+  const thresholdMet =
+    currentBatchGb >= batchConfig.gbThreshold ||
+    totalGb >= batchConfig.gbThreshold ||
+    currentBatchCount >= 100;
 
   return {
     pendingCount: count,
@@ -238,8 +252,11 @@ export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> 
     gbThreshold: batchConfig.gbThreshold,
     timerMinutes: batchConfig.timerMinutes,
     lastDispatchedAt: batchConfig.lastDispatchedAt ? batchConfig.lastDispatchedAt.toISOString() : null,
+    firstOrderAt,
     minutesElapsed,
     minutesRemaining,
+    secondsRemaining,
+    secondsElapsed,
     batchEnabled: batchConfig.enabled,
     clickyfiedEnabled: config.clickyfied.enabled,
     currentBatchCount,
@@ -764,7 +781,7 @@ export async function checkAndTriggerMtnBatch(
     }
 
     // 2. Timer expiration trigger: timer hit 0, dispatch all remaining queued orders
-    if (trigger === "TIMER" && status.minutesElapsed >= batchConfig.timerMinutes && status.pendingCount > 0) {
+    if ((trigger === "TIMER" || status.timerExpired) && status.pendingCount > 0) {
       // Immediately reset timer timestamp so no subsequent ticks or other threads see expired timer
       await prisma.systemSetting.upsert({
         where: { key: "clickyfied_batch_last_dispatched_at" },
@@ -804,4 +821,63 @@ export async function checkAndTriggerMtnBatch(
     return { triggered: false, reason: err?.message };
   }
 }
+
+/**
+ * Dedicated background runner for Clickyfied MTN batch queue.
+ * Runs completely independent of the status sync poller.
+ * Checks the queue every 10 seconds:
+ * - If volume threshold is reached (>= 100 GB or >= 100 orders), dispatches immediately.
+ * - If accumulation timer hits 0:00, dispatches whatever orders have piled up.
+ */
+export function startClickyfiedBatchRunner() {
+  if (typeof window !== "undefined") return;
+
+  const instanceId = process.env.pm_id ?? process.env.NODE_APP_INSTANCE;
+  if (instanceId !== undefined && instanceId !== "" && instanceId !== "0") {
+    console.log(`[ClickyfiedBatchRunner] Skipping runner initialization on PM2 cluster worker #${instanceId}`);
+    return;
+  }
+
+  const g = globalThis as any;
+  if (g.__clickyfiedBatchRunnerStarted) return;
+  g.__clickyfiedBatchRunnerStarted = true;
+
+  console.log("[ClickyfiedBatchRunner] Dedicated MTN batch queue runner initialized (10s check interval).");
+
+  let isRunning = false;
+  const tick = async () => {
+    if (isRunning) return;
+    isRunning = true;
+    try {
+      const config = await getProviderRoutingConfig();
+      if (!config.enabled || !config.clickyfied.enabled) return;
+
+      const batchConfig = await getClickyfiedBatchConfig();
+      if (!batchConfig.enabled) return;
+
+      const status = await getClickyfiedBatchStatus();
+      if (status.pendingCount === 0) return;
+
+      if (status.thresholdMet) {
+        console.log(`[ClickyfiedBatchRunner] Volume threshold met (${status.totalGb} GB, ${status.pendingCount} orders). Triggering dispatch.`);
+        await checkAndTriggerMtnBatch("THRESHOLD");
+        return;
+      }
+
+      if (status.timerExpired) {
+        console.log(`[ClickyfiedBatchRunner] Accumulation timer expired (${status.minutesElapsed}m elapsed, ${status.totalGb} GB, ${status.pendingCount} orders). Triggering dispatch.`);
+        await checkAndTriggerMtnBatch("TIMER");
+      }
+    } catch (err: any) {
+      console.error("[ClickyfiedBatchRunner] Error during queue check:", err?.message || err);
+    } finally {
+      isRunning = false;
+    }
+  };
+
+  // Run initial check after 3 seconds, then every 10 seconds
+  setTimeout(tick, 3000);
+  setInterval(tick, 10_000);
+}
+
 

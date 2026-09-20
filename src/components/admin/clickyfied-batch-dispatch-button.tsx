@@ -24,6 +24,8 @@ interface BatchStatus {
   lastDispatchedAt: string | null;
   minutesElapsed: number;
   minutesRemaining: number;
+  secondsRemaining: number;
+  firstOrderAt: string | null;
   batchEnabled_?: boolean;
   clickyfiedEnabled: boolean;
   currentBatchCount: number;
@@ -45,6 +47,7 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
   const [loading, setLoading] = React.useState(false);
   const [dispatching, setDispatching] = React.useState(false);
   const [status, setStatus] = React.useState<BatchStatus | null>(null);
+  const [countdownSec, setCountdownSec] = React.useState<number | null>(null);
 
   const fetchStatus = React.useCallback(async () => {
     try {
@@ -63,9 +66,37 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
 
   React.useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 20000);
+    const interval = setInterval(fetchStatus, 15000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  React.useEffect(() => {
+    if (!status || status.pendingCount === 0) {
+      setCountdownSec(null);
+    } else {
+      setCountdownSec(status.secondsRemaining);
+    }
+  }, [status]);
+
+  React.useEffect(() => {
+    if (countdownSec === null || countdownSec <= 0) return;
+    const interval = setInterval(() => {
+      setCountdownSec((prev) => {
+        if (prev === null || prev <= 1) {
+          fetchStatus();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [countdownSec, fetchStatus]);
+
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  };
 
   const handleDispatch = async () => {
     if (!status || status.pendingCount === 0) return;
@@ -181,17 +212,23 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
               </div>
               <div className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
                 {status ? (
-                  status.minutesRemaining > 0 ? (
-                    <span>{status.minutesRemaining}m left</span>
+                  status.pendingCount === 0 ? (
+                    <span className="text-slate-500 font-normal text-xs">Waiting for orders</span>
+                  ) : countdownSec !== null && countdownSec > 0 ? (
+                    <span className="font-mono text-brand-600 dark:text-brand-400 font-semibold">
+                      {formatCountdown(countdownSec)} left
+                    </span>
                   ) : (
-                    <span className="text-amber-600 dark:text-amber-400 font-semibold">Timer Expired</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold">Dispatching...</span>
                   )
                 ) : (
                   "..."
                 )}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
-                {status?.minutesElapsed ?? 0}m of {status?.timerMinutes ?? 15}m interval
+                {status && status.pendingCount > 0
+                  ? `${status.timerMinutes}m window from 1st order`
+                  : `${status?.timerMinutes ?? 15}m batch timer window`}
               </div>
             </div>
           </div>

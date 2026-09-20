@@ -66,6 +66,8 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
     timerMinutes: number;
     minutesElapsed: number;
     minutesRemaining: number;
+    secondsRemaining?: number;
+    firstOrderAt?: string | null;
     currentBatchCount: number;
     currentBatchGb: number;
     nextBatchCount: number;
@@ -75,6 +77,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
   } | null>(null);
   const [loadingBatchStatus, setLoadingBatchStatus] = React.useState(false);
   const [dispatchingBatch, setDispatchingBatch] = React.useState(false);
+  const [batchCountdownSec, setBatchCountdownSec] = React.useState<number | null>(null);
 
   const fetchBatchStatus = React.useCallback(async () => {
     try {
@@ -93,7 +96,37 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
 
   React.useEffect(() => {
     fetchBatchStatus();
+    const interval = setInterval(fetchBatchStatus, 15000);
+    return () => clearInterval(interval);
   }, [fetchBatchStatus]);
+
+  React.useEffect(() => {
+    if (!batchStatus || batchStatus.pendingCount === 0) {
+      setBatchCountdownSec(null);
+    } else {
+      setBatchCountdownSec(batchStatus.secondsRemaining ?? null);
+    }
+  }, [batchStatus]);
+
+  React.useEffect(() => {
+    if (batchCountdownSec === null || batchCountdownSec <= 0) return;
+    const interval = setInterval(() => {
+      setBatchCountdownSec((prev) => {
+        if (prev === null || prev <= 1) {
+          fetchBatchStatus();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [batchCountdownSec, fetchBatchStatus]);
+
+  const formatBatchCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  };
 
   const handleManualBatchDispatch = async () => {
     if (
@@ -1323,10 +1356,14 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       <div className="text-[10px] text-slate-500">Timer Countdown</div>
                       <div className="text-base font-bold text-slate-900 dark:text-white">
                         {batchStatus ? (
-                          batchStatus.minutesRemaining > 0 ? (
-                            `${batchStatus.minutesRemaining}m left`
+                          batchStatus.pendingCount === 0 ? (
+                            <span className="text-slate-400 font-normal text-xs">Waiting for orders</span>
+                          ) : batchCountdownSec !== null && batchCountdownSec > 0 ? (
+                            <span className="font-mono text-brand-600 dark:text-brand-400">
+                              {formatBatchCountdown(batchCountdownSec)} left
+                            </span>
                           ) : (
-                            <span className="text-amber-600 dark:text-amber-400 text-xs">Ready</span>
+                            <span className="text-amber-600 dark:text-amber-400 text-xs font-semibold">Dispatching...</span>
                           )
                         ) : (
                           "..."
