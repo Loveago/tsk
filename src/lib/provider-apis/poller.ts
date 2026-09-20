@@ -101,6 +101,9 @@ export function startProviderSyncPoller() {
 
         // Deduplicate by provider reference or batch code so we don't query the same batch multiple times
         const seenProviderIds = new Set<string>();
+        if (inFlightOrders.length > 0) {
+          console.log(`[ProviderSyncPoller] Syncing ${inFlightOrders.length} in-flight Clickyfied order(s)...`);
+        }
         for (const order of inFlightOrders) {
           try {
             const rawRef = order.providerReference?.replace(/^CLICKYFIED(_CLAIMED)?:/, "").trim();
@@ -113,8 +116,8 @@ export function startProviderSyncPoller() {
               seenProviderIds.add(queryKey);
             }
             await syncClickyfiedOrder(order, "Automatic Background Poller");
-          } catch {
-            // continue
+          } catch (err: any) {
+            console.error(`[ProviderSyncPoller] Error syncing order #${order.id} (ref=${order.providerReference}):`, err?.message || err);
           }
         }
 

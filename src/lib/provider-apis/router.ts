@@ -906,7 +906,66 @@ export async function syncClickyfiedOrder(
     const config = await getProviderRoutingConfig();
     const client = new ClickyfiedClient(config.clickyfied);
 
-    const res = await client.getOrderStatus(providerId);
+    // Attempt to get order status; if it 404s (stored ID is our internal CF-BATCH- code, not Clickyfied's
+    // canonical orderId), resolve via the order list by externalReference and retry once.
+    let res: { status: string; raw: unknown };
+    let resolvedProviderId = providerId;
+    try {
+      res = await client.getOrderStatus(providerId);
+    } catch (fetchErr: any) {
+      const is404 = fetchErr?.status === 404 || fetchErr?.message?.includes("404") || fetchErr?.message?.includes("not found");
+      const externalRef = (order as any).externalReference || null;
+
+      if (is404 && externalRef) {
+        console.warn(`[ClickyfiedSync] getOrderStatus(${providerId}) returned 404. Attempting to resolve canonical orderId via externalReference=${externalRef}`);
+        // Search Clickyfied order list (paginated up to 300) for our externalReference
+        let resolvedId: string | null = null;
+        try {
+          for (const offset of [0, 100, 200]) {
+            const listOrders = await client.listOrders(100, offset);
+            if (listOrders.length === 0) break;
+            const match = listOrders.find(
+              (o: any) => o.externalReference === externalRef || o.externalReference === providerId
+            );
+            if (match?.orderId) {
+              resolvedId = String(match.orderId);
+              break;
+            }
+          }
+        } catch (listErr: any) {
+          console.error(`[ClickyfiedSync] Failed to resolve canonical orderId from list for externalRef=${externalRef}:`, listErr?.message);
+        }
+
+        if (resolvedId && resolvedId !== providerId) {
+          console.log(`[ClickyfiedSync] Resolved canonical orderId: ${resolvedId} for externalRef=${externalRef}. Updating providerReference in DB.`);
+          resolvedProviderId = resolvedId;
+          // Update all orders in this batch to use the canonical orderId
+          try {
+            await prisma.order.updateMany({
+              where: {
+                OR: [
+                  { providerReference: `CLICKYFIED:${providerId}` },
+                  { providerReference: { startsWith: `CLICKYFIED:${providerId}:` } },
+                  ...(externalRef ? [{ externalReference: externalRef }] : []),
+                ],
+                status: { in: ["PENDING", "PROCESSING"] },
+              },
+              data: {
+                providerReference: `CLICKYFIED:${resolvedId}`,
+              },
+            });
+          } catch {}
+          res = await client.getOrderStatus(resolvedId);
+        } else {
+          console.error(`[ClickyfiedSync] Could not resolve canonical orderId for ${providerId} / ${externalRef}. Sync skipped.`);
+          throw fetchErr; // re-throw to be caught by the outer handler
+        }
+      } else {
+        console.error(`[ClickyfiedSync] getOrderStatus(${providerId}) failed:`, fetchErr?.message || fetchErr?.status);
+        throw fetchErr;
+      }
+    }
+
     const rawAny = res.raw as any;
     const summary = rawAny?.order?.entrySummary || rawAny?.entrySummary;
     const rawStatus = rawAny?.order?.status || res.status || rawAny?.status;
@@ -1065,6 +1124,12 @@ export async function syncClickyfiedOrder(
     // If rate limited by Clickify (429), silently return unchanged without throwing
     if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("Polling too frequently")) {
       return { changed: false, error: "Rate limit: wait 30s" };
+    }
+
+    // Log non-rate-limit errors to server output for visibility in PM2 logs
+    const isNotFound = err?.status === 404 || err?.message?.includes("not found");
+    if (!isNotFound) {
+      console.error(`[ClickyfiedSync] Sync failed for order #${orderId}:`, err?.message || err?.status);
     }
 
     await recordOrderApiLog({

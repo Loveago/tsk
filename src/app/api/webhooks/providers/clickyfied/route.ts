@@ -572,9 +572,19 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // For order.status.changed, Clickyfied only sends the entries that changed — it does NOT
+        // include a batch-level status field. In that case rawStatus is "" and overallTargetStatus
+        // defaults to "PENDING", which would incorrectly downgrade legitimately PROCESSING orders
+        // that simply weren't part of this particular status-change event.
+        // Only apply the fallback status when:
+        //   a) the entry was explicitly matched and has a status, OR
+        //   b) the payload carries an explicit batch-level status (rawStatus is non-empty)
+        const hasExplicitBatchStatus = rawStatus !== "";
         const targetStatus = entryStatus
           ? mapClickyfiedStatus(entryStatus)
-          : overallTargetStatus;
+          : hasExplicitBatchStatus
+            ? overallTargetStatus
+            : null; // No batch status + no entry match → leave alone; poller will correct
 
         if (targetStatus && targetStatus !== ord.status) {
           await changeOrderStatus(

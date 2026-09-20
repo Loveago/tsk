@@ -201,6 +201,8 @@ export class ClickyfiedClient {
   /**
    * Resolves an orderId or externalReference (e.g. CF-BATCH-000006) to Clickyfied's
    * canonical orderId (e.g. order-1789655697659).
+   * Searches up to the first 300 orders to handle cases where batches have been
+   * pushed off the first page by newer orders.
    */
   async resolveCanonicalOrderId(idOrRef: string | number): Promise<string> {
     const raw = String(idOrRef).trim();
@@ -213,22 +215,34 @@ export class ClickyfiedClient {
     }
 
     try {
-      const res = await this.request<any>("/orders?limit=100");
-      const list: any[] = res?.orders || res?.data?.orders || [];
-      const match = list.find(
-        (o: any) =>
-          o.externalReference === raw ||
-          o.orderId === raw ||
-          o.id === raw
-      );
-      if (match?.orderId) {
-        return String(match.orderId);
+      for (const offset of [0, 100, 200]) {
+        const res = await this.request<any>(`/orders?limit=100&offset=${offset}`);
+        const list: any[] = res?.orders || res?.data?.orders || [];
+        if (list.length === 0) break;
+        const match = list.find(
+          (o: any) =>
+            o.externalReference === raw ||
+            o.orderId === raw ||
+            o.id === raw
+        );
+        if (match?.orderId) {
+          return String(match.orderId);
+        }
       }
     } catch {
       // ignore
     }
 
     return raw;
+  }
+
+  /**
+   * Lists Clickyfied orders with optional pagination.
+   * Returns the raw orders array.
+   */
+  async listOrders(limit = 100, offset = 0): Promise<any[]> {
+    const res = await this.request<any>(`/orders?limit=${limit}&offset=${offset}`);
+    return res?.orders || res?.data?.orders || [];
   }
 
   /**
