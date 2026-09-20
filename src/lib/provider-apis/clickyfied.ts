@@ -155,12 +155,11 @@ export class ClickyfiedClient {
     };
 
     const signingSecret = (params.callbackSigningSecret || this.callbackSigningSecret || "").trim();
-    // Clickyfied strictly requires callbackSigningSecret whenever callbackUrl is provided
-    if (params.callbackUrl && signingSecret) {
+    if (params.callbackUrl) {
       body.callbackUrl = params.callbackUrl;
-      body.callbackSigningSecret = signingSecret;
-    } else if (params.callbackUrl && !signingSecret) {
-      console.warn("[Clickyfied] Warning: callbackUrl omitted because callbackSigningSecret is missing (required by Clickyfied).");
+      if (signingSecret) {
+        body.callbackSigningSecret = signingSecret;
+      }
     }
 
     const res = await this.request<any>(

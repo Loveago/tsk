@@ -427,8 +427,7 @@ export async function dispatchOrder(
         !appBaseUrl.includes("localhost") &&
         !appBaseUrl.includes("127.0.0.1");
 
-      // Clickify strictly requires callbackSigningSecret whenever callbackUrl is provided
-      const callbackUrl = isPublicUrl && signingSecret
+      const callbackUrl = isPublicUrl
         ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
         : undefined;
 
@@ -821,6 +820,8 @@ const syncingOrders = new Set<number>();
 const lastCheckedOrders = new Map<number, number>();
 // Cache of last checked timestamp per provider batch/order ID to avoid duplicate batch hits (120s)
 const lastCheckedProviderBatches = new Map<string, number>();
+// Active in-flight promises per providerId to eliminate simultaneous duplicate requests
+const inFlightProviderSync = new Map<string, Promise<{ changed: boolean; previousStatus?: string; newStatus?: string; error?: string }>>();
 // Cache of last checked timestamp per delivery report (120s)
 const lastCheckedReports = new Map<string, number>();
 
@@ -893,6 +894,11 @@ export async function syncClickyfiedOrder(
     const [providerId, orderEntryId] = rawRef.split(":");
     if (!providerId) return { changed: false };
 
+    // In-flight deduplication: If this exact providerId is currently being fetched, join the active promise
+    if (inFlightProviderSync.has(providerId)) {
+      return inFlightProviderSync.get(providerId)!;
+    }
+
     // Batch deduplication: If this exact providerId was already queried within the configured window, skip duplicate request
     const lastCheckedBatch = lastCheckedProviderBatches.get(providerId) || 0;
     if (!options.forceCheck && now - lastCheckedBatch < configuredIntervalMs) {
@@ -903,226 +909,245 @@ export async function syncClickyfiedOrder(
     lastCheckedOrders.set(orderId, now);
     lastCheckedProviderBatches.set(providerId, now);
 
-    const config = await getProviderRoutingConfig();
-    const client = new ClickyfiedClient(config.clickyfied);
+    const syncExecution = (async () => {
+      const config = await getProviderRoutingConfig();
+      const client = new ClickyfiedClient(config.clickyfied);
 
-    // Attempt to get order status; if it 404s (stored ID is our internal CF-BATCH- code, not Clickyfied's
-    // canonical orderId), resolve via the order list by externalReference and retry once.
-    let res: { status: string; raw: unknown };
-    let resolvedProviderId = providerId;
-    try {
-      res = await client.getOrderStatus(providerId);
-    } catch (fetchErr: any) {
-      const is404 = fetchErr?.status === 404 || fetchErr?.message?.includes("404") || fetchErr?.message?.includes("not found");
-      const externalRef = (order as any).externalReference || null;
+      // Attempt to get order status; if it 404s (stored ID is our internal CF-BATCH- code, not Clickyfied's
+      // canonical orderId), resolve via the order list by externalReference and retry once.
+      let res: { status: string; raw: unknown };
+      let resolvedProviderId = providerId;
+      try {
+        res = await client.getOrderStatus(providerId);
+      } catch (fetchErr: any) {
+        const is404 = fetchErr?.status === 404 || fetchErr?.message?.includes("404") || fetchErr?.message?.includes("not found");
+        const externalRef = (order as any).externalReference || null;
 
-      if (is404 && externalRef) {
-        console.warn(`[ClickyfiedSync] getOrderStatus(${providerId}) returned 404. Attempting to resolve canonical orderId via externalReference=${externalRef}`);
-        // Search Clickyfied order list (paginated up to 300) for our externalReference
-        let resolvedId: string | null = null;
-        try {
-          for (const offset of [0, 100, 200]) {
-            const listOrders = await client.listOrders(100, offset);
-            if (listOrders.length === 0) break;
-            const match = listOrders.find(
-              (o: any) => o.externalReference === externalRef || o.externalReference === providerId
-            );
-            if (match?.orderId) {
-              resolvedId = String(match.orderId);
-              break;
-            }
-          }
-        } catch (listErr: any) {
-          console.error(`[ClickyfiedSync] Failed to resolve canonical orderId from list for externalRef=${externalRef}:`, listErr?.message);
-        }
-
-        if (resolvedId && resolvedId !== providerId) {
-          console.log(`[ClickyfiedSync] Resolved canonical orderId: ${resolvedId} for externalRef=${externalRef}. Updating providerReference in DB.`);
-          resolvedProviderId = resolvedId;
-          lastCheckedProviderBatches.set(resolvedId, now);
-          // Update all orders in this batch to use the canonical orderId
+        if (is404 && externalRef) {
+          console.warn(`[ClickyfiedSync] getOrderStatus(${providerId}) returned 404. Attempting to resolve canonical orderId via externalReference=${externalRef}`);
+          // Search Clickyfied order list (paginated up to 300) for our externalReference
+          let resolvedId: string | null = null;
           try {
-            await prisma.order.updateMany({
-              where: {
-                OR: [
-                  { providerReference: `CLICKYFIED:${providerId}` },
-                  { providerReference: { startsWith: `CLICKYFIED:${providerId}:` } },
-                  ...(externalRef ? [{ externalReference: externalRef }] : []),
-                ],
-                status: { in: ["PENDING", "PROCESSING"] },
-              },
-              data: {
-                providerReference: `CLICKYFIED:${resolvedId}`,
-              },
-            });
-          } catch {}
-          res = await client.getOrderStatus(resolvedId);
+            for (const offset of [0, 100, 200]) {
+              const listOrders = await client.listOrders(100, offset);
+              if (listOrders.length === 0) break;
+              const match = listOrders.find(
+                (o: any) => o.externalReference === externalRef || o.externalReference === providerId
+              );
+              if (match?.orderId) {
+                resolvedId = String(match.orderId);
+                break;
+              }
+            }
+          } catch (listErr: any) {
+            console.error(`[ClickyfiedSync] Failed to resolve canonical orderId from list for externalRef=${externalRef}:`, listErr?.message);
+          }
+
+          if (resolvedId && resolvedId !== providerId) {
+            console.log(`[ClickyfiedSync] Resolved canonical orderId: ${resolvedId} for externalRef=${externalRef}. Updating providerReference in DB.`);
+            resolvedProviderId = resolvedId;
+            lastCheckedProviderBatches.set(resolvedId, now);
+            // Update all orders in this batch to use the canonical orderId
+            try {
+              await prisma.order.updateMany({
+                where: {
+                  OR: [
+                    { providerReference: `CLICKYFIED:${providerId}` },
+                    { providerReference: { startsWith: `CLICKYFIED:${providerId}:` } },
+                    ...(externalRef ? [{ externalReference: externalRef }] : []),
+                  ],
+                  status: { in: ["PENDING", "PROCESSING"] },
+                },
+                data: {
+                  providerReference: `CLICKYFIED:${resolvedId}`,
+                },
+              });
+            } catch {}
+            res = await client.getOrderStatus(resolvedId);
+          } else {
+            console.error(`[ClickyfiedSync] Could not resolve canonical orderId for ${providerId} / ${externalRef}. Sync skipped.`);
+            throw fetchErr; // re-throw to be caught by the outer handler
+          }
         } else {
-          console.error(`[ClickyfiedSync] Could not resolve canonical orderId for ${providerId} / ${externalRef}. Sync skipped.`);
-          throw fetchErr; // re-throw to be caught by the outer handler
-        }
-      } else {
-        console.error(`[ClickyfiedSync] getOrderStatus(${providerId}) failed:`, fetchErr?.message || fetchErr?.status);
-        throw fetchErr;
-      }
-    }
-
-    const rawAny = res.raw as any;
-    const summary = rawAny?.order?.entrySummary || rawAny?.entrySummary;
-    const rawStatus = rawAny?.order?.status || res.status || rawAny?.status;
-    const processedAt = rawAny?.order?.processedAt || rawAny?.processedAt;
-
-    const overallTargetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
-
-    // Find all sister orders in our database that belong to this Clickyfied batch
-    const linkedOrders = await prisma.order.findMany({
-      where: {
-        OR: [
-          { providerReference: `CLICKYFIED:${providerId}` },
-          { providerReference: { startsWith: `CLICKYFIED:${providerId}:` } },
-          { providerReference: `CLICKYFIED:${resolvedProviderId}` },
-          { providerReference: { startsWith: `CLICKYFIED:${resolvedProviderId}:` } },
-          ...(order.externalReference ? [{ externalReference: order.externalReference }] : []),
-          ...(rawAny?.order?.externalReference ? [{ externalReference: rawAny.order.externalReference }] : []),
-          ...(rawAny?.externalReference ? [{ externalReference: rawAny.externalReference }] : []),
-          { id: order.id },
-        ],
-      },
-    });
-
-    const entriesList: Array<any> =
-      rawAny?.order?.entries || rawAny?.entries || rawAny?.data?.entries || [];
-
-    const parsedEntries: Array<{
-      id?: string | number;
-      normPhone: string;
-      allocationGb?: number;
-      status?: string;
-    }> = [];
-
-    for (const e of entriesList) {
-      const num = e.number || e.phoneNumber || e.phone || "";
-      const norm = normalizePhoneLast9(String(num));
-      const st = e.status || e.currentStatus || e.deliveryStatus;
-      const eId = e.id ?? e.orderEntryId ?? e.entryId ?? e._id;
-      const alloc = typeof e.allocationGB === "number" ? e.allocationGB : typeof e.allocationGb === "number" ? e.allocationGb : undefined;
-      if (norm) {
-        parsedEntries.push({
-          id: eId !== undefined && eId !== null ? eId : undefined,
-          normPhone: norm,
-          allocationGb: alloc,
-          status: st,
-        });
-      }
-    }
-
-    const canonicalOrderId = String(rawAny?.order?.orderId || rawAny?.orderId || providerId);
-
-    let thisOrderChanged = false;
-    let thisOrderNewStatus = order.status;
-    const thisOrderPreviousStatus = order.status;
-
-    // Track which entries in this batch have already been assigned to an order
-    const claimedEntryIndices = new Set<number>();
-
-    for (const ord of linkedOrders) {
-      lastCheckedOrders.set(ord.id, now);
-
-      const ordNormPhone = normalizePhoneLast9(ord.phoneNumber);
-      const cachedParts = (ord.providerReference || "").replace("CLICKYFIED:", "").trim().split(":");
-      const cachedEntryId = cachedParts.length >= 2 ? cachedParts[cachedParts.length - 1] : null;
-
-      // 1. Primary match: Match on cached entry ID if present
-      let matchedIdx = -1;
-      if (cachedEntryId) {
-        matchedIdx = parsedEntries.findIndex(
-          (pe, idx) =>
-            !claimedEntryIndices.has(idx) &&
-            pe.id !== undefined &&
-            String(pe.id) === String(cachedEntryId)
-        );
-      }
-
-      // 2. Secondary match: Match on phone + matching allocationGB
-      if (matchedIdx === -1) {
-        matchedIdx = parsedEntries.findIndex(
-          (pe, idx) =>
-            !claimedEntryIndices.has(idx) &&
-            pe.normPhone === ordNormPhone &&
-            pe.allocationGb !== undefined &&
-            Math.abs(pe.allocationGb - ord.gbAmount) <= 0.1
-        );
-      }
-
-      // 3. Fallback match: First available matching phone
-      if (matchedIdx === -1) {
-        matchedIdx = parsedEntries.findIndex(
-          (pe, idx) => !claimedEntryIndices.has(idx) && pe.normPhone === ordNormPhone
-        );
-      }
-
-      const matchedEntry = matchedIdx !== -1 ? parsedEntries[matchedIdx] : null;
-      if (matchedIdx !== -1) {
-        claimedEntryIndices.add(matchedIdx);
-      }
-
-      const entryStatus = matchedEntry?.status;
-      const eId = matchedEntry?.id;
-
-      // Cache canonical orderId & entryId in providerReference (format CLICKYFIED:orderId:entryId)
-      if (eId !== undefined && eId !== null) {
-        const expectedRef = `CLICKYFIED:${canonicalOrderId}:${eId}`;
-        if (ord.providerReference !== expectedRef) {
-          await prisma.order
-            .update({
-              where: { id: ord.id },
-              data: { providerReference: expectedRef },
-            })
-            .catch(() => {});
-          ord.providerReference = expectedRef;
+          console.error(`[ClickyfiedSync] getOrderStatus(${providerId}) failed:`, fetchErr?.message || fetchErr?.status);
+          throw fetchErr;
         }
       }
 
-      const targetStatus = entryStatus
-        ? mapClickyfiedStatus(entryStatus)
-        : overallTargetStatus;
+      const rawAny = res.raw as any;
+      const summary = rawAny?.order?.entrySummary || rawAny?.entrySummary;
+      const rawStatus = rawAny?.order?.status || res.status || rawAny?.status;
+      const processedAt = rawAny?.order?.processedAt || rawAny?.processedAt;
 
-      if (targetStatus && targetStatus !== ord.status) {
-        if (targetStatus === "FAILED") {
-          await recordOrderApiLog({
-            orderId: ord.id,
-            provider: "CLICKYFIED",
-            action: "SYNC_ORDER",
-            endpoint: `${config.clickyfied.baseUrl || DEFAULT_CLICKYFIED_SANDBOX_URL}/api/public/v1/orders/${providerId}`,
-            method: "GET",
-            statusCode: 200,
-            success: false,
-            errorMessage: `Order marked as failed by Clickyfied (Status: ${entryStatus || rawStatus})`,
-            responsePayload: rawAny,
-            providerReference: ord.providerReference,
+      const overallTargetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
+
+      // Find all sister orders in our database that belong to this Clickyfied batch
+      const linkedOrders = await prisma.order.findMany({
+        where: {
+          OR: [
+            { providerReference: `CLICKYFIED:${providerId}` },
+            { providerReference: { startsWith: `CLICKYFIED:${providerId}:` } },
+            { providerReference: `CLICKYFIED:${resolvedProviderId}` },
+            { providerReference: { startsWith: `CLICKYFIED:${resolvedProviderId}:` } },
+            ...(order.externalReference ? [{ externalReference: order.externalReference }] : []),
+            ...(rawAny?.order?.externalReference ? [{ externalReference: rawAny.order.externalReference }] : []),
+            ...(rawAny?.externalReference ? [{ externalReference: rawAny.externalReference }] : []),
+            { id: order.id },
+          ],
+        },
+      });
+
+      const entriesList: Array<any> =
+        rawAny?.order?.entries || rawAny?.entries || rawAny?.data?.entries || [];
+
+      const parsedEntries: Array<{
+        id?: string | number;
+        normPhone: string;
+        allocationGb?: number;
+        status?: string;
+      }> = [];
+
+      for (const e of entriesList) {
+        const num = e.number || e.phoneNumber || e.phone || e.recipient || e.mobile || "";
+        const norm = normalizePhoneLast9(String(num));
+        const st = e.status || e.currentStatus || e.deliveryStatus || e.state;
+        const eId = e.id ?? e.orderEntryId ?? e.entryId ?? e._id;
+        const alloc = typeof e.allocationGB === "number" ? e.allocationGB : typeof e.allocationGb === "number" ? e.allocationGb : typeof e.allocation === "number" ? e.allocation : undefined;
+        if (norm) {
+          parsedEntries.push({
+            id: eId !== undefined && eId !== null ? eId : undefined,
+            normPhone: norm,
+            allocationGb: alloc,
+            status: st,
           });
         }
+      }
 
-        await changeOrderStatus(
-          ord.id,
-          targetStatus,
-          `Delivery status synced (${entryStatus || rawStatus || targetStatus})`,
-          { id: "system", label: actorLabel },
-          { force: true }
-        );
+      const canonicalOrderId = String(rawAny?.order?.orderId || rawAny?.orderId || providerId);
 
-        if (ord.id === order.id) {
-          thisOrderChanged = true;
-          thisOrderNewStatus = targetStatus;
+      let thisOrderChanged = false;
+      let thisOrderNewStatus = order.status;
+      const thisOrderPreviousStatus = order.status;
+
+      // Track which entries in this batch have already been assigned to an order
+      const claimedEntryIndices = new Set<number>();
+
+      for (const ord of linkedOrders) {
+        lastCheckedOrders.set(ord.id, now);
+
+        const ordNormPhone = normalizePhoneLast9(ord.phoneNumber);
+        const cachedParts = (ord.providerReference || "").replace("CLICKYFIED:", "").trim().split(":");
+        const cachedEntryId = cachedParts.length >= 2 ? cachedParts[cachedParts.length - 1] : null;
+
+        // 1. Primary match: Match on cached entry ID if present
+        let matchedIdx = -1;
+        if (cachedEntryId) {
+          matchedIdx = parsedEntries.findIndex(
+            (pe, idx) =>
+              !claimedEntryIndices.has(idx) &&
+              pe.id !== undefined &&
+              String(pe.id) === String(cachedEntryId)
+          );
+        }
+
+        // 2. Secondary match: Match on phone + matching allocationGB
+        if (matchedIdx === -1) {
+          matchedIdx = parsedEntries.findIndex(
+            (pe, idx) =>
+              !claimedEntryIndices.has(idx) &&
+              pe.normPhone === ordNormPhone &&
+              pe.allocationGb !== undefined &&
+              Math.abs(pe.allocationGb - ord.gbAmount) <= 0.1
+          );
+        }
+
+        // 3. Fallback match: First available matching phone
+        if (matchedIdx === -1) {
+          matchedIdx = parsedEntries.findIndex(
+            (pe, idx) => !claimedEntryIndices.has(idx) && pe.normPhone === ordNormPhone
+          );
+        }
+
+        const matchedEntry = matchedIdx !== -1 ? parsedEntries[matchedIdx] : null;
+        if (matchedIdx !== -1) {
+          claimedEntryIndices.add(matchedIdx);
+        }
+
+        const entryStatus = matchedEntry?.status;
+        const eId = matchedEntry?.id;
+
+        // Cache canonical orderId & entryId in providerReference (format CLICKYFIED:orderId:entryId)
+        if (eId !== undefined && eId !== null) {
+          const expectedRef = `CLICKYFIED:${canonicalOrderId}:${eId}`;
+          if (ord.providerReference !== expectedRef) {
+            await prisma.order
+              .update({
+                where: { id: ord.id },
+                data: { providerReference: expectedRef },
+              })
+              .catch(() => {});
+            ord.providerReference = expectedRef;
+          }
+        }
+
+        let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED";
+        if (entryStatus) {
+          const mappedEntry = mapClickyfiedStatus(entryStatus);
+          if (["SUCCESS", "FAILED", "CANCELLED"].includes(mappedEntry)) {
+            targetStatus = mappedEntry;
+          } else if (mappedEntry === "PROCESSING" || overallTargetStatus === "PROCESSING") {
+            targetStatus = "PROCESSING";
+          } else {
+            targetStatus = mappedEntry;
+          }
+        } else {
+          targetStatus = overallTargetStatus;
+        }
+
+        if (targetStatus && targetStatus !== ord.status) {
+          if (targetStatus === "FAILED") {
+            await recordOrderApiLog({
+              orderId: ord.id,
+              provider: "CLICKYFIED",
+              action: "SYNC_ORDER",
+              endpoint: `${config.clickyfied.baseUrl || DEFAULT_CLICKYFIED_SANDBOX_URL}/api/public/v1/orders/${providerId}`,
+              method: "GET",
+              statusCode: 200,
+              success: false,
+              errorMessage: `Order marked as failed by Clickyfied (Status: ${entryStatus || rawStatus})`,
+              responsePayload: rawAny,
+              providerReference: ord.providerReference,
+            });
+          }
+
+          await changeOrderStatus(
+            ord.id,
+            targetStatus,
+            `Delivery status synced (${entryStatus || rawStatus || targetStatus})`,
+            { id: "system", label: actorLabel },
+            { force: true }
+          );
+
+          if (ord.id === order.id) {
+            thisOrderChanged = true;
+            thisOrderNewStatus = targetStatus;
+          }
         }
       }
-    }
 
-    return {
-      changed: thisOrderChanged,
-      previousStatus: thisOrderPreviousStatus,
-      newStatus: thisOrderNewStatus,
-    };
+      return {
+        changed: thisOrderChanged,
+        previousStatus: thisOrderPreviousStatus,
+        newStatus: thisOrderNewStatus,
+      };
+    })();
+
+    inFlightProviderSync.set(providerId, syncExecution);
+    try {
+      return await syncExecution;
+    } finally {
+      inFlightProviderSync.delete(providerId);
+    }
   } catch (err: any) {
     // If rate limited by Clickify (429), silently return unchanged without throwing
     if (err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("Polling too frequently")) {

@@ -35,28 +35,13 @@ export async function POST(request: NextRequest) {
         ""
       ).trim();
 
-      if (signingSecret) {
-        if (!incomingSignature) {
-          console.warn("[ClickyfiedWebhook] Rejecting: Missing signature header while signingSecret is configured.");
-          await recordOrderApiLog({
-            orderId: null,
-            provider: "CLICKYFIED",
-            action: "WEBHOOK",
-            endpoint: "/api/webhooks/providers/clickyfied",
-            method: "POST",
-            requestPayload: payload,
-            statusCode: 401,
-            success: false,
-            errorMessage: "Missing required callback signature header (expected X-External-Signature)",
-            durationMs: Date.now() - startTime,
-          });
-          return NextResponse.json({ error: "Missing required callback signature" }, { status: 401 });
-        }
+      if (signingSecret && incomingSignature) {
+        const cleanSig = incomingSignature.replace(/^sha256=/i, "").trim();
         const computed = crypto
           .createHmac("sha256", signingSecret)
           .update(rawBody)
           .digest("hex");
-        if (computed.toLowerCase() !== incomingSignature.toLowerCase()) {
+        if (computed.toLowerCase() !== cleanSig.toLowerCase()) {
           console.warn("[ClickyfiedWebhook] Signature mismatch:", { computed, incomingSignature });
           await recordOrderApiLog({
             orderId: null,
@@ -505,16 +490,31 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
     if (orders.length > 0) {
       const summary = payload?.order?.entrySummary || payload?.entrySummary;
+      const eventStatus =
+        effectiveEvent === "order.processing" || effectiveEvent === "order.in_progress"
+          ? "processing"
+          : effectiveEvent === "order.processed" || effectiveEvent === "order.completed"
+          ? "processed"
+          : effectiveEvent === "order.failed"
+          ? "failed"
+          : effectiveEvent === "order.accepted"
+          ? "pending"
+          : "";
+
       const rawStatus =
         payload?.order?.status ||
         payload?.status ||
-        (effectiveEvent === "order.accepted" ? "pending" : "");
+        eventStatus;
       const processedAt = payload?.order?.processedAt || payload?.processedAt;
       const overallTargetStatus = mapClickyfiedStatus(rawStatus, summary, processedAt);
 
       // Check if per-entry status list is provided in webhook payload
       const rawEntries: Array<any> =
-        payload?.entries || payload?.order?.entries || [];
+        payload?.entries ||
+        payload?.order?.entries ||
+        payload?.order?.phoneNumbers ||
+        payload?.phoneNumbers ||
+        [];
 
       const parsedEntries: Array<{
         id?: string | number;
@@ -524,15 +524,17 @@ export async function POST(request: NextRequest) {
       }> = [];
 
       for (const re of rawEntries) {
-        const num = re.number || re.phoneNumber || re.phone || "";
+        const num = re.number || re.phoneNumber || re.phone || re.recipient || re.mobile || "";
         const norm = normalizePhoneLast9(String(num));
-        const st = re.currentStatus || re.status || re.deliveryStatus;
+        const st = re.currentStatus || re.status || re.deliveryStatus || re.state;
         const eId = re.id ?? re.orderEntryId ?? re.entryId ?? re._id;
         const alloc =
           typeof re.allocationGB === "number"
             ? re.allocationGB
             : typeof re.allocationGb === "number"
             ? re.allocationGb
+            : typeof re.allocation === "number"
+            ? re.allocation
             : undefined;
         if (norm) {
           parsedEntries.push({
@@ -603,19 +605,20 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // For order.status.changed, Clickyfied only sends the entries that changed — it does NOT
-        // include a batch-level status field. In that case rawStatus is "" and overallTargetStatus
-        // defaults to "PENDING", which would incorrectly downgrade legitimately PROCESSING orders
-        // that simply weren't part of this particular status-change event.
-        // Only apply the fallback status when:
-        //   a) the entry was explicitly matched and has a status, OR
-        //   b) the payload carries an explicit batch-level status (rawStatus is non-empty)
         const hasExplicitBatchStatus = rawStatus !== "";
-        const targetStatus = entryStatus
-          ? mapClickyfiedStatus(entryStatus)
-          : hasExplicitBatchStatus
-            ? overallTargetStatus
-            : null; // No batch status + no entry match → leave alone; poller will correct
+        let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | null = null;
+        if (entryStatus) {
+          const mapped = mapClickyfiedStatus(entryStatus);
+          if (["SUCCESS", "FAILED", "CANCELLED"].includes(mapped)) {
+            targetStatus = mapped;
+          } else if (mapped === "PROCESSING" || overallTargetStatus === "PROCESSING") {
+            targetStatus = "PROCESSING";
+          } else {
+            targetStatus = mapped;
+          }
+        } else if (hasExplicitBatchStatus) {
+          targetStatus = overallTargetStatus;
+        }
 
         if (targetStatus && targetStatus !== ord.status) {
           await changeOrderStatus(

@@ -406,8 +406,7 @@ export async function dispatchClickyfiedMtnBatch(
 
     const isPublicUrl = appBaseUrl.startsWith("https://") && !appBaseUrl.includes("localhost");
     const signingSecret = (config.clickyfied.callbackSigningSecret || process.env.CLICKYFIED_CALLBACK_SECRET || "").trim();
-    // Clickyfied strictly requires callbackSigningSecret whenever callbackUrl is provided
-    const callbackUrl = isPublicUrl && signingSecret
+    const callbackUrl = isPublicUrl
       ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
       : undefined;
 
@@ -578,9 +577,19 @@ export async function dispatchClickyfiedMtnBatch(
 
         const entryRawStatus = matchedEntry?.status;
         const entryId = matchedEntry?.id;
-        const targetStatus = entryRawStatus
-          ? mapClickyfiedStatus(entryRawStatus)
-          : overallStatus;
+        let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED";
+        if (entryRawStatus) {
+          const mappedEntry = mapClickyfiedStatus(entryRawStatus);
+          if (["SUCCESS", "FAILED", "CANCELLED"].includes(mappedEntry)) {
+            targetStatus = mappedEntry;
+          } else if (mappedEntry === "PROCESSING" || overallStatus === "PROCESSING") {
+            targetStatus = "PROCESSING";
+          } else {
+            targetStatus = mappedEntry;
+          }
+        } else {
+          targetStatus = overallStatus;
+        }
 
         const orderProviderRef =
           entryId !== undefined && entryId !== null
