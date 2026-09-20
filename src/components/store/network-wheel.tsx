@@ -26,24 +26,24 @@ export function NetworkWheel({
   return (
     <div className="wheel-wrap relative mx-auto aspect-square w-[88%] max-w-[320px] md:w-full md:max-w-md">
       {/* Decorative rings */}
-      <div className="absolute inset-0 rounded-full border-2 border-yellow-400/80" />
-      <div className="absolute inset-10 rounded-full border-2 border-emerald-600/60" />
-      <div className="absolute inset-20 rounded-full border border-slate-300/70 dark:border-white/10" />
+      <div className="pointer-events-none absolute inset-0 rounded-full border-2 border-yellow-400/80" />
+      <div className="pointer-events-none absolute inset-10 rounded-full border-2 border-emerald-600/60" />
+      <div className="pointer-events-none absolute inset-20 rounded-full border border-slate-300/70 dark:border-white/10" />
 
       {/* Rotating orbit of clickable logos */}
-      <div className="wheel-spin absolute inset-5 md:inset-6">
+      <div className="wheel-spin pointer-events-none absolute inset-5 md:inset-6">
         {networks.map((network, i) => {
           const angle = (360 / count) * i;
           return (
             <div
               key={network}
-              className="absolute inset-0"
+              className="pointer-events-none absolute inset-0"
               style={{ transform: `rotate(${angle}deg)` }}
             >
               <Link
                 href={networkHref(slug, network)}
                 aria-label={`Shop ${NETWORK_BRANDS[network].label} bundles`}
-                className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2"
+                className="pointer-events-auto absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2"
               >
                 <span
                   className="block"
@@ -64,10 +64,10 @@ export function NetworkWheel({
       </div>
 
       {/* Center card */}
-      <div className="absolute inset-0 flex items-center justify-center">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <Link
           href={storeHref(slug)}
-          className="flex flex-col items-center gap-1 rounded-3xl bg-white px-8 py-6 text-center shadow-2xl shadow-slate-900/10 transition-transform hover:scale-105 dark:bg-[#111a2c] md:px-10 md:py-8"
+          className="pointer-events-auto flex flex-col items-center gap-1 rounded-3xl bg-white px-8 py-6 text-center shadow-2xl shadow-slate-900/10 transition-transform hover:scale-105 dark:bg-[#111a2c] md:px-10 md:py-8"
         >
           <span className="font-serif text-xl font-bold text-slate-900 dark:text-white md:text-2xl">
             {storeName}

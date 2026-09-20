@@ -205,29 +205,29 @@ html.dark, .dark {
  * user prefers reduced motion.
  * ------------------------------------------------------------------------- */
 @keyframes wheel-rotate {
+  from {
+    transform: rotate(0deg);
+  }
   to {
-    transform: rotate3d(0, 0, 1, 360deg);
+    transform: rotate(360deg);
   }
 }
 @keyframes wheel-rotate-rev {
-  to {
-    transform: rotate3d(0, 0, 1, -360deg);
+  from {
+    transform: rotate(0deg);
   }
-}
-.wheel-wrap {
-  contain: layout paint;
-  isolation: isolate;
+  to {
+    transform: rotate(-360deg);
+  }
 }
 .wheel-spin {
   animation: wheel-rotate 24s linear infinite;
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
+  transform-origin: center center;
   will-change: transform;
 }
 .wheel-counter {
   animation: wheel-rotate-rev 24s linear infinite;
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
+  transform-origin: center center;
   will-change: transform;
 }
 .wheel-wrap:hover .wheel-spin,

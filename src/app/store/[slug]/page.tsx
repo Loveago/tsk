@@ -119,15 +119,22 @@ export default async function PublicStorePage({
           </span>
           <h1 className="mt-4 font-serif text-4xl font-bold leading-tight text-slate-900 sm:text-5xl lg:text-6xl dark:text-white">
             Instant Data Bundles,{" "}
-            <span className="text-yellow-500">Buy Now</span>
+            <span className="text-yellow-500">Delivered Reliably</span>
           </h1>
           <p className="mt-4 max-w-lg text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-300">
             Select your network below to view available packages and checkout instantly with MoMo.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
+            <a
+              href="#shop"
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-yellow-300 px-6 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/20 transition-all hover:bg-yellow-400 hover:scale-105 active:scale-95"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Buy Now
+            </a>
             <Link
               href={storeHref(slug, "track")}
-              className="inline-flex h-11 items-center gap-2 rounded-full bg-yellow-300 px-6 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/20 transition-colors hover:bg-yellow-400"
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
             >
               <Clock className="h-4 w-4" />
               Track your order
