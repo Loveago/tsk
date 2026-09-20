@@ -420,15 +420,15 @@ export async function dispatchOrder(
     let submitPayload: any = null;
     try {
       // Use public https callbackUrl only if appBaseUrl is a valid external URL AND callbackSigningSecret is provided
-      const signingSecret = (config.clickyfied.callbackSigningSecret || "").trim();
+      const signingSecret = (config.clickyfied.callbackSigningSecret || process.env.CLICKYFIED_CALLBACK_SECRET || "").trim();
       const isPublicUrl =
         appBaseUrl &&
         appBaseUrl.startsWith("https://") &&
         !appBaseUrl.includes("localhost") &&
         !appBaseUrl.includes("127.0.0.1");
 
-      // Clickify allows callbackUrl for event notifications (signingSecret is optional)
-      const callbackUrl = isPublicUrl
+      // Clickify strictly requires callbackSigningSecret whenever callbackUrl is provided
+      const callbackUrl = isPublicUrl && signingSecret
         ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
         : undefined;
 

@@ -28,7 +28,11 @@ export async function POST(request: NextRequest) {
       const config = await getProviderRoutingConfig();
       const signingSecret = (config.clickyfied.callbackSigningSecret || process.env.CLICKYFIED_CALLBACK_SECRET || "").trim();
       const incomingSignature = request.headers.get("x-external-signature") || "";
-      if (signingSecret && incomingSignature) {
+      if (signingSecret) {
+        if (!incomingSignature) {
+          console.warn("[ClickyfiedWebhook] Rejecting: Missing X-External-Signature header while signingSecret is configured.");
+          return NextResponse.json({ error: "Missing required callback signature" }, { status: 401 });
+        }
         const computed = crypto
           .createHmac("sha256", signingSecret)
           .update(rawBody)

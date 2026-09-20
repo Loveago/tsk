@@ -405,8 +405,9 @@ export async function dispatchClickyfiedMtnBatch(
       : process.env.NEXTAUTH_URL || process.env.APP_URL || "https://tsk05.net";
 
     const isPublicUrl = appBaseUrl.startsWith("https://") && !appBaseUrl.includes("localhost");
-    const signingSecret = config.clickyfied.callbackSigningSecret?.trim();
-    const callbackUrl = isPublicUrl
+    const signingSecret = (config.clickyfied.callbackSigningSecret || process.env.CLICKYFIED_CALLBACK_SECRET || "").trim();
+    // Clickyfied strictly requires callbackSigningSecret whenever callbackUrl is provided
+    const callbackUrl = isPublicUrl && signingSecret
       ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
       : undefined;
 
