@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     const effectiveEvent = (event || payload?.event || "").toLowerCase();
 
-    // Verify HMAC-SHA256 signature if callbackSigningSecret is configured
+    // Verify HMAC-SHA256 signature using Clickyfied formula: HMAC_SHA256(secret, timestamp + "." + raw_body)
     try {
       const config = await getProviderRoutingConfig();
       const signingSecret = (config.clickyfied.callbackSigningSecret || process.env.CLICKYFIED_CALLBACK_SECRET || "").trim();
@@ -35,16 +35,36 @@ export async function POST(request: NextRequest) {
         ""
       ).trim();
 
+      const incomingTimestamp = (
+        request.headers.get("x-external-timestamp") ||
+        request.headers.get("x-timestamp") ||
+        request.headers.get("x-signature-timestamp") ||
+        ""
+      ).trim();
+
       if (signingSecret && incomingSignature) {
         const cleanSig = incomingSignature.replace(/^sha256=/i, "").trim();
+        const payloadToSign = incomingTimestamp ? `${incomingTimestamp}.${rawBody}` : rawBody;
         const computed = crypto
           .createHmac("sha256", signingSecret)
-          .update(rawBody)
+          .update(payloadToSign)
           .digest("hex");
-        if (computed.toLowerCase() !== cleanSig.toLowerCase()) {
-          console.warn(
-            `[ClickyfiedWebhook] Signature mismatch warning (received: ${incomingSignature.slice(0, 15)}..., computed: ${computed.slice(0, 15)}...). Processing order update in permissive mode.`
-          );
+
+        if (computed.toLowerCase() === cleanSig.toLowerCase()) {
+          console.log("[ClickyfiedWebhook] HMAC signature verified successfully with X-External-Timestamp.");
+        } else {
+          // Fallback check against raw body without timestamp
+          const fallbackComputed = crypto
+            .createHmac("sha256", signingSecret)
+            .update(rawBody)
+            .digest("hex");
+          if (fallbackComputed.toLowerCase() === cleanSig.toLowerCase()) {
+            console.log("[ClickyfiedWebhook] HMAC signature verified successfully with raw body fallback.");
+          } else {
+            console.warn(
+              `[ClickyfiedWebhook] Signature mismatch (received: ${incomingSignature.slice(0, 15)}..., computed: ${computed.slice(0, 15)}...). Processing in permissive mode.`
+            );
+          }
         }
       }
     } catch (sigErr: any) {
