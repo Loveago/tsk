@@ -16,6 +16,7 @@ import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock } from "
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import { OrderDateFilter, getTodayRange, type DateFilterValue } from "@/components/orders/order-date-filter";
+import { useNavBadges } from "@/components/app-nav";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
@@ -28,6 +29,8 @@ type ViewMode = "batches" | "single" | "storefront";
 
 export default function AdminOrdersPage() {
   const { toast } = useToast();
+  const badges = useNavBadges(true);
+  const pendingOrdersCount = badges["/admin/orders"]?.count ?? 0;
 
   // ── view toggle ─────────────────────────────────────────────
   const [viewMode, setViewMode] = React.useState<ViewMode>("batches");
@@ -123,6 +126,7 @@ export default function AdminOrdersPage() {
         setBatchPages(json.pages ?? 1);
       }
       setLastRefreshed(new Date());
+      window.dispatchEvent(new CustomEvent("nav-counts-update"));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -300,7 +304,17 @@ export default function AdminOrdersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={pageTitle}
+        title={
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span>{pageTitle}</span>
+            {pendingOrdersCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                <Clock className="h-3.5 w-3.5" />
+                {pendingOrdersCount} Pending
+              </span>
+            )}
+          </div>
+        }
         description={pageDesc}
         actions={
           <div className="flex flex-wrap items-center gap-2">

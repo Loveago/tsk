@@ -19,6 +19,7 @@ import {
 import { formatGHS, type AuthUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SystemChatWidget } from "@/components/chat/system-chat-widget";
+import { UserWalkthrough, TourLauncherButton } from "@/components/onboarding/user-walkthrough";
 
 /** Seconds elapsed since the last user interaction (mouse, key, scroll, touch). */
 function useIdleSeconds() {
@@ -283,6 +284,13 @@ export function AppShell({
 
           <div className="flex-1" />
 
+          {/* User Walkthrough Tour Trigger (Desktop) */}
+          {!admin && (
+            <div className="hidden sm:flex items-center">
+              <TourLauncherButton />
+            </div>
+          )}
+
           <div className="flex items-center gap-2 sm:hidden">
             <ThemeToggle />
           </div>
@@ -324,7 +332,7 @@ export function AppShell({
       {/* Desktop top-tab navigation (sticks to the top once the header scrolls away) */}
       <div className="hidden sm:block z-40 border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-white/5 dark:bg-[#0a1120]/95 lg:sticky lg:top-0">
         <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6">
-          <TopTabs items={desktopItems} className="py-2" />
+          <TopTabs items={desktopItems} admin={admin} className="py-2" />
         </div>
       </div>
 
@@ -340,6 +348,8 @@ export function AppShell({
             <span className="min-w-0 flex-1 truncate text-sm font-semibold">{user.name}</span>
             <RoleBadge role={user.role} className="mr-1 shrink-0" />
           </Link>
+
+          {!admin && <TourLauncherButton className="h-10 px-3 text-xs" />}
 
           {isStaffRole && (
             <Link
@@ -429,6 +439,7 @@ export function AppShell({
         </div>
       </footer>
       <SystemChatWidget user={user} />
+      {!admin && <UserWalkthrough userName={user.name} />}
     </div>
   );
 }

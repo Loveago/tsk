@@ -80,8 +80,8 @@ export function PageHeader({
   description,
   actions,
 }: {
-  title: string;
-  description?: string;
+  title: React.ReactNode;
+  description?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
   return (

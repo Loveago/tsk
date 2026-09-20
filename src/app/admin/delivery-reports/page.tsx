@@ -92,6 +92,7 @@ export default function DeliveryReportsPage() {
         setTotal(json.total ?? 0);
         setPages(json.pages ?? 1);
         setLastRefreshed(new Date());
+        window.dispatchEvent(new CustomEvent("nav-counts-update"));
       }
     } finally {
       if (!silent) setLoading(false);
@@ -123,11 +124,22 @@ export default function DeliveryReportsPage() {
   });
 
   const displayTime = lastRefreshed || lastRefreshedAt;
+  const underReviewCount = stats["UNDER_REVIEW"] ?? 0;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Not Received Reports"
+        title={
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span>Not Received Reports</span>
+            {underReviewCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 border border-rose-500/30 px-2.5 py-0.5 text-xs font-bold text-rose-600 dark:text-rose-400 animate-pulse">
+                <FileWarning className="h-3.5 w-3.5" />
+                {underReviewCount} Under Review
+              </span>
+            )}
+          </div>
+        }
         description={`${total} report${total === 1 ? "" : "s"} filed by customers`}
         actions={
           <div className="flex flex-wrap items-center gap-2">

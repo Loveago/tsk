@@ -88,11 +88,11 @@ export const userNav: NavItem[] = [
 
 export const adminNav: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/orders", label: "Orders", icon: ClipboardList },
+  { href: "/admin/orders", label: "Orders", icon: ClipboardList, badge: true },
   { href: "/admin/order-api-logs", label: "Order API Logs", icon: Activity },
   { href: "/admin/mtn-verification", label: "MTN Verification", icon: ShieldCheck },
   { href: "/admin/exports", label: "Exports", icon: FileSpreadsheet },
-  { href: "/admin/delivery-reports", label: "Not Received", icon: FileWarning },
+  { href: "/admin/delivery-reports", label: "Not Received", icon: FileWarning, badge: true },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/users/signup-codes", label: "Signup Codes", icon: Ticket },
   { href: "/admin/storefronts", label: "Storefronts", icon: Store },
@@ -163,27 +163,92 @@ export function ThemeToggle({ className }: { className?: string }) {
   );
 }
 
-/** Total number of orders the signed-in user has sent (for the tab badge). */
-export function useSentOrdersCount() {
-  const [count, setCount] = React.useState<number | null>(null);
-  React.useEffect(() => {
-    let alive = true;
-    fetch("/api/orders?pageSize=1")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (alive && d && typeof d.total === "number") setCount(d.total);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return count;
+export interface NavBadgeData {
+  count: number;
+  label?: string;
+  variant?: "brand" | "warning" | "danger";
 }
 
-export function TopTabs({ items, className }: { items: NavItem[]; className?: string }) {
+/** Hook to fetch and synchronize navigation badge counters for both admin and regular users. */
+export function useNavBadges(admin?: boolean): Record<string, NavBadgeData> {
   const pathname = usePathname();
-  const count = useSentOrdersCount();
+  const isAdmin = admin ?? pathname.startsWith("/admin");
+  const [badges, setBadges] = React.useState<Record<string, NavBadgeData>>({});
+
+  const refresh = React.useCallback(async () => {
+    try {
+      if (isAdmin) {
+        const res = await fetch("/api/admin/nav-counts", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setBadges({
+            "/admin/orders": {
+              count: typeof data.pendingOrders === "number" ? data.pendingOrders : 0,
+              label: "pending orders",
+              variant: "warning",
+            },
+            "/admin/delivery-reports": {
+              count: typeof data.underReviewReports === "number" ? data.underReviewReports : 0,
+              label: "under review",
+              variant: "danger",
+            },
+          });
+        }
+      } else {
+        const res = await fetch("/api/orders?pageSize=1", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setBadges({
+            "/dashboard/orders": {
+              count: typeof data.total === "number" ? data.total : 0,
+              label: "orders",
+              variant: "brand",
+            },
+          });
+        }
+      }
+    } catch {
+      // ignore network errors
+    }
+  }, [isAdmin]);
+
+  React.useEffect(() => {
+    refresh();
+
+    const interval = setInterval(refresh, 30000); // 30s background poll
+    const onUpdate = () => refresh();
+
+    window.addEventListener("nav-counts-update", onUpdate);
+    window.addEventListener("focus", onUpdate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("nav-counts-update", onUpdate);
+      window.removeEventListener("focus", onUpdate);
+    };
+  }, [refresh]);
+
+  return badges;
+}
+
+/** Legacy hook kept for backward compatibility */
+export function useSentOrdersCount() {
+  const badges = useNavBadges(false);
+  return badges["/dashboard/orders"]?.count ?? null;
+}
+
+export function TopTabs({
+  items,
+  admin,
+  className,
+}: {
+  items: NavItem[];
+  admin?: boolean;
+  className?: string;
+}) {
+  const pathname = usePathname();
+  const isAdmin = admin ?? pathname.startsWith("/admin");
+  const badges = useNavBadges(isAdmin);
   const navRef = React.useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = React.useState(false);
   const [canScrollRight, setCanScrollRight] = React.useState(false);
@@ -276,6 +341,9 @@ export function TopTabs({ items, className }: { items: NavItem[]; className?: st
         {items.map((item) => {
           const active = isActive(pathname, item.href);
           const isPending = pendingHref === item.href;
+          const badge = badges[item.href];
+          const hasCount = item.badge && badge && badge.count > 0;
+
           return (
             <Link
               key={item.href}
@@ -304,9 +372,19 @@ export function TopTabs({ items, className }: { items: NavItem[]; className?: st
                 <item.icon className="h-3.5 w-3.5 shrink-0" />
               )}
               <span>{item.label}</span>
-              {item.badge && count != null && count > 0 && (
-                <span className="ml-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-violet-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#0a1120]">
-                  {count > 999 ? `${Math.floor(count / 1000)}k` : count}
+              {hasCount && (
+                <span
+                  className={cn(
+                    "ml-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-xs transition-transform",
+                    badge.variant === "danger"
+                      ? "bg-rose-500 ring-2 ring-rose-300 dark:ring-rose-950 animate-pulse"
+                      : badge.variant === "warning"
+                      ? "bg-amber-500 ring-2 ring-amber-300 dark:ring-amber-950"
+                      : "bg-violet-500 ring-2 ring-white dark:ring-[#0a1120]"
+                  )}
+                  title={`${badge.count} ${badge.label ?? ""}`}
+                >
+                  {badge.count > 999 ? `${Math.floor(badge.count / 1000)}k` : badge.count}
                 </span>
               )}
             </Link>
@@ -345,6 +423,7 @@ export function MobileSelectNav({
   const pathname = usePathname();
   const router = useRouter();
   const current = items.find((i) => isActive(pathname, i.href))?.href ?? "";
+  const badges = useNavBadges(currentIsAdmin);
 
   return (
     <div className={cn("relative", className)}>
@@ -355,11 +434,15 @@ export function MobileSelectNav({
         className="h-10 w-full appearance-none rounded-xl border-2 border-brand-500/80 bg-white px-3 pr-9 text-sm font-semibold text-slate-800 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-brand-400/70 dark:bg-[#0d1526] dark:text-slate-100"
       >
         <optgroup label={currentIsAdmin ? "Admin Navigation" : "Dashboard Pages"}>
-          {items.map((item) => (
-            <option key={item.href} value={item.href}>
-              {item.label}
-            </option>
-          ))}
+          {items.map((item) => {
+            const badge = badges[item.href];
+            const badgeSuffix = badge && badge.count > 0 ? ` (${badge.count})` : "";
+            return (
+              <option key={item.href} value={item.href}>
+                {item.label}{badgeSuffix}
+              </option>
+            );
+          })}
         </optgroup>
         {isAdminRole && (
           <optgroup label="Switch Portal">
