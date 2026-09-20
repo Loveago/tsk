@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ToastProvider } from "@/components/toast";
+import { NavigationProgress } from "@/components/navigation-progress";
 
 export const metadata: Metadata = {
   title: "Tskconnect — Data Bundle Distribution",
@@ -22,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen">
+        <NavigationProgress />
         <ThemeProvider>
           <ToastProvider>{children}</ToastProvider>
         </ThemeProvider>

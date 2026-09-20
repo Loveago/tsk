@@ -55,6 +55,7 @@ export async function PATCH(request: NextRequest) {
         whatsapp: input.supportPhone || null,
         contactText: input.contactText || null,
         whatsappLabel: input.whatsappLabel || null,
+        notice: input.notice !== undefined ? (input.notice?.trim() || null) : undefined,
         ...(input.isActive !== undefined && storefront.status === "ENABLED"
           ? { isActive: input.isActive }
           : {}),

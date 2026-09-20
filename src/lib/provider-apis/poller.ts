@@ -112,6 +112,14 @@ export function startProviderSyncPoller() {
       } catch (batchErr) {
         // Ignore background transient errors
       }
+
+      // Auto-reconcile any pending Paystack wallet top-ups
+      try {
+        const { reconcilePendingPaystackTopups } = await import("@/lib/paystack");
+        await reconcilePendingPaystackTopups(10);
+      } catch {
+        // Ignore background transient errors
+      }
     } catch {
       // Ignore background transient errors
     } finally {

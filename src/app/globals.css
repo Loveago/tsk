@@ -19,39 +19,85 @@
 
 @keyframes marquee {
   from {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
 @keyframes banner-slide-fade {
   0% {
-    transform: translateX(100vw);
+    transform: translate3d(100vw, 0, 0);
     opacity: 0;
   }
-  8% {
+  6% {
     opacity: 1;
   }
-  90% {
+  92% {
     opacity: 1;
   }
   100% {
-    transform: translateX(-100%);
+    transform: translate3d(-100%, 0, 0);
     opacity: 0;
   }
+}
+
+.banner-container {
+  contain: paint layout;
+  isolation: isolate;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .animate-banner-slide {
   display: inline-block;
   white-space: nowrap;
-  animation: banner-slide-fade 20s linear infinite;
-  will-change: transform, opacity;
+  animation: banner-slide-fade 22s linear infinite;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  will-change: transform;
 }
 
 .animate-banner-slide:hover {
   animation-play-state: paused;
+}
+
+@media (min-width: 1440px), (-webkit-min-device-pixel-ratio: 1.5) and (min-width: 1280px), (min-resolution: 144dpi) and (min-width: 1280px) {
+  .animate-banner-slide {
+    animation-duration: 26s;
+  }
+}
+
+@media (min-width: 1920px), (-webkit-min-device-pixel-ratio: 1.5) and (min-width: 1600px), (min-resolution: 144dpi) and (min-width: 1600px) {
+  .animate-banner-slide {
+    animation-duration: 32s;
+  }
+}
+
+@media (min-width: 2560px), (-webkit-min-device-pixel-ratio: 2) and (min-width: 1920px), (min-resolution: 192dpi) and (min-width: 1920px) {
+  .animate-banner-slide {
+    animation-duration: 38s;
+  }
+}
+
+@media (min-width: 3840px) {
+  .animate-banner-slide {
+    animation-duration: 48s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-banner-slide {
+    animation: none;
+  }
 }
 
 html.dark, .dark {
@@ -160,19 +206,29 @@ html.dark, .dark {
  * ------------------------------------------------------------------------- */
 @keyframes wheel-rotate {
   to {
-    transform: rotate(360deg);
+    transform: rotate3d(0, 0, 1, 360deg);
   }
 }
 @keyframes wheel-rotate-rev {
   to {
-    transform: rotate(-360deg);
+    transform: rotate3d(0, 0, 1, -360deg);
   }
+}
+.wheel-wrap {
+  contain: layout paint;
+  isolation: isolate;
 }
 .wheel-spin {
   animation: wheel-rotate 24s linear infinite;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  will-change: transform;
 }
 .wheel-counter {
   animation: wheel-rotate-rev 24s linear infinite;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  will-change: transform;
 }
 .wheel-wrap:hover .wheel-spin,
 .wheel-wrap:hover .wheel-counter,

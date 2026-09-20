@@ -15,6 +15,7 @@ import {
 } from "@/lib/storefront";
 import { isPaystackConfigured, initializeTransaction } from "@/lib/paystack";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
+import { resolveUserWholesalePrice } from "@/lib/orders";
 
 /**
  * Public storefront checkout (no sign-in): validates the bundle + recipient
@@ -85,8 +86,13 @@ export async function POST(
     }
 
     // Server-side only commission: sellingPrice - current reseller cost (§48).
+    const owner = await prisma.user.findUnique({
+      where: { id: storefront.userId },
+      select: { id: true, role: true, pricingProfileId: true },
+    });
+    const ownerCostGHS = await resolveUserWholesalePrice(owner || storefront.userId, product.dataPackage);
     const sellingPrice = product.sellingPrice;
-    const productCost = toPesewas(product.dataPackage.retailPriceGHS ?? 0);
+    const productCost = toPesewas(ownerCostGHS);
     const commission = sellingPrice - productCost;
     if (commission < 0) {
       return apiError(500, "This bundle is mispriced. Please contact support.");

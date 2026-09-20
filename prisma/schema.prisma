@@ -393,6 +393,7 @@ model Storefront {
   // Editable contact widget copy (§11): floating WhatsApp bubble + button labels
   contactText   String? // e.g. "Need help? Chat with us on WhatsApp"
   whatsappLabel String? // e.g. "Need help?" (drawer/menu button label)
+  notice        String? // Reseller-configured announcement / notification banner
   rejectionNote String? // admin reason when status = REJECTED
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -1,59 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
-import { handleRouteError, getRequestOrigin } from "@/lib/api-helpers";
-import {
-  verifyTransaction,
-  settlePaystackTopup,
-  PAYSTACK_CURRENCY,
-} from "@/lib/paystack";
+import { getRequestOrigin } from "@/lib/api-helpers";
+import { verifyAndSettlePaystackTopup } from "@/lib/paystack";
 
 /**
- * Landing page after the Paystack hosted checkout. Verifies the charge with
- * the API (never trust redirect params) and settles the wallet top-up.
- * The webhook is the primary settlement path; this is the user-facing
- * confirmation + fallback.
+ * Landing page after the Paystack hosted checkout.
+ * Verifies the charge with the API and settles the wallet top-up.
+ * Uses verifyAndSettlePaystackTopup with retry to ensure immediate approval.
  */
 export async function GET(request: NextRequest) {
-  let outcome: "success" | "failed" = "failed";
+  let outcome: "success" | "pending" | "failed" = "failed";
   let reference = "";
 
   const origin = getRequestOrigin(request);
 
   try {
-    const user = await requireUser();
-    reference = request.nextUrl.searchParams.get("reference") ?? request.nextUrl.searchParams.get("trxref") ?? "";
+    const rawRef =
+      request.nextUrl.searchParams.get("reference") ??
+      request.nextUrl.searchParams.get("trxref") ??
+      "";
+    reference = rawRef.trim();
 
-    const redirect = (status: "success" | "failed") =>
-      NextResponse.redirect(
-        new URL(`/dashboard/billing?paystack=${status}&reference=${encodeURIComponent(reference)}`, origin)
-      );
+    if (!reference) {
+      return NextResponse.redirect(new URL("/dashboard/billing?paystack=failed", origin));
+    }
 
-    if (!reference) return redirect("failed");
+    // Attempt settlement immediately
+    let result = await verifyAndSettlePaystackTopup(reference);
 
-    const tx = await prisma.walletTransaction.findFirst({ where: { reference } });
-    if (!tx || tx.userId !== user.id) return redirect("failed");
-    if (tx.status === "APPROVED") return redirect("success");
-    if (tx.status !== "PENDING") return redirect("failed");
+    // If not settled yet and status is not a terminal failure, retry once after a short 1.5s pause
+    // (Paystack sometimes takes a moment to mark success right upon redirect)
+    if (!result.settled && result.status !== "failed" && result.status !== "abandoned") {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      result = await verifyAndSettlePaystackTopup(reference);
+    }
 
-    const verification = await verifyTransaction(reference);
-    const expectedPesewas = Math.round(tx.amount * 100);
-
-    if (
-      verification.status === "success" &&
-      verification.currency === PAYSTACK_CURRENCY &&
-      verification.amount === expectedPesewas
-    ) {
-      const result = await settlePaystackTopup(tx.id, reference, verification.channel);
-      outcome = result.ok || result.alreadySettled ? "success" : "failed";
+    if (result.settled) {
+      outcome = "success";
+    } else if (result.status === "ongoing" || result.status === "pending") {
+      outcome = "pending";
+    } else {
+      outcome = "failed";
     }
   } catch (err) {
-    // For browser redirects swallow into a failed outcome instead of a JSON error
     console.error("Paystack callback error:", err);
     outcome = "failed";
   }
 
   return NextResponse.redirect(
-    new URL(`/dashboard/billing?paystack=${outcome}&reference=${encodeURIComponent(reference)}`, origin)
+    new URL(
+      `/dashboard/billing?paystack=${outcome}&reference=${encodeURIComponent(reference)}`,
+      origin
+    )
   );
 }
+

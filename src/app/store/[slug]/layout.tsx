@@ -27,6 +27,7 @@ export default async function StoreLayout({
       location: true,
       contactText: true,
       whatsappLabel: true,
+      notice: true,
       status: true,
       isActive: true,
     },
@@ -62,6 +63,7 @@ export default async function StoreLayout({
       location={storefront.location}
       contactText={storefront.contactText}
       whatsappLabel={storefront.whatsappLabel}
+      notice={storefront.notice}
       networks={networks}
     >
       {children}

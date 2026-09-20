@@ -64,12 +64,12 @@ function IdleIndicator({ idle }: { idle: number }) {
 function AnnouncementBar({ text }: { text: string }) {
   return (
     <div
-      className="relative z-30 overflow-hidden bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-700 py-2 border-b border-blue-400/20 shadow-sm"
+      className="banner-container relative z-30 overflow-hidden bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-700 py-2 border-b border-blue-400/20 shadow-sm"
       role="region"
       aria-label="Platform Announcement"
     >
       <div className="relative flex w-full overflow-hidden">
-        <div className="animate-banner-slide py-0.5 text-xs sm:text-sm font-bold tracking-wide text-white drop-shadow-sm">
+        <div className="animate-banner-slide py-0.5 text-xs sm:text-sm font-bold tracking-wide text-white">
           <span className="inline-flex items-center gap-2 px-6">
             <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wider font-extrabold text-amber-300">
               Notice

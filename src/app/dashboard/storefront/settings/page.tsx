@@ -33,6 +33,7 @@ export default async function StorefrontSettingsPage() {
           location: storefront.location ?? "",
           contactText: storefront.contactText ?? "",
           whatsappLabel: storefront.whatsappLabel ?? "",
+          notice: storefront.notice ?? "",
           payoutNetwork: storefront.payoutNetwork ?? "MTN",
           payoutNumber: storefront.payoutNumber ?? "",
           payoutAccountName: storefront.payoutAccountName ?? "",

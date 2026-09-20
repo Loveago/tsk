@@ -1,0 +1,139 @@
+GHDataConnect API
+GHDATAConnect API Documentation
+
+Base URL: https://ghdataconnect.com/api
+API Key: Bearer Token (generate from profile on your dashboard)
+
+GET
+Get Wallet Balance
+/v1/getWalletBalance
+This will get the current wallet balance of the dealer/agent.
+
+AUTHORIZATION
+Bearer Token
+Token
+Example Request
+Get Wallet Balance
+curl
+curl --location '/v1/getWalletBalance'
+200 OK
+Example Response
+Body
+Headers (9)
+{
+  "success": true,
+  "data": {
+    "balance": "207.46"
+  }
+}
+GET
+Check Transaction Status
+/v1/checkOrderStatus/:reference
+This will get the current wallet balance of the dealer/agent.
+
+AUTHORIZATION
+Bearer Token
+Token
+PATH VARIABLES
+reference
+173232332595467876
+
+Example Request
+Status Check
+View More
+curl
+curl --location '/v1/checkOrderStatus/173232332595467876'
+200 OK
+Example Response
+Body
+Headers (9)
+View More
+{
+  "success": true,
+  "data": {
+    "order_id": 16,
+    "reference": "173232332595467876",
+    "status": "pending",
+    "recipient": "0591178627",
+    "network": "MTN",
+    "capacity": 1,
+    "price": 4.1,
+    "payment_status": "completed",
+    "created_at": "2025-12-21T18:54:57+00:00",
+    "delivered_at": null
+  }
+}
+GET
+Get All Networks
+/v1/getAllNetworks
+This will get the current wallet balance of the dealer/agent.
+
+AUTHORIZATION
+Bearer Token
+Token
+Example Request
+Get All Networks
+curl
+curl --location '/v1/getAllNetworks'
+200 OK
+Example Response
+Body
+Headers (9)
+View More
+{
+  "success": true,
+  "data": [
+    {
+      "name": "MTN",
+      "key": "mtn",
+      "bundles": [
+        {
+          "id": 1,
+          "capacity": 1,
+          "price": 4.1
+        }
+      ]
+    }
+  ]
+}
+POST
+Place Order
+/v1/purchaseBundle
+Networks:
+
+mtn
+
+telecel
+
+atishare
+
+atbigtime
+
+AUTHORIZATION
+Bearer Token
+Token
+Body
+raw (json)
+json
+{
+    "network": "mtn",
+    "reference": "1732323325954267876",
+    "msisdn": "0591234567",
+    "capacity": 1
+}
+POST
+Place Ishare Order
+/v1/createIshareBundleOrder
+Buy iShare Bundle in MB
+
+AUTHORIZATION
+Bearer Token
+Token
+Body
+raw (json)
+json
+{
+    "reference": "1732323325876",
+    "msisdn": "0276895857",
+    "capacity": 1000
+}

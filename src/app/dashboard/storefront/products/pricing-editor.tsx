@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 interface Pkg {
   id: string;
@@ -36,17 +37,67 @@ export function PricingEditor({
   disabled: boolean;
 }) {
   const router = useRouter();
-  const byId = React.useMemo(() => new Map(products.map((p) => [p.packageId, p])), [products]);
+  const [packageList, setPackageList] = React.useState<Pkg[]>(packages);
+  const [productList, setProductList] = React.useState<Prod[]>(products);
+  const byId = React.useMemo(() => new Map(productList.map((p) => [p.packageId, p])), [productList]);
+
   const [prices, setPrices] = React.useState<Record<string, string>>(() =>
     Object.fromEntries(packages.map((p) => [p.id, byId.get(p.id)?.sellingPrice?.toFixed(2) ?? ""]))
   );
+
+  const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [togglingId, setTogglingId] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [bulkMarkup, setBulkMarkup] = React.useState("");
   const [filter, setFilter] = React.useState<string>("ALL");
   const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [busy, setBusy] = React.useState(false);
+  const [bulkBusy, setBulkBusy] = React.useState(false);
 
-  const visible = packages.filter((p) => filter === "ALL" || p.network === filter);
+  // Sync state if props change
+  React.useEffect(() => {
+    setPackageList(packages);
+  }, [packages]);
+
+  React.useEffect(() => {
+    setProductList(products);
+  }, [products]);
+
+  // Non-blocking auto-sync on mount
+  const refreshData = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/storefront/products");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.packages)) {
+        setPackageList(data.packages);
+      }
+      if (Array.isArray(data.products)) {
+        const prods: Prod[] = data.products.map((p: any) => ({
+          packageId: p.packageId,
+          sellingPrice: p.sellingPrice / 100,
+          isActive: p.isActive,
+        }));
+        setProductList(prods);
+        setPrices((prev) => {
+          const next = { ...prev };
+          for (const prod of prods) {
+            if (!next[prod.packageId]) {
+              next[prod.packageId] = prod.sellingPrice.toFixed(2);
+            }
+          }
+          return next;
+        });
+      }
+    } catch {
+      // non-blocking
+    }
+  }, []);
+
+  React.useEffect(() => {
+    refreshData();
+  }, [refreshData]);
+
+  const visible = packageList.filter((p) => filter === "ALL" || p.network === filter);
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -57,31 +108,48 @@ export function PricingEditor({
     });
 
   async function savePrice(packageId: string) {
-    setBusy(true);
+    const val = parseFloat(prices[packageId] || "0");
+    if (isNaN(val) || val <= 0) {
+      setMsg({ kind: "err", text: "Please enter a valid selling price" });
+      return;
+    }
+    setSavingId(packageId);
     setMsg(null);
     try {
+      const currentProd = byId.get(packageId);
       const res = await fetch("/api/storefront/products", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           packageId,
-          sellingPrice: parseFloat(prices[packageId] || "0"),
-          isActive: byId.get(packageId)?.isActive ?? true,
+          sellingPrice: val,
+          isActive: currentProd?.isActive ?? true,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save");
       setMsg({ kind: "ok", text: "Price saved" });
+      setProductList((prev) => {
+        const next = prev.filter((p) => p.packageId !== packageId);
+        next.push({
+          packageId,
+          sellingPrice: data.product.sellingPrice / 100,
+          isActive: data.product.isActive,
+        });
+        return next;
+      });
+      setPrices((prev) => ({ ...prev, [packageId]: (data.product.sellingPrice / 100).toFixed(2) }));
       router.refresh();
     } catch (e) {
       setMsg({ kind: "err", text: e instanceof Error ? e.message : "Failed to save" });
     } finally {
-      setBusy(false);
+      setSavingId(null);
     }
   }
 
   async function toggleActive(packageId: string, isActive: boolean) {
-    setBusy(true);
+    const currentPrice = parseFloat(prices[packageId] || "0") || (byId.get(packageId)?.sellingPrice ?? 0);
+    setTogglingId(packageId);
     setMsg(null);
     try {
       const res = await fetch("/api/storefront/products", {
@@ -89,22 +157,31 @@ export function PricingEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           packageId,
-          sellingPrice: parseFloat(prices[packageId] || "0"),
+          sellingPrice: currentPrice,
           isActive,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to update");
+      setProductList((prev) => {
+        const next = prev.filter((p) => p.packageId !== packageId);
+        next.push({
+          packageId,
+          sellingPrice: data.product.sellingPrice / 100,
+          isActive: data.product.isActive,
+        });
+        return next;
+      });
       router.refresh();
     } catch (e) {
       setMsg({ kind: "err", text: e instanceof Error ? e.message : "Failed to update" });
     } finally {
-      setBusy(false);
+      setTogglingId(null);
     }
   }
 
   async function applyBulk() {
-    setBusy(true);
+    setBulkBusy(true);
     setMsg(null);
     try {
       const res = await fetch("/api/storefront/products", {
@@ -116,11 +193,12 @@ export function PricingEditor({
       if (!res.ok) throw new Error(data.error ?? "Bulk update failed");
       setMsg({ kind: "ok", text: `Updated ${data.updated} products` });
       setSelected(new Set());
+      await refreshData();
       router.refresh();
     } catch (e) {
       setMsg({ kind: "err", text: e instanceof Error ? e.message : "Bulk update failed" });
     } finally {
-      setBusy(false);
+      setBulkBusy(false);
     }
   }
 
@@ -150,10 +228,11 @@ export function PricingEditor({
         <span className="text-sm text-slate-500">GHS added on top of cost for selected ({selected.size})</span>
         <button
           onClick={applyBulk}
-          disabled={busy || selected.size === 0 || disabled}
-          className="ml-auto h-9 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
+          disabled={bulkBusy || selected.size === 0 || disabled}
+          className="ml-auto inline-flex items-center gap-1.5 h-9 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
         >
-          Apply to selected
+          {bulkBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          <span>Apply to selected</span>
         </button>
       </div>
 
@@ -189,7 +268,9 @@ export function PricingEditor({
               markup={markup}
               minMarkup={minMarkup}
               maxMarkup={maxMarkup}
-              busy={busy || disabled}
+              isSaving={savingId === p.id}
+              isToggling={togglingId === p.id}
+              disabled={disabled}
             />
           );
         })}
@@ -210,7 +291,9 @@ function ProductCard({
   markup,
   minMarkup,
   maxMarkup,
-  busy,
+  isSaving,
+  isToggling,
+  disabled,
 }: {
   pkg: Pkg;
   prod?: Prod;
@@ -223,19 +306,25 @@ function ProductCard({
   markup: number | null;
   minMarkup: number;
   maxMarkup: number | null;
-  busy: boolean;
+  isSaving: boolean;
+  isToggling: boolean;
+  disabled: boolean;
 }) {
+  const isBusy = disabled || isSaving || isToggling;
+
   return (
     <div className={`rounded-xl border p-4 ${checked ? "border-violet-500 ring-1 ring-violet-500" : "border-slate-200"} bg-white dark:border-slate-800 dark:bg-[#0d1526]`}>
       <div className="flex items-center justify-between">
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${NETWORK_STYLES[pkg.network] ?? "bg-slate-100"}`}>{pkg.network}</span>
         <label className="flex items-center gap-1 text-xs text-slate-500">
-          <input type="checkbox" checked={checked} onChange={onSelect} disabled={busy} />
+          <input type="checkbox" checked={checked} onChange={onSelect} disabled={isBusy} />
           select
         </label>
       </div>
       <p className="mt-2 font-bold text-slate-900 dark:text-white">{pkg.gbAmount}GB</p>
-      <p className="text-xs text-slate-500">Cost: GHS {pkg.cost.toFixed(2)}</p>
+      <p className="text-xs text-slate-500">
+        Wholesale Cost: <strong className="font-semibold text-slate-700 dark:text-slate-300">GHS {pkg.cost.toFixed(2)}</strong>
+      </p>
       <div className="mt-3 flex items-center gap-2">
         <div className="relative flex-1">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">GHS</span>
@@ -244,29 +333,35 @@ function ProductCard({
             onChange={(e) => onPriceChange(e.target.value)}
             placeholder="0.00"
             inputMode="decimal"
-            disabled={busy}
+            disabled={isBusy}
             className="h-9 w-full rounded-lg border border-slate-300 pl-10 pr-2 text-sm font-semibold text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
           />
         </div>
         <button
           onClick={onSave}
-          disabled={busy}
-          className="h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
+          disabled={isBusy}
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
         >
-          Save
+          {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          <span>Save</span>
         </button>
       </div>
       <div className="mt-2 flex items-center justify-between text-xs">
-        <span className={markup != null && markup < minMarkup ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}>
-          {markup != null ? `Commission: GHS ${markup.toFixed(2)}` : "Not on sale"}
+        <span className={markup != null && markup < minMarkup ? "text-red-500" : "text-emerald-600 dark:text-emerald-400 font-medium"}>
+          {markup != null ? `Profit: GHS ${markup.toFixed(2)}` : "Not listed"}
         </span>
         {prod && (
           <button
             onClick={onToggleActive}
-            disabled={busy}
-            className={`rounded-full px-2 py-0.5 font-semibold ${prod.isActive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : "bg-slate-100 text-slate-500 dark:bg-white/10"}`}
+            disabled={isBusy}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold transition-opacity disabled:opacity-50 ${
+              prod.isActive
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                : "bg-slate-100 text-slate-500 dark:bg-white/10"
+            }`}
           >
-            {prod.isActive ? "Active" : "Hidden"}
+            {isToggling && <Loader2 className="h-3 w-3 animate-spin" />}
+            <span>{prod.isActive ? "Active" : "Hidden"}</span>
           </button>
         )}
       </div>

@@ -75,6 +75,75 @@ export async function getDefaultProfileId(): Promise<string | null> {
   return profile?.id ?? null;
 }
 
+export async function getEffectivePricingProfileForUser(
+  userIdOrUser: string | { id?: string; role?: string; pricingProfileId?: string | null }
+) {
+  let role: string | undefined;
+  let profileId: string | null | undefined;
+
+  if (typeof userIdOrUser === "string") {
+    const user = await prisma.user.findUnique({
+      where: { id: userIdOrUser },
+      select: { role: true, pricingProfileId: true },
+    });
+    role = user?.role;
+    profileId = user?.pricingProfileId;
+  } else {
+    role = userIdOrUser.role;
+    profileId = userIdOrUser.pricingProfileId;
+    if (role === undefined && userIdOrUser.id) {
+      const user = await prisma.user.findUnique({
+        where: { id: userIdOrUser.id },
+        select: { role: true, pricingProfileId: true },
+      });
+      role = user?.role;
+      if (profileId === undefined) profileId = user?.pricingProfileId;
+    }
+  }
+
+  // 1. If user has an explicit pricingProfileId, look it up
+  if (profileId) {
+    const profile = await prisma.pricingProfile.findUnique({ where: { id: profileId } });
+    if (profile && profile.active) return profile;
+  }
+
+  // 2. If user's role is RESELLER, inherit the active RESELLER pricing profile
+  if (role === "RESELLER") {
+    const resellerProfile = await prisma.pricingProfile.findFirst({
+      where: { type: "RESELLER", active: true },
+    });
+    if (resellerProfile) return resellerProfile;
+  }
+
+  // 3. Fallback: Default profile
+  const defaultProfile = await prisma.pricingProfile.findFirst({
+    where: { isDefault: true, active: true },
+  });
+  if (defaultProfile) return defaultProfile;
+
+  return prisma.pricingProfile.findFirst({
+    where: { isDefault: true },
+  });
+}
+
+export async function resolveUserWholesalePrice(
+  userIdOrUser: string | { id?: string; role?: string; pricingProfileId?: string | null },
+  pkg: { gbAmount: number; network: string; retailPriceGHS?: number | null }
+): Promise<number> {
+  const profile = await getEffectivePricingProfileForUser(userIdOrUser);
+  if (profile) {
+    const price = await getPricingForProfile(profile.id, pkg.gbAmount, pkg.network);
+    if (price != null && price > 0) return price;
+  }
+  // Check default profile fallback if user's profile didn't specify this tier
+  const defaultProfileId = await getDefaultProfileId();
+  if (defaultProfileId && profile?.id !== defaultProfileId) {
+    const defPrice = await getPricingForProfile(defaultProfileId, pkg.gbAmount, pkg.network);
+    if (defPrice != null && defPrice > 0) return defPrice;
+  }
+  return pkg.retailPriceGHS ?? 0;
+}
+
 export interface CreateOrderInput {
   userId: string;
   phoneNumber: string;
@@ -103,17 +172,14 @@ export interface CreateOrderInput {
 export async function createOrder(input: CreateOrderInput) {
   const userRecord = await prisma.user.findUnique({
     where: { id: input.userId },
-    select: { pricingProfileId: true },
+    select: { id: true, role: true, pricingProfileId: true },
   });
-  const profileId = userRecord?.pricingProfileId ?? null;
-  const profile = profileId
-    ? await prisma.pricingProfile.findUnique({ where: { id: profileId } })
-    : null;
-  const isCustomProfile = profile && !profile.isDefault;
+  const profile = userRecord ? await getEffectivePricingProfileForUser(userRecord) : null;
+  const profileId = profile?.id ?? null;
 
   let price: number | null | undefined = input.amount;
   if (price == null) {
-    if (isCustomProfile && profileId) {
+    if (profileId) {
       const customPrice = await getPricingForProfile(profileId, input.gbAmount, input.network);
       if (customPrice != null) price = customPrice;
     }

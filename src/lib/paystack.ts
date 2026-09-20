@@ -112,27 +112,171 @@ export async function verifyWebhookSignature(rawBody: string, signature: string 
  */
 export async function settlePaystackTopup(
   walletTransactionId: string,
-  providerReference: string,
+  providerReference?: string,
   channel?: string
 ): Promise<{ ok: boolean; alreadySettled: boolean }> {
   return prisma.$transaction(async (tx) => {
-    const result = await tx.walletTransaction.updateMany({
-      where: { id: walletTransactionId, status: "PENDING" },
-      data: {
-        status: "APPROVED",
-        reference: providerReference,
-        note: `Paystack instant top-up${channel ? ` (${channel})` : ""}`,
-      },
-    });
-    if (result.count === 0) return { ok: false, alreadySettled: true };
-
-    const wt = await tx.walletTransaction.findUniqueOrThrow({
+    const existing = await tx.walletTransaction.findUnique({
       where: { id: walletTransactionId },
     });
+    if (!existing) return { ok: false, alreadySettled: false };
+    if (existing.status === "APPROVED") return { ok: true, alreadySettled: true };
+    if (existing.status !== "PENDING") return { ok: false, alreadySettled: false };
+
+    const updateData: { status: string; note: string; reference?: string } = {
+      status: "APPROVED",
+      note: `Paystack instant top-up${channel ? ` (${channel})` : ""}`,
+    };
+    if (providerReference) {
+      updateData.reference = providerReference;
+    }
+
+    const result = await tx.walletTransaction.updateMany({
+      where: { id: walletTransactionId, status: "PENDING" },
+      data: updateData,
+    });
+    if (result.count === 0) return { ok: true, alreadySettled: true };
+
     await tx.user.update({
-      where: { id: wt.userId },
-      data: { balance: { increment: wt.amount } },
+      where: { id: existing.userId },
+      data: { balance: { increment: existing.amount } },
     });
     return { ok: true, alreadySettled: false };
   });
 }
+
+export interface VerifyAndSettleResult {
+  settled: boolean;
+  alreadySettled: boolean;
+  status?: string;
+  channel?: string;
+  reason?: string;
+  transactionId?: string;
+  amount?: number;
+}
+
+/**
+ * Verifies with Paystack API and automatically settles a pending top-up.
+ * Idempotent, safe to call from webhooks, callbacks, pollers, or user endpoints.
+ */
+export async function verifyAndSettlePaystackTopup(
+  identifier: { id?: string; reference?: string } | string
+): Promise<VerifyAndSettleResult> {
+  const refOrId = typeof identifier === "string" ? identifier.trim() : "";
+  const id = typeof identifier === "object" ? identifier.id?.trim() : undefined;
+  const reference = typeof identifier === "object" ? identifier.reference?.trim() : undefined;
+
+  const orConditions: Array<{ id?: string; reference?: string }> = [];
+  if (id) orConditions.push({ id });
+  if (reference) orConditions.push({ reference });
+  if (refOrId) {
+    orConditions.push({ id: refOrId }, { reference: refOrId });
+  }
+
+  if (orConditions.length === 0) {
+    return { settled: false, alreadySettled: false, reason: "No identifier provided" };
+  }
+
+  const tx = await prisma.walletTransaction.findFirst({
+    where: { OR: orConditions },
+  });
+
+  if (!tx) {
+    return { settled: false, alreadySettled: false, reason: "Transaction not found" };
+  }
+
+  if (tx.type !== "TOPUP") {
+    return { settled: false, alreadySettled: false, reason: "Not a top-up transaction", transactionId: tx.id };
+  }
+
+  if (tx.status === "APPROVED") {
+    return { settled: true, alreadySettled: true, transactionId: tx.id, amount: tx.amount };
+  }
+
+  if (tx.status !== "PENDING") {
+    return { settled: false, alreadySettled: false, reason: `Transaction is ${tx.status}`, transactionId: tx.id };
+  }
+
+  const lookupRef = tx.reference || reference || (refOrId.startsWith("PSK-") ? refOrId : null);
+  if (!lookupRef) {
+    return { settled: false, alreadySettled: false, reason: "Missing Paystack reference", transactionId: tx.id };
+  }
+
+  let verification: PaystackVerification;
+  try {
+    verification = await verifyTransaction(lookupRef);
+  } catch (err) {
+    return {
+      settled: false,
+      alreadySettled: false,
+      reason: err instanceof Error ? err.message : "Paystack verification failed",
+      transactionId: tx.id,
+    };
+  }
+
+  const expectedPesewas = Math.round(tx.amount * 100);
+
+  if (
+    verification.status === "success" &&
+    verification.currency === PAYSTACK_CURRENCY &&
+    verification.amount === expectedPesewas
+  ) {
+    const result = await settlePaystackTopup(tx.id, lookupRef, verification.channel);
+    return {
+      settled: result.ok,
+      alreadySettled: result.alreadySettled,
+      status: verification.status,
+      channel: verification.channel,
+      transactionId: tx.id,
+      amount: tx.amount,
+    };
+  }
+
+  return {
+    settled: false,
+    alreadySettled: false,
+    status: verification.status,
+    reason: `Verification mismatch: status=${verification.status}, amount=${verification.amount} (expected ${expectedPesewas})`,
+    transactionId: tx.id,
+  };
+}
+
+/**
+ * Automatically reconcile recent pending Paystack top-ups.
+ * Safe to call from background pollers, cron jobs, or API endpoints.
+ */
+export async function reconcilePendingPaystackTopups(limit = 10): Promise<{
+  checked: number;
+  settled: number;
+}> {
+  if (!(await isPaystackConfigured())) {
+    return { checked: 0, settled: 0 };
+  }
+
+  // Look for pending Paystack top-ups created in the last 24 hours
+  const pendingTxs = await prisma.walletTransaction.findMany({
+    where: {
+      type: "TOPUP",
+      status: "PENDING",
+      reference: { startsWith: "PSK-" },
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+
+  let settledCount = 0;
+  for (const tx of pendingTxs) {
+    try {
+      const res = await verifyAndSettlePaystackTopup(tx.id);
+      if (res.settled && !res.alreadySettled) {
+        settledCount++;
+      }
+    } catch (err) {
+      console.error(`Paystack auto-reconcile error for tx ${tx.id}:`, err);
+    }
+  }
+
+  return { checked: pendingTxs.length, settled: settledCount };
+}
+

@@ -87,8 +87,24 @@ const EVENT_LABELS: Record<string, string> = {
   CONFIRM_SENT: "Report closed — data confirmed sent",
 };
 
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTomorrowDateString() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return getLocalDateString(d);
+}
+
 export function TrackForm({ slug }: { slug: string }) {
   const [query, setQuery] = React.useState("");
+  const [date, setDate] = React.useState(getLocalDateString);
+  const maxDate = React.useMemo(() => getTomorrowDateString(), []);
+  const handleTodayClick = () => setDate(getLocalDateString());
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [results, setResults] = React.useState<TrackedOrder[] | null>(null);
@@ -112,6 +128,12 @@ export function TrackForm({ slug }: { slug: string }) {
       setError("Enter recipient phone number (e.g. 024 XXX XXXX), order ID, or payment reference.");
       return;
     }
+    const digits = q.replace(/\D/g, "");
+    const isPhone = !/[a-zA-Z]/.test(q) && digits.length >= 9;
+    if (isPhone && !date) {
+      setError("Please select the date the order was placed when tracking by phone number.");
+      return;
+    }
     setBusy(true);
     setError("");
     setResults(null);
@@ -121,7 +143,7 @@ export function TrackForm({ slug }: { slug: string }) {
       const res = await fetch(`/api/store/${slug}/track`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q }),
+        body: JSON.stringify({ query: q, date }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not look up that order");
@@ -331,6 +353,33 @@ export function TrackForm({ slug }: { slug: string }) {
           placeholder="024 XXX XXXX · CF-ST-00001 · pay_..."
           className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-yellow-400 caret-yellow-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:caret-yellow-400"
         />
+
+        <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <label htmlFor="track-date" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Order Date <span className="text-[11px] font-normal text-slate-500">(Required for phone lookup)</span>
+            </label>
+            <button
+              type="button"
+              onClick={handleTodayClick}
+              className="text-xs font-semibold text-yellow-600 hover:text-yellow-700 dark:text-yellow-400 dark:hover:underline"
+            >
+              Today
+            </button>
+          </div>
+          <input
+            id="track-date"
+            type="date"
+            value={date}
+            max={maxDate}
+            onChange={(e) => setDate(e.target.value)}
+            className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-yellow-400 dark:border-white/10 dark:bg-white/5 dark:text-white"
+          />
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+            Filters orders to the specific date placed to protect customer privacy.
+          </p>
+        </div>
+
         <button
           type="submit"
           disabled={busy}

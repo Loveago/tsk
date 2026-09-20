@@ -71,6 +71,34 @@ export default function BillingPage() {
     else if ((tabParam === "history" || tabParam === "claims") && sendClaimEnabled) setTab("claim-history");
   }, [sendClaimEnabled]);
 
+  const [verifyingId, setVerifyingId] = React.useState<string | null>(null);
+
+  const verifyPaystackTx = async (reference: string, id: string) => {
+    setVerifyingId(id);
+    try {
+      const res = await fetch("/api/billing/paystack/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference, transactionId: id }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Verification check failed", "error");
+        return;
+      }
+      if (json.settled) {
+        toast("Top-up confirmed! Your wallet balance has been credited.", "success");
+        load();
+      } else {
+        toast(json.reason ?? `Status on Paystack: ${json.status}`, "info");
+      }
+    } catch {
+      toast("Failed to check status", "error");
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
   // Paystack redirect-back result
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -78,11 +106,29 @@ export default function BillingPage() {
     if (!paystack) return;
     if (paystack === "success") {
       toast("Paystack payment successful — your wallet has been credited", "success");
+      load();
+    } else if (paystack === "pending") {
+      toast("Paystack payment is processing. Your balance will update automatically.", "info");
+      load();
     } else {
-      toast("Paystack payment was not completed. If you were debited, contact support.", "error");
+      toast("Paystack payment was not completed. If you were debited, click Verify on the transaction.", "error");
+      load();
     }
     window.history.replaceState(null, "", window.location.pathname);
-  }, [toast]);
+  }, [toast, load]);
+
+  // If there are pending Paystack transactions, poll briefly to auto-settle once confirmed
+  const hasPendingPaystack = React.useMemo(() => {
+    return data.some((tx) => tx.status === "PENDING" && tx.reference?.startsWith("PSK-"));
+  }, [data]);
+
+  React.useEffect(() => {
+    if (!hasPendingPaystack) return;
+    const interval = setInterval(() => {
+      load();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [hasPendingPaystack, load]);
 
   return (
     <div className="space-y-6">
@@ -195,7 +241,20 @@ export default function BillingPage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="font-semibold">{formatGHS(t.amount)}</p>
-                      {txBadge(t.status)}
+                      <div className="mt-0.5 flex items-center justify-end gap-1.5">
+                        {txBadge(t.status)}
+                        {t.status === "PENDING" && t.reference?.startsWith("PSK-") && (
+                          <button
+                            type="button"
+                            disabled={verifyingId === t.id}
+                            onClick={() => verifyPaystackTx(t.reference!, t.id)}
+                            className="rounded border border-brand-500/30 bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-medium text-brand-600 hover:bg-brand-500/20 disabled:opacity-50 dark:text-brand-400"
+                            title="Check payment status with Paystack"
+                          >
+                            {verifyingId === t.id ? "Checking…" : "Verify"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

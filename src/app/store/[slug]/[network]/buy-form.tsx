@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Loader2 } from "lucide-react";
 
 interface Product {
   packageId: string;
@@ -99,7 +100,16 @@ export function NetworkBuyForm({ slug, products }: { slug: string; products: Pro
         className="mt-5 h-13 w-full rounded-full bg-yellow-300 text-sm font-bold tracking-wide text-slate-900 shadow-md shadow-yellow-400/30 transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
         style={{ height: 52 }}
       >
-        {busy ? "Starting payment…" : selected ? `BUY — ₵${selected.price.toFixed(2)}` : "BUY"}
+        {busy ? (
+          <span className="inline-flex items-center justify-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Starting payment…</span>
+          </span>
+        ) : selected ? (
+          `BUY — ₵${selected.price.toFixed(2)}`
+        ) : (
+          "BUY"
+        )}
       </button>
       <p className="mt-3 text-center text-[11px] text-slate-400">
         You will be redirected to Paystack to complete payment.

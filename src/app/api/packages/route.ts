@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { getEffectivePricingProfileForUser } from "@/lib/orders";
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,11 +12,9 @@ export async function GET(request: NextRequest) {
       orderBy: [{ network: "asc" }, { sortOrder: "asc" }],
     });
 
-    const profileId = user.pricingProfileId ?? null;
-    const profile = profileId
-      ? await prisma.pricingProfile.findUnique({ where: { id: profileId } })
-      : null;
-    const isCustomProfile = profile && !profile.isDefault;
+    const profile = await getEffectivePricingProfileForUser(user);
+    const profileId = profile?.id ?? null;
+    const isCustomProfile = Boolean(profile && !profile.isDefault);
 
     const tiers = (isCustomProfile && profileId)
       ? await prisma.priceTier.findMany({ where: { profileId } })

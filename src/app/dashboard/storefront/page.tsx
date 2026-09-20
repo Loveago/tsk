@@ -16,6 +16,9 @@ import { requireActiveStorefront, ensureWallet, fromPesewas, storefrontOrderCode
 import { CopyShareButtons } from "@/components/storefront/copy-share-buttons";
 import { StoreStatusToggle } from "@/components/storefront/store-status-toggle";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const ORDER_BADGES: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
   PROCESSING: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",

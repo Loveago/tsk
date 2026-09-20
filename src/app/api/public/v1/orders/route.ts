@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey, ApiKeyError, logApiRequest } from "@/lib/api-auth";
 import { publicOrderSchema } from "@/lib/validation";
-import { changeOrderStatus, isOrderProcessingHalted, getPricingForProfile } from "@/lib/orders";
+import { changeOrderStatus, isOrderProcessingHalted, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 import { handleRouteError } from "@/lib/api-helpers";
 import { z } from "zod";
@@ -74,14 +74,7 @@ export async function POST(request: NextRequest) {
     if (!user) return fail(request, keyId, endpoint, 403, "Account not found");
 
     const network = input.network ?? pkg.network;
-
-    let amount: number | null = null;
-    if (user.pricingProfileId) {
-      amount = await getPricingForProfile(user.pricingProfileId, pkg.gbAmount, network);
-    }
-    if (amount == null || amount <= 0) {
-      amount = pkg.retailPriceGHS ?? 0;
-    }
+    const amount = await resolveUserWholesalePrice(user, { ...pkg, network });
     if (amount <= 0) return fail(request, keyId, endpoint, 400, "No price configured for this package");
 
     // Check if recipient number already has an active order

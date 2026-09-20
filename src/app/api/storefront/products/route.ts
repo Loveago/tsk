@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 import { storefrontProductUpsertSchema, storefrontBulkPricingSchema } from "@/lib/validation";
 import { requireStorefront, getMarkupBounds, toPesewas, fromPesewas } from "@/lib/storefront";
+import { resolveUserWholesalePrice } from "@/lib/orders";
 
 function validateMarkup(price: number, cost: number, minP: number, maxP: number) {
   const markupP = price - cost;
@@ -15,12 +16,29 @@ export async function GET() {
   try {
     const user = await requireUser();
     const storefront = await requireStorefront(user.id);
-    const products = await prisma.storefrontProduct.findMany({
-      where: { storefrontId: storefront.id },
-      include: { dataPackage: true },
-      orderBy: [{ dataPackage: { sortOrder: "asc" } }],
-    });
-    return NextResponse.json({ products });
+    const [products, allPackages] = await Promise.all([
+      prisma.storefrontProduct.findMany({
+        where: { storefrontId: storefront.id },
+        include: { dataPackage: true },
+        orderBy: [{ dataPackage: { sortOrder: "asc" } }],
+      }),
+      prisma.dataPackage.findMany({
+        where: { active: true },
+        orderBy: [{ network: "asc" }, { sortOrder: "asc" }, { gbAmount: "asc" }],
+      }),
+    ]);
+
+    const packageCosts = await Promise.all(
+      allPackages.map(async (pkg) => ({
+        id: pkg.id,
+        network: pkg.network,
+        gbAmount: pkg.gbAmount,
+        name: pkg.name,
+        cost: await resolveUserWholesalePrice(user, pkg),
+      }))
+    );
+
+    return NextResponse.json({ products, packages: packageCosts });
   } catch (err) {
     return handleRouteError(err);
   }
@@ -39,7 +57,7 @@ export async function PUT(request: NextRequest) {
 
     const bounds = await getMarkupBounds();
     const sellingPrice = toPesewas(input.sellingPrice);
-    const cost = toPesewas(pkg.retailPriceGHS ?? 0);
+    const cost = toPesewas(await resolveUserWholesalePrice(user, pkg));
     if (sellingPrice < cost) {
       return apiError(400, `Price must be at least GHS ${fromPesewas(cost).toFixed(2)} (cost)`);
     }
@@ -84,9 +102,15 @@ export async function POST(request: NextRequest) {
     });
     const markupP = toPesewas(input.markupPercent);
 
+    const packagesWithCost = await Promise.all(
+      packages.map(async (pkg) => ({
+        pkg,
+        cost: toPesewas(await resolveUserWholesalePrice(user, pkg)),
+      }))
+    );
+
     await prisma.$transaction(
-      packages.map((pkg) => {
-        const cost = toPesewas(pkg.retailPriceGHS ?? 0);
+      packagesWithCost.map(({ pkg, cost }) => {
         let price = cost + markupP;
         if (price < cost + bounds.minMarkupP) price = cost + bounds.minMarkupP;
         if (bounds.maxMarkupP !== Number.MAX_SAFE_INTEGER && price > cost + bounds.maxMarkupP) {

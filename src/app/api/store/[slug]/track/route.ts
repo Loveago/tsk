@@ -23,7 +23,7 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
-    const { query } = storefrontTrackSchema.parse(await request.json());
+    const { query, date } = storefrontTrackSchema.parse(await request.json());
 
     const storefront = await getEnabledStorefrontBySlug(slug);
     if (!storefront || storefront.status !== "ENABLED") {
@@ -32,13 +32,20 @@ export async function POST(
 
     const q = query.trim();
     const digits = q.replace(/\D/g, "");
+    const isPhone = !/[a-zA-Z]/.test(q) && digits.length >= 9;
     let where: Prisma.StorefrontOrderWhereInput;
 
-    if (digits.length >= 9) {
+    if (isPhone) {
+      if (!date) {
+        return apiError(400, "Please select the date the order was placed when tracking by phone number.");
+      }
+      const start = new Date(`${date}T00:00:00.000Z`);
+      const end = new Date(`${date}T23:59:59.999Z`);
       const last9 = digits.slice(-9);
       const localPhone = "0" + last9;
       where = {
         storefrontId: storefront.id,
+        createdAt: { gte: start, lte: end },
         OR: [
           { customerPhone: { contains: last9 } },
           { customerPhone: localPhone },
@@ -47,7 +54,7 @@ export async function POST(
           { underlyingOrder: { is: { phoneNumber: localPhone } } },
         ],
       };
-    } else if (/^CF-ST-\d{1,6}$/i.test(q) || /^\d{1,6}$/.test(q)) {
+    } else if (/^CF-ST-\d{1,6}$/i.test(q) || (/^\d{1,6}$/.test(q) && digits.length <= 6)) {
       const seq = Number(q.replace(/^CF-ST-/i, "").replace(/^0+(?=\d)/, ""));
       where = {
         storefrontId: storefront.id,

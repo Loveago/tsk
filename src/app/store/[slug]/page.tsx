@@ -111,50 +111,37 @@ export default async function PublicStorePage({
       )}
 
       {/* Hero */}
-      <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 pb-10 pt-10 lg:grid-cols-2 lg:pt-16">
+      <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 pb-10 pt-8 lg:grid-cols-2 lg:pt-12">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-900/5 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             {storefront.name} — trusted data marketplace
           </span>
-          <h1 className="mt-5 font-serif text-4xl font-bold leading-tight text-slate-900 sm:text-5xl lg:text-6xl dark:text-white">
-            Buy data for any number,
-            <span className="block text-yellow-500">delivered reliably</span>
+          <h1 className="mt-4 font-serif text-4xl font-bold leading-tight text-slate-900 sm:text-5xl lg:text-6xl dark:text-white">
+            Instant Data Bundles,{" "}
+            <span className="text-yellow-500">Buy Now</span>
           </h1>
-          <p className="mt-5 max-w-lg text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-300">
-            {storefront.description ||
-              "Secure MoMo checkout, reliable delivery across major networks, and bundles priced for everyday use. Timing can vary by network availability and number verification."}
+          <p className="mt-4 max-w-lg text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-300">
+            Select your network below to view available packages and checkout instantly with MoMo.
           </p>
-          <div className="mt-7 flex flex-wrap items-center gap-3">
-            <a
-              href="#shop"
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-yellow-300 px-7 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/30 transition-colors hover:bg-yellow-400"
-            >
-              <ShoppingBag className="h-4 w-4" />
-              Buy bundles
-            </a>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
             <Link
               href={storeHref(slug, "track")}
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-white px-7 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/5 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-yellow-300 px-6 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/20 transition-colors hover:bg-yellow-400"
             >
               <Clock className="h-4 w-4" />
               Track your order
             </Link>
-          </div>
-          <div className="mt-7 flex flex-wrap gap-2">
-            {[
-              { icon: Zap, label: "Reliable delivery" },
-              { icon: Wallet, label: "MoMo & wallet" },
-              { icon: ShieldCheck, label: "Secure checkout" },
-            ].map(({ icon: Icon, label }) => (
-              <span
-                key={label}
-                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-900/5 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10"
+            {storefront.whatsapp && (
+              <a
+                href={`https://wa.me/233${storefront.whatsapp.replace(/^0/, "").replace(/\D/g, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
               >
-                <Icon className="h-3.5 w-3.5 text-yellow-500" />
-                {label}
-              </span>
-            ))}
+                Chat on WhatsApp
+              </a>
+            )}
           </div>
         </div>
 
@@ -163,7 +150,7 @@ export default async function PublicStorePage({
       </section>
 
       {/* Shop grid */}
-      <section id="shop" className="mx-auto max-w-6xl scroll-mt-24 px-4 pb-6">
+      <section id="shop" className="mx-auto max-w-6xl scroll-mt-24 px-4 pb-12">
         {groups.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-white/5">
             This store has no bundles on sale right now. Check back soon.
@@ -197,6 +184,55 @@ export default async function PublicStorePage({
             })}
           </div>
         )}
+      </section>
+
+      {/* Bottom info section */}
+      <section className="mx-auto max-w-4xl px-4 pb-12 pt-4">
+        <div className="rounded-3xl border border-slate-200/80 bg-white/70 p-8 sm:p-12 text-center backdrop-blur-sm shadow-sm dark:border-slate-800 dark:bg-[#111a2c]/70">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-900/5 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            {storefront.name} — trusted data marketplace
+          </span>
+          <h2 className="mt-5 font-serif text-3xl font-bold leading-tight text-slate-900 sm:text-4xl lg:text-5xl dark:text-white">
+            Buy data for any number,{" "}
+            <span className="block text-yellow-500">delivered reliably</span>
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-300">
+            {storefront.description ||
+              "Secure MoMo checkout, reliable delivery across major networks, and bundles priced for everyday use. Timing can vary by network availability and number verification."}
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href="#shop"
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-yellow-300 px-6 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/20 transition-colors hover:bg-yellow-400"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Buy bundles
+            </a>
+            <Link
+              href={storeHref(slug, "track")}
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/5 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+            >
+              <Clock className="h-4 w-4" />
+              Track your order
+            </Link>
+          </div>
+          <div className="mt-8 flex flex-wrap justify-center gap-2">
+            {[
+              { icon: Zap, label: "Reliable delivery" },
+              { icon: Wallet, label: "MoMo & wallet" },
+              { icon: ShieldCheck, label: "Secure checkout" },
+            ].map(({ icon: Icon, label }) => (
+              <span
+                key={label}
+                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-900/5 dark:bg-white/10 dark:text-slate-200 dark:ring-white/10"
+              >
+                <Icon className="h-3.5 w-3.5 text-yellow-500" />
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
       </section>
 
     </div>

@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { PageHeader, StatCard } from "@/components/shared";
 import { ProfileForms } from "./profile-form";
 import { formatGHS } from "@/lib/types";
+import { getEffectivePricingProfileForUser } from "@/lib/orders";
 import {
   ArrowDownLeft,
   BookOpen,
@@ -42,22 +43,12 @@ export default async function ProfilePage() {
   });
   if (!user) return null;
 
-  const profileName =
-    (
-      user.pricingProfileId
-        ? await prisma.pricingProfile.findUnique({
-            where: { id: user.pricingProfileId },
-            select: { name: true },
-          })
-        : null
-    )?.name ??
-    (
-      await prisma.pricingProfile.findFirst({
-        where: { isDefault: true },
-        select: { name: true },
-      })
-    )?.name ??
-    "Standard";
+  const effectiveProfile = await getEffectivePricingProfileForUser({
+    id: current.id,
+    role: user.role,
+    pricingProfileId: user.pricingProfileId,
+  });
+  const profileName = effectiveProfile?.name ?? "Standard";
 
   const statusGroups = await prisma.order.groupBy({
     by: ["status"],

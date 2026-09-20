@@ -12,7 +12,7 @@ import { IncomingMomoTable } from "@/components/admin/incoming-momo-table";
 import { ClaimsTable } from "@/components/admin/claims-table";
 import { MomoSettingsCard } from "@/components/admin/momo-settings-card";
 import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
-import { Wallet, Check, X, Smartphone, Receipt, Settings, PlusCircle } from "lucide-react";
+import { Wallet, Check, X, Smartphone, Receipt, Settings, PlusCircle, RefreshCw } from "lucide-react";
 
 interface Tx {
   id: string;
@@ -98,6 +98,32 @@ export default function AdminBillingPage() {
         decision === "APPROVED" ? "success" : "info"
       );
       load();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const verifyPaystack = async (id: string, reference: string) => {
+    setBusyId(id);
+    try {
+      const res = await fetch("/api/billing/paystack/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId: id, reference }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Paystack check failed", "error");
+        return;
+      }
+      if (json.settled) {
+        toast("Top-up verified with Paystack and approved!", "success");
+        load();
+      } else {
+        toast(json.reason ?? `Paystack status: ${json.status}`, "info");
+      }
+    } catch {
+      toast("Failed to verify transaction with Paystack", "error");
     } finally {
       setBusyId(null);
     }
@@ -215,7 +241,18 @@ export default function AdminBillingPage() {
                       <p className="text-xs text-slate-400">{formatDateTime(tx.createdAt)}</p>
                     </div>
                     {tx.status === "PENDING" && (
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {tx.reference?.startsWith("PSK-") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyId === tx.id}
+                            onClick={() => verifyPaystack(tx.id, tx.reference!)}
+                            className="border-brand-500/40 text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" /> Verify Paystack
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           disabled={busyId === tx.id}

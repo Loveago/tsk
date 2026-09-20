@@ -28,6 +28,7 @@ export interface StoreChromeProps {
   location?: string | null;
   contactText?: string | null;
   whatsappLabel?: string | null;
+  notice?: string | null;
   networks: NetworkProvider[];
   children: React.ReactNode;
 }
@@ -131,26 +132,40 @@ function StoreMark({
 }
 
 export function StoreChrome(props: StoreChromeProps) {
-  const { name, slug, description, logoUrl, whatsapp, email, location, contactText, whatsappLabel, networks, children } = props;
+  const { name, slug, description, logoUrl, whatsapp, email, location, contactText, whatsappLabel, notice, networks, children } = props;
   const [shopOpen, setShopOpen] = React.useState(false);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [promoVisible, setPromoVisible] = React.useState(true);
   const wa = whatsappLink(whatsapp, `Hello ${name}, I need help with an order.`);
   const bubbleLabel = contactText || `Need help? Chat with ${name}`;
+  const bannerText = (notice?.trim()) || "🔥 Secure MoMo checkout — bundles delivered to any number, reliably.";
 
   return (
     <div className="min-h-screen bg-[#e9ebf5] dark:bg-[#0a101e]">
       {/* Floating WhatsApp contact bubble */}
       {wa && <WhatsAppBubble href={wa} label={bubbleLabel} />}
-      {/* Promo bar */}
+      {/* Promo bar / Announcement banner */}
       {promoVisible && (
-        <div className="relative bg-slate-950 px-10 py-2 text-center text-xs font-medium text-white">
-          <span className="opacity-90">🔥 Secure MoMo checkout — bundles delivered to any number, reliably.</span>
+        <div
+          className="banner-container relative bg-slate-950 px-10 py-2 text-center text-xs font-medium text-white overflow-hidden"
+          role="region"
+          aria-label="Store Announcement"
+        >
+          <div className="relative flex w-full overflow-hidden justify-center">
+            <div className="animate-banner-slide py-0.5 text-xs sm:text-sm font-medium tracking-wide text-white">
+              <span className="inline-flex items-center gap-2 px-6">
+                <span className="rounded-full bg-yellow-400/20 border border-yellow-400/40 px-2 py-0.5 text-[10px] uppercase tracking-wider font-extrabold text-yellow-300">
+                  Notice
+                </span>
+                <span>{bannerText}</span>
+              </span>
+            </div>
+          </div>
           <button
             type="button"
             aria-label="Dismiss"
             onClick={() => setPromoVisible(false)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 rounded-full p-1 bg-slate-950/80 backdrop-blur-xs text-white/60 hover:bg-white/15 hover:text-white transition-colors"
           >
             <X className="h-3.5 w-3.5" />
           </button>

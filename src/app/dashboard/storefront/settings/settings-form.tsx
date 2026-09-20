@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Globe, ExternalLink, Copy, Check, AlertTriangle, Loader2 } from "lucide-react";
+import { Globe, ExternalLink, Copy, Check, AlertTriangle, Loader2, Megaphone, Sparkles } from "lucide-react";
 
 interface Initial {
   slug: string;
@@ -14,6 +14,7 @@ interface Initial {
   location: string;
   contactText: string;
   whatsappLabel: string;
+  notice: string;
   payoutNetwork: string;
   payoutNumber: string;
   payoutAccountName: string;
@@ -125,6 +126,7 @@ export function StorefrontSettingsForm({
           supportPhone: form.whatsapp,
           contactText: form.contactText,
           whatsappLabel: form.whatsappLabel,
+          notice: form.notice,
         }),
       });
       const data = await res.json();
@@ -332,6 +334,90 @@ export function StorefrontSettingsForm({
             A floating WhatsApp button appears on your store using these texts. Leave empty for defaults.
           </p>
         </div>
+
+        <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-white/5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-300">
+                Notification Banner (Storefront Announcement)
+              </h3>
+            </div>
+            {form.notice && (
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, notice: "" }))}
+                className="text-xs font-medium text-violet-600 hover:text-violet-700 hover:underline dark:text-violet-400 dark:hover:text-violet-300"
+              >
+                Reset to Default
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            A scrolling announcement banner displayed at the top of your public storefront page.
+          </p>
+
+          <div className="mt-3 space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                Banner Notice Text ({form.notice.length}/300)
+              </label>
+              <input
+                value={form.notice}
+                onChange={set("notice")}
+                maxLength={300}
+                placeholder="🔥 Secure MoMo checkout — bundles delivered to any number, reliably."
+                className={inputCls}
+              />
+            </div>
+
+            {/* Live Preview */}
+            <div>
+              <span className="mb-1.5 block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                Live Preview
+              </span>
+              <div className="relative overflow-hidden rounded-lg bg-slate-950 px-4 py-2.5 shadow-inner">
+                <div className="flex items-center justify-center gap-2 text-xs font-medium text-white">
+                  <span className="rounded-full bg-yellow-400/20 border border-yellow-400/40 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-yellow-300 shrink-0">
+                    Notice
+                  </span>
+                  <span className="truncate">
+                    {form.notice.trim() || "🔥 Secure MoMo checkout — bundles delivered to any number, reliably."}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Templates */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Quick Templates
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "🔥 Secure MoMo checkout — bundles delivered to any number, reliably.",
+                  "⚡ Instant delivery 24/7! Fast and reliable data bundle processing.",
+                  "🎉 Promo active! Enjoy discounted rates across all bundles today.",
+                  "⚠️ Network notice: Telecel bundle processing is currently slower than usual.",
+                  "📞 Need quick support? Chat with us directly on WhatsApp for help!",
+                ].map((tmpl, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, notice: tmpl }))}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs text-slate-700 shadow-xs hover:border-violet-300 hover:bg-violet-50/50 hover:text-violet-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-violet-500/50 dark:hover:bg-violet-950/30 dark:hover:text-violet-200 transition-colors"
+                  >
+                    {tmpl}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <button type="submit" disabled={busy} className="h-10 rounded-lg bg-violet-600 px-5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">
           Save profile
         </button>

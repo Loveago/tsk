@@ -3,6 +3,9 @@ import { requireUser } from "@/lib/auth";
 import { requireActiveStorefront, ensureWallet, fromPesewas } from "@/lib/storefront";
 import { WithdrawalForm } from "./withdrawal-form";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function StorefrontWalletPage() {
   const user = await requireUser();
   const storefront = await requireActiveStorefront(user.id);

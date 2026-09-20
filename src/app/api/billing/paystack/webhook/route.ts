@@ -57,7 +57,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, settled: result.settled });
     }
 
-    const tx = await prisma.walletTransaction.findFirst({ where: { reference } });
+    let tx = await prisma.walletTransaction.findFirst({ where: { reference } });
+    if (!tx && (event.data as any)?.metadata?.walletTransactionId) {
+      tx = await prisma.walletTransaction.findUnique({
+        where: { id: String((event.data as any).metadata.walletTransactionId) },
+      });
+    }
+
     if (!tx || tx.type !== "TOPUP") {
       return NextResponse.json({ received: true, note: "unknown reference" });
     }
@@ -68,26 +74,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, note: `unhandled status ${tx.status}` });
     }
 
-    // Cross-check the verified charge against our own record. On mismatch,
-    // leave PENDING for manual admin review (never auto-credit wrong amounts).
-    const verification = await verifyTransaction(reference);
     const expectedPesewas = Math.round(tx.amount * 100);
-    if (
-      verification.status !== "success" ||
-      verification.currency !== PAYSTACK_CURRENCY ||
-      verification.amount !== expectedPesewas
-    ) {
+    const eventData = event.data as {
+      status?: string;
+      amount?: number;
+      currency?: string;
+      channel?: string;
+    };
+
+    let isVerified = false;
+    let channel = eventData.channel;
+
+    try {
+      const verification = await verifyTransaction(reference);
+      if (
+        verification.status === "success" &&
+        verification.currency === PAYSTACK_CURRENCY &&
+        verification.amount === expectedPesewas
+      ) {
+        isVerified = true;
+        channel = verification.channel || channel;
+      }
+    } catch (verifyErr) {
+      // Outgoing verify failed (e.g. timeout) — fallback to HMAC-verified webhook body
+      if (
+        eventData.status === "success" &&
+        eventData.currency === PAYSTACK_CURRENCY &&
+        eventData.amount === expectedPesewas
+      ) {
+        isVerified = true;
+      }
+    }
+
+    if (!isVerified) {
       await recordAudit({
         userId: tx.userId,
         actorLabel: "paystack-webhook",
         action: "billing.paystack_mismatch",
         target: `transaction:${tx.id}`,
-        newValue: JSON.stringify({ reference, verification }),
+        newValue: JSON.stringify({ reference, eventData }),
       });
       return NextResponse.json({ received: true, note: "verification mismatch — left for review" });
     }
 
-    const result = await settlePaystackTopup(tx.id, reference, verification.channel);
+    const result = await settlePaystackTopup(tx.id, reference, channel);
 
     await recordAudit({
       userId: tx.userId,
@@ -97,7 +127,7 @@ export async function POST(request: NextRequest) {
       newValue: JSON.stringify({
         amount: tx.amount,
         reference,
-        channel: verification.channel,
+        channel,
         credited: result.ok,
       }),
     });

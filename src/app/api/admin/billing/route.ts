@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { verifyAndSettlePaystackTopup } from "@/lib/paystack";
 import { z } from "zod";
 
 export async function GET(request: NextRequest) {
@@ -12,6 +13,30 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
     const status = searchParams.get("status");
+
+    // Self-heal: automatically check and approve pending Paystack top-ups
+    if (!status || status === "PENDING") {
+      try {
+        const pendingPaystack = await prisma.walletTransaction.findMany({
+          where: {
+            type: "TOPUP",
+            status: "PENDING",
+            reference: { startsWith: "PSK-" },
+            createdAt: { gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+          },
+          take: 10,
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (pendingPaystack.length > 0) {
+          await Promise.allSettled(
+            pendingPaystack.map((tx) => verifyAndSettlePaystackTopup(tx.id))
+          );
+        }
+      } catch (reconcileErr) {
+        console.error("Admin billing auto-reconcile error:", reconcileErr);
+      }
+    }
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;

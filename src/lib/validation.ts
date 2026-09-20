@@ -364,6 +364,7 @@ export const storefrontSettingsSchema = z.object({
   supportPhone: z.string().max(40).optional().or(z.literal("")),
   contactText: z.string().max(160).optional().or(z.literal("")),
   whatsappLabel: z.string().max(40).optional().or(z.literal("")),
+  notice: z.string().max(300).optional().or(z.literal("")),
   isActive: z.boolean().optional(),
 });
 
@@ -418,6 +419,7 @@ export const storefrontTrackSchema = z.object({
     .trim()
     .min(4, "Enter an order ID, phone number, or payment reference")
     .max(60),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)").optional().or(z.literal("")),
 });
 
 export const storefrontWithdrawalSchema = z.object({

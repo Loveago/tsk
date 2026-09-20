@@ -4,17 +4,13 @@ import { PriceMask } from "@/components/price-mask";
 import { NetworkPackageGrid, type PackageGroup } from "@/components/packages/network-package-grid";
 import { BadgeCheck, Layers, Package, ShieldCheck } from "lucide-react";
 import { formatGHS } from "@/lib/types";
+import { getEffectivePricingProfileForUser } from "@/lib/orders";
 
 export default async function PackagesPage() {
   const user = await getCurrentUser();
 
-  const profileId =
-    user?.pricingProfileId ??
-    (await prisma.pricingProfile.findFirst({ where: { isDefault: true }, select: { id: true } }))?.id ??
-    null;
-  const profile = profileId
-    ? await prisma.pricingProfile.findUnique({ where: { id: profileId } })
-    : null;
+  const profile = user ? await getEffectivePricingProfileForUser(user) : null;
+  const profileId = profile?.id ?? null;
   const tiers = profileId
     ? await prisma.priceTier.findMany({ where: { profileId }, orderBy: { gbAmount: "asc" } })
     : [];

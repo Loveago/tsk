@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { requireActiveStorefront, getMarkupBounds } from "@/lib/storefront";
+import { resolveUserWholesalePrice } from "@/lib/orders";
 import { PricingEditor } from "./pricing-editor";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function StorefrontProductsPage() {
   const user = await requireUser();
@@ -12,6 +16,16 @@ export default async function StorefrontProductsPage() {
     getMarkupBounds(),
   ]);
 
+  const packagesWithCost = await Promise.all(
+    packages.map(async (p) => ({
+      id: p.id,
+      network: p.network,
+      gbAmount: p.gbAmount,
+      name: p.name,
+      cost: await resolveUserWholesalePrice(user, p),
+    }))
+  );
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <header>
@@ -21,13 +35,7 @@ export default async function StorefrontProductsPage() {
         </p>
       </header>
       <PricingEditor
-        packages={packages.map((p) => ({
-          id: p.id,
-          network: p.network,
-          gbAmount: p.gbAmount,
-          name: p.name,
-          cost: p.retailPriceGHS ?? 0,
-        }))}
+        packages={packagesWithCost}
         products={products.map((p) => ({
           packageId: p.packageId,
           sellingPrice: p.sellingPrice / 100,

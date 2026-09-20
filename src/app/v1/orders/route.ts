@@ -7,7 +7,7 @@ import {
   logApiRequestEntry,
   ApiError,
 } from "@/lib/developer-api";
-import { isOrderProcessingHalted, getDefaultProfileId, getPricingForProfile } from "@/lib/orders";
+import { isOrderProcessingHalted, getDefaultProfileId, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
 import { dispatchWebhookEvent } from "@/lib/webhooks";
 import { phoneSchema } from "@/lib/validation";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
@@ -397,32 +397,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve price server-side using pricing profile or default profile
+    // Resolve price server-side using centralized pricing resolution
     const user = await prisma.user.findUnique({
       where: { id: authContext.userId },
-      select: { pricingProfileId: true, balance: true },
+      select: { id: true, role: true, pricingProfileId: true, balance: true },
     });
 
     if (!user) {
       throw new ApiError("FORBIDDEN", "User account not found", 403);
     }
 
-    const customProfile = user.pricingProfileId
-      ? await prisma.pricingProfile.findUnique({ where: { id: user.pricingProfileId } })
-      : null;
-    const isCustom = customProfile && !customProfile.isDefault;
-
-    let price: number | null = null;
-    if (isCustom && user.pricingProfileId) {
-      price = await getPricingForProfile(user.pricingProfileId, pkg.gbAmount, pkg.network);
-    }
-    if (price == null && pkg.retailPriceGHS != null && pkg.retailPriceGHS > 0) {
-      price = pkg.retailPriceGHS;
-    }
-    if (price == null) {
-      const effectiveProfileId = user.pricingProfileId ?? (await getDefaultProfileId());
-      price = await getPricingForProfile(effectiveProfileId, pkg.gbAmount, pkg.network);
-    }
+    const price = await resolveUserWholesalePrice(user, pkg);
 
     if (!price || price <= 0) {
       throw new ApiError("INVALID_PACKAGE", "No price configured for this package", 400);

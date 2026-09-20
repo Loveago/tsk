@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey, ApiKeyError, logApiRequest } from "@/lib/api-auth";
 import { handleRouteError } from "@/lib/api-helpers";
+import { getEffectivePricingProfileForUser, resolveUserWholesalePrice } from "@/lib/orders";
 
 export async function GET(request: NextRequest) {
   try {
-    const { keyId } = await requireApiKey(request);
+    const { keyId, userId } = await requireApiKey(request);
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, pricingProfileId: true },
+    });
+    const effectiveProfile = user ? await getEffectivePricingProfileForUser(user) : null;
 
     // Packages with the API owner's effective price where a tier exists,
     // falling back to the retail price.
@@ -14,20 +21,31 @@ export async function GET(request: NextRequest) {
         where: { active: true },
         orderBy: [{ network: "asc" }, { sortOrder: "asc" }, { gbAmount: "asc" }],
       }),
-      prisma.priceTier.findMany(),
+      effectiveProfile?.id
+        ? prisma.priceTier.findMany({ where: { profileId: effectiveProfile.id } })
+        : prisma.priceTier.findMany(),
     ]);
 
     const tierMap = new Map<string, number>();
     for (const t of tiers) tierMap.set(`${t.profileId}:${t.gbAmount}`, t.priceGHS);
 
-    const result = packages.map((p) => ({
-      id: p.id,
-      network: p.network,
-      name: p.name,
-      gbAmount: p.gbAmount,
-      priceGHS: p.retailPriceGHS,
-      providerProductId: p.providerProductId,
-    }));
+    const result = await Promise.all(
+      packages.map(async (p) => {
+        let price = p.retailPriceGHS;
+        if (user) {
+          const customPrice = await resolveUserWholesalePrice(user, p);
+          if (customPrice > 0) price = customPrice;
+        }
+        return {
+          id: p.id,
+          network: p.network,
+          name: p.name,
+          gbAmount: p.gbAmount,
+          priceGHS: price,
+          providerProductId: p.providerProductId,
+        };
+      })
+    );
 
     await logApiRequest(
       keyId, "/api/public/v1/packages", "GET", 200, true,

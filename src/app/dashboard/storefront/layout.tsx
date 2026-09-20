@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { StorefrontSubnav } from "@/components/storefront/storefront-subnav";
 
 /**
  * Auth gate for every /dashboard/storefront page (§2). Fine-grained status
@@ -13,5 +14,10 @@ export default async function StorefrontLayout({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  return <>{children}</>;
+  return (
+    <div>
+      <StorefrontSubnav />
+      {children}
+    </div>
+  );
 }

@@ -7,7 +7,7 @@ import {
   logApiRequestEntry,
   ApiError,
 } from "@/lib/developer-api";
-import { getDefaultProfileId } from "@/lib/orders";
+import { getDefaultProfileId, getEffectivePricingProfileForUser } from "@/lib/orders";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -52,17 +52,15 @@ export async function GET(request: NextRequest) {
       }),
       prisma.user.findUnique({
         where: { id: authContext.userId },
-        select: { pricingProfileId: true },
+        select: { id: true, role: true, pricingProfileId: true },
       }),
       getDefaultProfileId(),
     ]);
 
-    // Load price tiers for this user's custom profile if assigned
-    const customProfileId = user?.pricingProfileId;
-    const profile = customProfileId
-      ? await prisma.pricingProfile.findUnique({ where: { id: customProfileId } })
-      : null;
-    const isCustomProfile = profile && !profile.isDefault;
+    // Load price tiers for this user's effective profile
+    const profile = await getEffectivePricingProfileForUser(user || { id: authContext.userId });
+    const customProfileId = profile?.id ?? null;
+    const isCustomProfile = Boolean(profile && !profile.isDefault);
 
     // Check if custom profile has distinct per-network rates
     let profileNetworkRates: Record<string, Array<{ gbAmount: number; priceGHS: number }>> | null = null;
