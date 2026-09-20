@@ -207,8 +207,16 @@ export default function AdminPricingPage() {
 
   // Filtered packages
   const filteredPackages = React.useMemo(() => {
-    if (activeNetworkFilter === "ALL") return packages;
-    return packages.filter((p) => p.network === activeNetworkFilter);
+    const list =
+      activeNetworkFilter === "ALL"
+        ? packages
+        : packages.filter((p) => p.network === activeNetworkFilter);
+    return [...list].sort((a, b) => {
+      if (activeNetworkFilter === "ALL" && a.network !== b.network) {
+        return a.network.localeCompare(b.network);
+      }
+      return a.gbAmount - b.gbAmount;
+    });
   }, [packages, activeNetworkFilter]);
 
   return (

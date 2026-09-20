@@ -27,9 +27,14 @@ export function PackageTable({
     );
   }
 
+  const sortedPackages = [...packages].sort((a, b) => {
+    if (a.network !== b.network) return a.network.localeCompare(b.network);
+    return a.gbAmount - b.gbAmount;
+  });
+
   return (
     <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
-      {packages.length === 0 ? (
+      {sortedPackages.length === 0 ? (
         <EmptyState icon={Package} title="No packages" description="Add your first data bundle." />
       ) : (
         <div className="overflow-x-auto">
@@ -46,7 +51,7 @@ export function PackageTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {packages.map((p) => (
+              {sortedPackages.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                   <td className="px-4 py-3 font-medium">{p.name}</td>
                   <td className="px-4 py-3">{p.network}</td>

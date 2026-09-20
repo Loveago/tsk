@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const [packages, tiers] = await Promise.all([
       prisma.dataPackage.findMany({
         where: { active: true },
-        orderBy: [{ network: "asc" }, { sortOrder: "asc" }, { gbAmount: "asc" }],
+        orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
       }),
       effectiveProfile?.id
         ? prisma.priceTier.findMany({ where: { profileId: effectiveProfile.id } })

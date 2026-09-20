@@ -17,7 +17,7 @@ export async function GET() {
         },
       }),
       prisma.dataPackage.findMany({
-        orderBy: [{ network: "asc" }, { sortOrder: "asc" }, { gbAmount: "asc" }],
+        orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
       }),
       prisma.systemSetting.findMany({
         where: { key: { startsWith: "pricing_profile_network_rates:" } },

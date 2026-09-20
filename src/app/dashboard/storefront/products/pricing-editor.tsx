@@ -97,7 +97,16 @@ export function PricingEditor({
     refreshData();
   }, [refreshData]);
 
-  const visible = packageList.filter((p) => filter === "ALL" || p.network === filter);
+  const visible = React.useMemo(() => {
+    return [...packageList]
+      .filter((p) => filter === "ALL" || p.network === filter)
+      .sort((a, b) => {
+        if (filter === "ALL" && a.network !== b.network) {
+          return a.network.localeCompare(b.network);
+        }
+        return a.gbAmount - b.gbAmount;
+      });
+  }, [packageList, filter]);
 
   const toggle = (id: string) =>
     setSelected((s) => {

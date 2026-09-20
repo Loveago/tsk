@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     const user = await requireUser();
     const packages = await prisma.dataPackage.findMany({
       where: { active: true },
-      orderBy: [{ network: "asc" }, { sortOrder: "asc" }],
+      orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
     });
 
     const profile = await getEffectivePricingProfileForUser(user);

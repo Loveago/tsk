@@ -11,20 +11,32 @@ export default async function StorefrontProductsPage() {
   const user = await requireUser();
   const storefront = await requireActiveStorefront(user.id);
   const [packages, products, bounds] = await Promise.all([
-    prisma.dataPackage.findMany({ where: { active: true }, orderBy: [{ sortOrder: "asc" }] }),
-    prisma.storefrontProduct.findMany({ where: { storefrontId: storefront.id } }),
+    prisma.dataPackage.findMany({
+      where: { active: true },
+      orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
+    }),
+    prisma.storefrontProduct.findMany({
+      where: { storefrontId: storefront.id },
+      include: { dataPackage: true },
+      orderBy: [{ dataPackage: { network: "asc" } }, { dataPackage: { gbAmount: "asc" } }],
+    }),
     getMarkupBounds(),
   ]);
 
-  const packagesWithCost = await Promise.all(
-    packages.map(async (p) => ({
-      id: p.id,
-      network: p.network,
-      gbAmount: p.gbAmount,
-      name: p.name,
-      cost: await resolveUserWholesalePrice(user, p),
-    }))
-  );
+  const packagesWithCost = (
+    await Promise.all(
+      packages.map(async (p) => ({
+        id: p.id,
+        network: p.network,
+        gbAmount: p.gbAmount,
+        name: p.name,
+        cost: await resolveUserWholesalePrice(user, p),
+      }))
+    )
+  ).sort((a, b) => {
+    if (a.network !== b.network) return a.network.localeCompare(b.network);
+    return a.gbAmount - b.gbAmount;
+  });
 
   return (
     <div className="space-y-6 p-4 sm:p-6">

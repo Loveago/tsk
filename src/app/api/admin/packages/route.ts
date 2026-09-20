@@ -9,7 +9,7 @@ export async function GET() {
   try {
     await requireAdmin();
     const packages = await prisma.dataPackage.findMany({
-      orderBy: [{ network: "asc" }, { sortOrder: "asc" }],
+      orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
     });
     return NextResponse.json({ packages });
   } catch (err) {

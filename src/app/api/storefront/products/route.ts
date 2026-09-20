@@ -20,23 +20,32 @@ export async function GET() {
       prisma.storefrontProduct.findMany({
         where: { storefrontId: storefront.id },
         include: { dataPackage: true },
-        orderBy: [{ dataPackage: { sortOrder: "asc" } }],
+        orderBy: [
+          { dataPackage: { network: "asc" } },
+          { dataPackage: { gbAmount: "asc" } },
+          { dataPackage: { sortOrder: "asc" } },
+        ],
       }),
       prisma.dataPackage.findMany({
         where: { active: true },
-        orderBy: [{ network: "asc" }, { sortOrder: "asc" }, { gbAmount: "asc" }],
+        orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
       }),
     ]);
 
-    const packageCosts = await Promise.all(
-      allPackages.map(async (pkg) => ({
-        id: pkg.id,
-        network: pkg.network,
-        gbAmount: pkg.gbAmount,
-        name: pkg.name,
-        cost: await resolveUserWholesalePrice(user, pkg),
-      }))
-    );
+    const packageCosts = (
+      await Promise.all(
+        allPackages.map(async (pkg) => ({
+          id: pkg.id,
+          network: pkg.network,
+          gbAmount: pkg.gbAmount,
+          name: pkg.name,
+          cost: await resolveUserWholesalePrice(user, pkg),
+        }))
+      )
+    ).sort((a, b) => {
+      if (a.network !== b.network) return a.network.localeCompare(b.network);
+      return a.gbAmount - b.gbAmount;
+    });
 
     return NextResponse.json({ products, packages: packageCosts });
   } catch (err) {

@@ -75,7 +75,15 @@ export default function AdminPackagesPage() {
     load();
   };
 
-  const filtered = network ? packages.filter((p) => p.network === network) : packages;
+  const filtered = React.useMemo(() => {
+    const list = network ? packages.filter((p) => p.network === network) : packages;
+    return [...list].sort((a, b) => {
+      if (!network && a.network !== b.network) {
+        return a.network.localeCompare(b.network);
+      }
+      return a.gbAmount - b.gbAmount;
+    });
+  }, [packages, network]);
 
   return (
     <div className="space-y-6">

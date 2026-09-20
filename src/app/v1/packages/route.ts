@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     const [packages, user, defaultProfileId] = await Promise.all([
       prisma.dataPackage.findMany({
         where: whereClause,
-        orderBy: [{ network: "asc" }, { sortOrder: "asc" }, { gbAmount: "asc" }],
+        orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
       }),
       prisma.user.findUnique({
         where: { id: authContext.userId },
