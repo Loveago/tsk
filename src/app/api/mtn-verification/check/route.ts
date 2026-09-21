@@ -6,6 +6,7 @@ import {
   isMtnVerificationEnabled,
   normalizeGhanaPhoneNumber,
   isMtnPhoneNumber,
+  recordUnverifiedMtnNumbersBatch,
 } from "@/lib/mtn-verification";
 import { z } from "zod";
 
@@ -15,7 +16,7 @@ const checkSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const body = await request.json();
     const { phoneNumbers } = checkSchema.parse(body);
 
@@ -92,6 +93,18 @@ export async function POST(request: NextRequest) {
     }
 
     const unverifiedNumbers = pendingVerification;
+
+    // Capture unverified numbers in BlockedMtnNumber registry for admin review & verification
+    if (unverifiedNumbers.length > 0) {
+      await recordUnverifiedMtnNumbersBatch(
+        unverifiedNumbers.map((num) => ({
+          number: num,
+          userId: user.id,
+        }))
+      ).catch((err) => {
+        console.error("Failed to record unverified MTN numbers during check:", err);
+      });
+    }
 
     return NextResponse.json({
       verificationEnabled,

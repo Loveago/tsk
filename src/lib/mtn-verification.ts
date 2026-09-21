@@ -128,6 +128,16 @@ export async function validateMtnOrderRecipient(
     }
   }
 
+  if (!isAccepted && opts.recordUnverified !== false) {
+    // Record in Blocked/Unverified review list (§2, §13) so admins can export and verify
+    await recordUnverifiedMtnNumber({
+      number: normalized,
+      userId: userId ?? null,
+    }).catch((err) => {
+      console.error("Failed to record unverified MTN number during validation:", err);
+    });
+  }
+
   if (verificationEnabled && !isAccepted) {
     const reason =
       "This MTN number has not been verified yet. Please submit the number for verification before purchasing an MTN package.";
@@ -135,14 +145,6 @@ export async function validateMtnOrderRecipient(
       throw new MtnNumberNotVerifiedError(reason);
     }
     return { allowed: false, reason };
-  }
-
-  if (!isAccepted && opts.recordUnverified !== false) {
-    // Verification is OFF: allow the purchase, but record in Blocked/Unverified review list (§2, §13)
-    await recordUnverifiedMtnNumber({
-      number: normalized,
-      userId: userId ?? null,
-    });
   }
 
   return { allowed: true };

@@ -448,6 +448,17 @@ export default function AdminMtnVerificationPage() {
     }
   };
 
+  const handleExportBlocked = (format: "txt" | "csv") => {
+    const params = new URLSearchParams({ format });
+    if (selectedBlockedIds.size > 0) {
+      params.set("ids", Array.from(selectedBlockedIds).join(","));
+    } else {
+      if (blockStatus !== "ALL") params.set("status", blockStatus);
+      if (blockSearch.trim()) params.set("q", blockSearch.trim());
+    }
+    window.open(`/api/admin/mtn-verification/blocked/export?${params.toString()}`, "_blank");
+  };
+
   const handleMarkBatchSubmitted = async (batchId: string) => {
     try {
       const res = await fetch(`/api/admin/mtn-verification/batches/${batchId}`, {
@@ -1305,7 +1316,7 @@ export default function AdminMtnVerificationPage() {
                   About Blocked / Unverified MTN Numbers (§13, §14)
                 </p>
                 <p className="mt-0.5">
-                  These numbers placed orders while MTN verification was OFF, but were not yet verified. Orders were allowed and not blocked. You can review them here and promote verified ones directly into the accepted whitelist.
+                  These MTN numbers were detected by our system check or entered during orders and flagged as unverified. You can export them as TXT or CSV for telco batch processing, create verification batches, or promote verified numbers into the accepted whitelist.
                 </p>
               </div>
             </div>
@@ -1337,7 +1348,7 @@ export default function AdminMtnVerificationPage() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {selectedBlockedIds.size > 0 && (
                   <Button
                     size="sm"
@@ -1345,11 +1356,32 @@ export default function AdminMtnVerificationPage() {
                     className="h-8.5 text-xs bg-brand-600 hover:bg-brand-700 text-white"
                   >
                     <Layers className="h-3.5 w-3.5 mr-1" />
-                    Create Verification Batch ({selectedBlockedIds.size})
+                    Create Batch ({selectedBlockedIds.size})
                   </Button>
                 )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8.5 text-xs"
+                  onClick={() => handleExportBlocked("csv")}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  Export CSV{selectedBlockedIds.size > 0 ? ` (${selectedBlockedIds.size})` : ""}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8.5 text-xs"
+                  onClick={() => handleExportBlocked("txt")}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  Export TXT{selectedBlockedIds.size > 0 ? ` (${selectedBlockedIds.size})` : ""}
+                </Button>
+
                 <div className="text-xs text-slate-500">
-                  Total Review Numbers: {blockTotal}
+                  Total: {blockTotal}
                 </div>
               </div>
             </div>
