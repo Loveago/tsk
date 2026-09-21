@@ -47,6 +47,23 @@ export async function GET(request: NextRequest) {
       where.createdAt = dateFilter;
     }
 
+    // Export mode: return all numbers as plain text (no pagination)
+    if (searchParams.get("export") === "true") {
+      const allItems = await prisma.mtnVerificationRequest.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        select: { number: true },
+      });
+      const txt = allItems.map((r) => r.number).join("\n");
+      return new NextResponse(txt, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Content-Disposition": `attachment; filename="verification-requests-${Date.now()}.txt"`,
+        },
+      });
+    }
+
     const [items, total] = await Promise.all([
       prisma.mtnVerificationRequest.findMany({
         where,

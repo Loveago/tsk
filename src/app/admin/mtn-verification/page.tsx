@@ -355,6 +355,34 @@ export default function AdminMtnVerificationPage() {
     }
   };
 
+  const [exportingRequests, setExportingRequests] = React.useState(false);
+
+  const handleExportRequestsTxt = async () => {
+    setExportingRequests(true);
+    try {
+      const params = new URLSearchParams({ export: "true" });
+      if (reqStatus !== "ALL") params.set("status", reqStatus);
+      if (reqSearch.trim()) params.set("q", reqSearch.trim());
+
+      const res = await fetch(`/api/admin/mtn-verification/requests?${params.toString()}`);
+      if (!res.ok) throw new Error("Export failed");
+
+      const text = await res.text();
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `verification-requests-${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast("Numbers exported successfully", "success");
+    } catch (err: any) {
+      toast(err.message ?? "Export failed", "error");
+    } finally {
+      setExportingRequests(false);
+    }
+  };
+
   const openNumberDetails = (num: string) => {
     setSelectedNumberForDetails(num);
     setNumberDetailsModalOpen(true);
@@ -615,6 +643,16 @@ export default function AdminMtnVerificationPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportRequestsTxt}
+                  disabled={exportingRequests || requests.length === 0}
+                  className="h-8.5 text-xs"
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  {exportingRequests ? "Exporting..." : "Export TXT"}
+                </Button>
                 {selectedReqIds.size > 0 && (
                   <Button
                     size="sm"
