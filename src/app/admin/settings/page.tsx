@@ -206,6 +206,7 @@ export default function AdminSettingsPage() {
 
   const isHalted = settings.order_processing_halted === "true";
   const submissionKillSwitchOn = settings.number_submission_page_enabled !== "false";
+  const liveDeliverySpeedOn = settings.live_delivery_speed_enabled !== "false";
   const mtnSingleOrderDaily = settings.mtn_single_order_per_day_enabled === "true";
   const allowRegistration = settings.allow_user_registration !== "false";
   const mtnVerificationEnabled = settings.mtn_number_verification_enabled === "true";
@@ -301,6 +302,51 @@ export default function AdminSettingsPage() {
                 {submissionKillSwitchOn
                   ? "✓ Number submission page is ACTIVE (users can submit orders)"
                   : "✕ Number submission page is KILLED/OFF (submission disabled)"}
+              </p>
+            </div>
+
+            {/* Live Delivery Speed & Estimated Wait Tracker */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Live Delivery Speed & Estimated Wait Tracker
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Toggle display of the live delivery turnaround speed card and recent delivered orders showcase on the Send Orders page (`/dashboard/send`).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={liveDeliverySpeedOn}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      live_delivery_speed_enabled: liveDeliverySpeedOn ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    liveDeliverySpeedOn ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      liveDeliverySpeedOn ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+              <p
+                className={`mt-3 rounded-xl px-3 py-2 text-xs font-medium ${
+                  liveDeliverySpeedOn
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                }`}
+              >
+                {liveDeliverySpeedOn
+                  ? "✓ Live delivery speed tracker is ACTIVE on Send Orders page"
+                  : "✕ Live delivery speed tracker is HIDDEN / OFF"}
               </p>
             </div>
 

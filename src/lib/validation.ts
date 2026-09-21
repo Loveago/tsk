@@ -246,6 +246,7 @@ export const settingsSchema = z.object({
   order_processing_halted: z.enum(["true", "false"]).optional(),
   number_submission_page_enabled: z.enum(["true", "false"]).optional(),
   mtn_single_order_per_day_enabled: z.enum(["true", "false"]).optional(),
+  live_delivery_speed_enabled: z.enum(["true", "false"]).optional(),
   default_register_role: z.enum(["USER", "RESELLER"]).optional(),
   allow_user_registration: z.enum(["true", "false"]).optional(),
   signup_fee_enabled: z.enum(["true", "false"]).optional(),

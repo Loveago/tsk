@@ -10,6 +10,7 @@ import { isMtnPrefix, detectNetworkNameByPrefix } from "@/lib/phone-utils";
 import { cn } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { LiveDeliverySpeedCard } from "@/components/send/live-delivery-speed-card";
 import {
   AlertTriangle,
   Check,
@@ -712,6 +713,9 @@ export default function SendOrderPage() {
               })}
             </div>
           </div>
+
+          <LiveDeliverySpeedCard network={network} />
+
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5">
             {(
               [
