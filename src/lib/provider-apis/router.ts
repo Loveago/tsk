@@ -297,7 +297,9 @@ export async function dispatchOrder(
 
       const purchaseRes = await client.purchase(purchasePayload);
       const durationMs = Date.now() - bigwinStartTime;
-      const providerRef = `BIGWIN:${purchaseRes.orderId || purchaseRes.order_id || purchaseRes.reference}`;
+      const providerRef = purchaseRes.reference
+        ? `BIGWIN:${purchaseRes.reference}`
+        : `BIGWIN:${purchaseRes.orderId || purchaseRes.order_id}`;
 
       // Update provider reference
       await prisma.order.update({
@@ -1208,6 +1210,138 @@ export async function syncClickyfiedOrder(
   }
 }
 
+const lastCheckedBigwinOrders = new Map<number, number>();
+export const BIGWIN_POLL_INTERVAL_MS = 60_000; // 60 seconds
+
+/**
+ * Synchronizes an order's status with Bigwindata provider API.
+ * Updates the database order if the status has changed.
+ */
+export async function syncBigwindataOrder(
+  orderIdOrRecord: number | {
+    id: number;
+    status: string;
+    providerReference: string | null;
+    updatedAt: Date;
+  },
+  actorLabel = "Bigwindata Sync",
+  options: { forceCheck?: boolean } = {}
+): Promise<{ changed: boolean; previousStatus?: string; newStatus?: string; error?: string }> {
+  const orderId = typeof orderIdOrRecord === "number" ? orderIdOrRecord : orderIdOrRecord.id;
+
+  if (syncingOrders.has(orderId)) {
+    return { changed: false };
+  }
+
+  // If partner poller is explicitly disabled in settings, skip background check
+  if (!options.forceCheck) {
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "partner_poller_enabled" },
+    });
+    if (pollerSetting && pollerSetting.value === "false") {
+      return { changed: false };
+    }
+  }
+
+  const now = Date.now();
+  const lastChecked = lastCheckedBigwinOrders.get(orderId) || 0;
+  if (!options.forceCheck && now - lastChecked < BIGWIN_POLL_INTERVAL_MS) {
+    return { changed: false };
+  }
+
+  syncingOrders.add(orderId);
+  try {
+    const order = typeof orderIdOrRecord === "number"
+      ? await prisma.order.findUnique({ where: { id: orderId } })
+      : orderIdOrRecord;
+
+    if (!order) return { changed: false, error: "Order not found" };
+
+    // Terminal statuses do not need further polling
+    if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(order.status)) {
+      return { changed: false, newStatus: order.status };
+    }
+
+    if (!order.providerReference || !order.providerReference.startsWith("BIGWIN:")) {
+      return { changed: false };
+    }
+
+    const reference = order.providerReference.replace(/^BIGWIN:/i, "").trim();
+    if (!reference) return { changed: false };
+
+    lastCheckedBigwinOrders.set(orderId, now);
+
+    const config = await getProviderRoutingConfig();
+    if (!config.bigwindata?.enabled) {
+      return { changed: false, error: "Bigwindata integration disabled" };
+    }
+
+    const client = new BigwindataClient(config.bigwindata);
+    const statusRes = await client.getOrderStatus(reference);
+    const rawStatus = (statusRes.status || "").toLowerCase().trim();
+
+    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | null = null;
+    if (rawStatus === "delivered" || rawStatus === "success" || rawStatus === "completed") {
+      targetStatus = "SUCCESS";
+    } else if (rawStatus === "failed" || rawStatus === "refunded" || rawStatus === "error" || rawStatus === "cancelled") {
+      targetStatus = "FAILED";
+    } else if (rawStatus === "processing" || rawStatus === "placed" || rawStatus === "accepted" || rawStatus === "in_progress") {
+      targetStatus = "PROCESSING";
+    } else if (rawStatus === "pending") {
+      targetStatus = "PENDING";
+    }
+
+    if (targetStatus && targetStatus !== order.status) {
+      if (targetStatus === "FAILED") {
+        await recordOrderApiLog({
+          orderId: order.id,
+          provider: "BIGWINDATA",
+          action: "SYNC_ORDER",
+          endpoint: `${config.bigwindata.baseUrl || DEFAULT_BIGWINDATA_BASE_URL}/api/orders/${reference}`,
+          method: "GET",
+          statusCode: 200,
+          success: false,
+          errorMessage: `Order marked as failed by Bigwindata (Status: ${rawStatus})`,
+          responsePayload: statusRes.raw,
+          providerReference: order.providerReference,
+        });
+      } else if (targetStatus === "SUCCESS") {
+        await recordOrderApiLog({
+          orderId: order.id,
+          provider: "BIGWINDATA",
+          action: "SYNC_ORDER",
+          endpoint: `${config.bigwindata.baseUrl || DEFAULT_BIGWINDATA_BASE_URL}/api/orders/${reference}`,
+          method: "GET",
+          statusCode: 200,
+          success: true,
+          responsePayload: statusRes.raw,
+          providerReference: order.providerReference,
+        });
+      }
+
+      await changeOrderStatus(
+        order.id,
+        targetStatus,
+        `Delivery status synced from Bigwindata (${rawStatus})`,
+        { id: "system", label: actorLabel },
+        { force: true }
+      );
+
+      return {
+        changed: true,
+        previousStatus: order.status,
+        newStatus: targetStatus,
+      };
+    }
+
+    return { changed: false, newStatus: order.status };
+  } catch (err: any) {
+    return { changed: false, error: err?.message || "Bigwindata sync failed" };
+  } finally {
+    syncingOrders.delete(orderId);
+  }
+}
+
 const lastCheckedGhcOrders = new Map<number, number>();
 export const GHCONNECT_POLL_INTERVAL_MS = 60_000; // 60 seconds
 
@@ -1231,10 +1365,10 @@ export async function syncGhconnectOrder(
     return { changed: false };
   }
 
-  // If poller is disabled in settings, do NOT perform automated background or on-demand sync
+  // If partner poller is explicitly disabled in settings, skip background check
   if (!options.forceCheck) {
     const pollerSetting = await prisma.systemSetting.findUnique({
-      where: { key: "provider_sync_poller_enabled" },
+      where: { key: "partner_poller_enabled" },
     });
     if (pollerSetting && pollerSetting.value === "false") {
       return { changed: false };

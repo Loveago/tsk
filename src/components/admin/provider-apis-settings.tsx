@@ -55,6 +55,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
   const [showClickyfiedKey, setShowClickyfiedKey] = React.useState(false);
   const [showGhcKey, setShowGhcKey] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
+  const [syncingPartner, setSyncingPartner] = React.useState(false);
   const [testingBigwin, setTestingBigwin] = React.useState(false);
   const [testingClickyfied, setTestingClickyfied] = React.useState(false);
   const [testingGhc, setTestingGhc] = React.useState(false);
@@ -248,6 +249,21 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
       toast(err.message, "error");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const syncPartnerOrders = async () => {
+    setSyncingPartner(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/admin/provider-apis/sync-partner", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Partner sync failed");
+      toast(`Telecel & AT sync: ${json.checked} checked, ${json.updated} updated.`, "success");
+    } catch (err: any) {
+      toast(err.message, "error");
+    } finally {
+      setSyncingPartner(false);
     }
   };
 
@@ -500,8 +516,20 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 onClick={syncInFlight}
                 disabled={syncing}
                 className="text-xs"
+                title="Sync Clickyfied in-flight MTN orders"
               >
-                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncing ? "animate-spin" : ""}`} /> Sync Active Orders
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncing ? "animate-spin" : ""}`} /> Sync Clickyfied (MTN)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={syncPartnerOrders}
+                disabled={syncingPartner}
+                className="text-xs border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                title="Sync Bigwindata & GHConnect in-flight Telecel and AT orders"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncingPartner ? "animate-spin" : ""}`} /> Sync Telecel & AT
               </Button>
             </div>
             <p className="text-[11px] text-slate-400">
@@ -522,7 +550,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       : "text-slate-400"
                   }`}
                 />
-                Automated Background Status Poller
+                Automated Clickyfied Status Poller (MTN)
                 <span
                   className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
                     settings.provider_sync_poller_enabled !== "false"
@@ -536,7 +564,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xl leading-relaxed">
-                When <strong>ON</strong>, the server automatically queries Clickify and providers every {parseInt(settings.provider_sync_poller_interval_seconds || "30", 10) || 30} seconds for in-flight orders and syncs their status. If there are no in-flight orders or reports to poll, it skips provider queries entirely.
+                When <strong>ON</strong>, the server automatically queries Clickyfied every {parseInt(settings.provider_sync_poller_interval_seconds || "30", 10) || 30} seconds for in-flight MTN orders and syncs their status. If using the Clickyfied webhook, this poller can remain off.
               </p>
             </div>
             <button
@@ -608,6 +636,124 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       }));
                     }}
                     className="w-16 px-2 py-1 text-xs text-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  />
+                  <span className="text-[11px] text-slate-500">sec</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Dedicated Telecel & AT (Bigwin & GHConnect) Status Poller Setting */}
+        <div className="mt-3 p-3.5 rounded-xl border border-amber-100 dark:border-amber-900/30 bg-amber-50/40 dark:bg-amber-950/10 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    settings.partner_poller_enabled !== "false"
+                      ? "text-amber-600"
+                      : "text-slate-400"
+                  }`}
+                />
+                Telecel & AT Status Poller (Bigwin & GHConnect)
+                <span
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                    settings.partner_poller_enabled !== "false"
+                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                      : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  {settings.partner_poller_enabled !== "false"
+                    ? `Active (Every ${parseInt(settings.partner_poller_interval_seconds || "60", 10) || 60}s)`
+                    : "Paused"}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xl leading-relaxed">
+                Automatically queries <strong>Bigwindata</strong> and <strong>GHConnect</strong> APIs every {parseInt(settings.partner_poller_interval_seconds || "60", 10) || 60} seconds for in-flight Telecel, AT Big Time, and AT iShare orders. Operates completely separately from Clickyfied so your Telecel & AT orders are continuously updated even when Clickyfied poller is OFF.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={syncPartnerOrders}
+                disabled={syncingPartner}
+                className="text-xs border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${syncingPartner ? "animate-spin" : ""}`} /> Sync Now
+              </Button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.partner_poller_enabled !== "false"}
+                onClick={() =>
+                  setSettings((s) => ({
+                    ...s,
+                    partner_poller_enabled:
+                      s.partner_poller_enabled === "false" ? "true" : "false",
+                  }))
+                }
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  settings.partner_poller_enabled !== "false"
+                    ? "bg-amber-600"
+                    : "bg-slate-300 dark:bg-slate-700"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                    settings.partner_poller_enabled !== "false"
+                      ? "left-[22px]"
+                      : "left-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {settings.partner_poller_enabled !== "false" && (
+            <div className="pt-2.5 border-t border-amber-200/50 dark:border-amber-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="space-y-0.5">
+                <span className="font-medium text-slate-700 dark:text-slate-300">Polling Interval:</span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Timer frequency for querying Bigwin and GHConnect APIs (default: 60s).
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {[30, 60, 120].map((sec) => (
+                  <button
+                    key={sec}
+                    type="button"
+                    onClick={() =>
+                      setSettings((s) => ({
+                        ...s,
+                        partner_poller_interval_seconds: String(sec),
+                      }))
+                    }
+                    className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                      (parseInt(settings.partner_poller_interval_seconds || "60", 10) || 60) === sec
+                        ? "bg-amber-600 text-white shadow-sm"
+                        : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {sec}s {sec === 60 ? "(Default)" : ""}
+                  </button>
+                ))}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="10"
+                    max="600"
+                    value={parseInt(settings.partner_poller_interval_seconds || "60", 10) || 60}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSettings((s) => ({
+                        ...s,
+                        partner_poller_interval_seconds: val,
+                      }));
+                    }}
+                    className="w-16 px-2 py-1 text-xs text-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                   <span className="text-[11px] text-slate-500">sec</span>
                 </div>

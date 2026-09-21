@@ -251,6 +251,97 @@ export class BigwindataClient {
   }
 
   /**
+   * Query status of an order by reference or order ID
+   */
+  async getOrderStatus(orderIdOrReference: string | number): Promise<{
+    id: number;
+    reference: string;
+    status: string;
+    recipient: string;
+    network: string;
+    bundle: string;
+    capacity_gb: number;
+    price: string;
+    rawPrice: number;
+    raw: any;
+  }> {
+    const rawRef = String(orderIdOrReference).replace(/^BIGWIN:/i, "").trim();
+    if (!rawRef) {
+      throw new Error("Bigwindata order ID or reference is required");
+    }
+
+    // 1. If identifier is not purely digits (e.g. starts with API_, ORD_, BULK_), query direct /orders/:reference
+    const isPureDigits = /^\d+$/.test(rawRef);
+    if (!isPureDigits) {
+      try {
+        const res = await this.request<{
+          status: string;
+          data: any;
+        }>(`/orders/${encodeURIComponent(rawRef)}`);
+
+        if (res && res.status === "success" && res.data) {
+          const d = res.data;
+          return {
+            id: Number(d.id) || 0,
+            reference: d.reference || rawRef,
+            status: d.status || "unknown",
+            recipient: d.recipient || "",
+            network: d.network || "",
+            bundle: d.bundle || "",
+            capacity_gb: Number(d.capacity_gb) || 0,
+            price: d.price || "",
+            rawPrice: Number(d.rawPrice) || 0,
+            raw: d,
+          };
+        }
+      } catch {
+        // Fall back to order list lookup
+      }
+    }
+
+    // 2. Query /orders list (up to 100 recent orders) and find matching item by ID or reference
+    const listRes = await this.request<{
+      status: string;
+      data: {
+        orders: Array<{
+          id: number;
+          reference: string;
+          status: string;
+          recipient: string;
+          network: string;
+          bundle: string;
+          capacity_gb: number;
+          price: string;
+          rawPrice: number;
+          [key: string]: any;
+        }>;
+      };
+    }>(`/orders?limit=100`);
+
+    if (listRes && listRes.status === "success" && Array.isArray(listRes.data?.orders)) {
+      const match = listRes.data.orders.find(
+        (o) => String(o.id) === rawRef || o.reference === rawRef
+      );
+      if (match) {
+        return {
+          id: Number(match.id) || 0,
+          reference: match.reference || rawRef,
+          status: match.status || "unknown",
+          recipient: match.recipient || "",
+          network: match.network || "",
+          bundle: match.bundle || "",
+          capacity_gb: Number(match.capacity_gb) || 0,
+          price: match.price || "",
+          rawPrice: Number(match.rawPrice) || 0,
+          raw: match,
+        };
+      }
+    }
+
+    throw new Error(`Bigwindata order not found for identifier: ${rawRef}`);
+  }
+
+  /**
    * Verify HMAC-SHA256 signature on incoming webhook payload
    */
   verifyWebhookSignature(rawBody: string, signature: string, customSecret?: string): boolean {
@@ -272,3 +363,4 @@ export class BigwindataClient {
     }
   }
 }
+

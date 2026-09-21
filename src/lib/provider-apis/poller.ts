@@ -1,5 +1,5 @@
 import { prisma } from "../prisma";
-import { syncClickyfiedOrder, syncClickyfiedDeliveryReport, syncGhconnectOrder } from "./router";
+import { syncClickyfiedOrder, syncClickyfiedDeliveryReport } from "./router";
 
 let isPolling = false;
 
@@ -24,7 +24,7 @@ export async function getPollerIntervalSeconds(): Promise<number> {
 }
 
 /**
- * Self-scheduling background poller for in-flight Clickyfied and GHConnect orders and open delivery reports.
+ * Self-scheduling background poller for in-flight Clickyfied orders and open delivery reports.
  * Automatically synchronizes pending/processing orders and reports (default every 60 seconds, configurable).
  * If there is nothing to poll, it completely skips any provider communication.
  */
@@ -161,30 +161,6 @@ export function startProviderSyncPoller() {
         }
       }
 
-      // Find in-flight GHConnect orders (PENDING or PROCESSING)
-      if (config.ghconnect?.enabled && config.ghconnect?.apiKey) {
-        try {
-          const inFlightGhcOrders = await prisma.order.findMany({
-            where: {
-              status: { in: ["PENDING", "PROCESSING"] },
-              providerReference: { startsWith: "GHC:" },
-              updatedAt: { lte: cutoffTime },
-            },
-            take: 50,
-            orderBy: { updatedAt: "asc" },
-          });
-
-          for (const ghcOrder of inFlightGhcOrders) {
-            try {
-              await syncGhconnectOrder(ghcOrder, "Automatic Background Poller");
-            } catch {
-              // ignore per-order error and continue
-            }
-          }
-        } catch {
-          // ignore transient GHConnect errors
-        }
-      }
 
       // Auto-reconcile any pending Paystack wallet top-ups
       try {
