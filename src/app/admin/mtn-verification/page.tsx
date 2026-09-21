@@ -70,7 +70,7 @@ export default function AdminMtnVerificationPage() {
   const [reqTotal, setReqTotal] = React.useState(0);
   const [reqPage, setReqPage] = React.useState(1);
   const [reqSearch, setReqSearch] = React.useState("");
-  const [reqStatus, setReqStatus] = React.useState("ALL");
+  const [reqStatus, setReqStatus] = React.useState("SUBMITTED");
   const [selectedReqIds, setSelectedReqIds] = React.useState<Set<string>>(new Set());
   const [loadingRequests, setLoadingRequests] = React.useState(false);
 
