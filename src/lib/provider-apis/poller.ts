@@ -169,6 +169,14 @@ export function startProviderSyncPoller() {
       } catch {
         // Ignore background transient errors
       }
+
+      // Auto-reconcile unsettled / undispatched Paystack storefront orders
+      try {
+        const { reconcileUnsettledStorefrontOrders } = await import("@/lib/storefront");
+        await reconcileUnsettledStorefrontOrders(24);
+      } catch {
+        // Ignore background transient errors
+      }
     } catch {
       // Ignore background transient errors
     } finally {

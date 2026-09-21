@@ -507,16 +507,35 @@ export async function verifyAndSettleStorefrontOrder(reference: string): Promise
       return { settled: false, alreadySettled: false, reason: "Storefront order not found" };
     }
     if (row.underlyingOrderId) {
+      // Self-healing: Ensure the underlying order is actually dispatched if it was left in PENDING without a providerReference
+      const underlying = await prisma.order.findUnique({
+        where: { id: row.underlyingOrderId },
+        select: { id: true, status: true, providerReference: true },
+      });
+      if (underlying && underlying.status === "PENDING" && !underlying.providerReference) {
+        try {
+          const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("./provider-apis/router");
+          const config = await getProviderRoutingConfig();
+          if (shouldAutoDispatch(config)) {
+            dispatchOrder(underlying.id).catch((err) => {
+              console.error(`Auto-dispatch failed for existing storefront order #${underlying.id}:`, err);
+            });
+          }
+        } catch (err) {
+          console.error("Storefront auto-dispatch check failed for existing order:", err);
+        }
+      }
       return { settled: true, alreadySettled: true, orderId: row.underlyingOrderId };
     }
 
-    // Strict Paystack verification: status must be success, currency GHS, amount match
+    // Strict Paystack verification: status must be success, currency GHS, amount match (tolerance of 2 pesewas for fee rounding)
     const verification = await verifyTransaction(reference);
     const expectedWithFee = row.sellingPrice + Math.round(row.sellingPrice * 0.02);
     const isAmountMatch =
       typeof verification.amount === "number" &&
       verification.amount > 0 &&
-      (verification.amount === expectedWithFee || verification.amount === row.sellingPrice);
+      (Math.abs(verification.amount - expectedWithFee) <= 2 ||
+       Math.abs(verification.amount - row.sellingPrice) <= 2);
 
     if (
       verification.status !== "success" ||
@@ -542,7 +561,7 @@ export async function verifyAndSettleStorefrontOrder(reference: string): Promise
         select: { underlyingOrderId: true },
       });
       if (updated?.underlyingOrderId) {
-        // Automatically dispatch storefront order to assigned API provider (or Clickify sandbox)
+        // Automatically dispatch storefront order to assigned API provider (Clickyfied / Bigwindata / GHConnect)
         try {
           const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("./provider-apis/router");
           const config = await getProviderRoutingConfig();
@@ -577,6 +596,8 @@ export async function verifyAndSettleStorefrontOrder(reference: string): Promise
  * Reconciles any unsettled storefront orders from the last `hoursBack` hours.
  * For each order without an underlying Tskconnect order, it queries Paystack.
  * If the user paid, it settles the order and dispatches it for processing!
+ * Also verifies and triggers auto-dispatch for any storefront orders whose
+ * underlying order was created but remained undispatched in PENDING status.
  */
 export async function reconcileUnsettledStorefrontOrders(hoursBack = 48): Promise<{
   checked: number;
@@ -607,6 +628,39 @@ export async function reconcileUnsettledStorefrontOrders(hoursBack = 48): Promis
       settled: res.settled,
       reason: res.reason,
     });
+  }
+
+  // Also check recently settled storefront orders whose underlying order is still PENDING with no providerReference
+  try {
+    const undispatched = await prisma.storefrontOrder.findMany({
+      where: {
+        underlyingOrderId: { not: null },
+        underlyingOrder: {
+          status: "PENDING",
+          providerReference: null,
+        },
+        createdAt: { gte: cutoff },
+      },
+      select: { underlyingOrderId: true },
+      take: 50,
+      orderBy: { createdAt: "desc" },
+    });
+
+    for (const item of undispatched) {
+      if (item.underlyingOrderId) {
+        try {
+          const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("./provider-apis/router");
+          const config = await getProviderRoutingConfig();
+          if (shouldAutoDispatch(config)) {
+            await dispatchOrder(item.underlyingOrderId);
+          }
+        } catch (err: any) {
+          console.error(`Auto-dispatch failed during reconciliation for order #${item.underlyingOrderId}:`, err?.message || err);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("Error during undispatched storefront orders check:", err?.message || err);
   }
 
   return { checked: unsettled.length, settledCount, results };

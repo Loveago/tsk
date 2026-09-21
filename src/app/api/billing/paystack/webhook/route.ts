@@ -7,7 +7,7 @@ import {
   settlePaystackTopup,
   PAYSTACK_CURRENCY,
 } from "@/lib/paystack";
-import { isStorefrontReference, settleStorefrontPayment } from "@/lib/storefront";
+import { isStorefrontReference, verifyAndSettleStorefrontOrder } from "@/lib/storefront";
 
 /**
  * Paystack webhook (charge.success). Authenticated by the HMAC-SHA512
@@ -36,18 +36,19 @@ export async function POST(request: NextRequest) {
 
   const reference = event.data.reference;
   try {
-    // Storefront checkouts use the STF- prefix — settle via the storefront
-    // path (idempotent on the unique paymentReference).
-    if (isStorefrontReference(reference)) {
-      const verification = await verifyTransaction(reference);
-      if (verification.status !== "success" || verification.currency !== PAYSTACK_CURRENCY) {
-        return NextResponse.json({ received: true, note: "verification mismatch — left for review" });
-      }
-      const result = await settleStorefrontPayment({
-        reference,
-        paystackAmount: verification.amount,
-        paidAt: verification.paidAt ? new Date(verification.paidAt) : undefined,
+    // Storefront checkouts use the STF- or GH- prefix (or exist in StorefrontOrder table) — settle via the storefront
+    // path (idempotent, auto-verifies, and automatically dispatches to provider).
+    let isStorefront = isStorefrontReference(reference);
+    if (!isStorefront) {
+      const sfRow = await prisma.storefrontOrder.findUnique({
+        where: { paymentReference: reference },
+        select: { id: true },
       });
+      if (sfRow) isStorefront = true;
+    }
+
+    if (isStorefront) {
+      const result = await verifyAndSettleStorefrontOrder(reference);
       await recordAudit({
         actorLabel: "paystack-webhook",
         action: "storefront.paystack_settled",

@@ -158,6 +158,14 @@ export function startPartnerOrderPoller() {
       } catch {
         // Ignore background transient errors
       }
+
+      // 5. Auto-reconcile unsettled / undispatched Paystack storefront orders (fallback if webhook/callback dropped)
+      try {
+        const { reconcileUnsettledStorefrontOrders } = await import("@/lib/storefront");
+        await reconcileUnsettledStorefrontOrders(24);
+      } catch (err: any) {
+        console.error("[PartnerOrderPoller] Error reconciling storefront orders:", err?.message || err);
+      }
     } catch {
       // Ignore background transient errors
     } finally {
