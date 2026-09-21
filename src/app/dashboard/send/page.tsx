@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useToast } from "@/components/toast";
 import { QueueList, SendSummary, type Line } from "@/components/send/queue-list";
 import { NETWORKS, formatGHS } from "@/lib/types";
@@ -19,7 +20,9 @@ import {
   Loader2,
   Send,
   ShieldAlert,
+  Trash2,
   UploadCloud,
+  Wallet,
 } from "lucide-react";
 
 interface Pkg {
@@ -36,6 +39,8 @@ interface PortedNumberItem {
   gbAmount: number;
 }
 
+const DRAFT_STORAGE_KEY = "tsk_send_orders_draft_v1";
+
 export default function SendOrderPage() {
   const { toast } = useToast();
   const [packages, setPackages] = React.useState<Pkg[]>([]);
@@ -50,6 +55,20 @@ export default function SendOrderPage() {
   const [lines, setLines] = React.useState<Line[]>([]);
   const [submitting, setSubmitting] = React.useState(false);
   const [result, setResult] = React.useState<string | null>(null);
+  const [userBalance, setUserBalance] = React.useState<number | null>(null);
+  const [draftLoaded, setDraftLoaded] = React.useState(false);
+  const [copiedBulkText, setCopiedBulkText] = React.useState(false);
+  const [copiedFromModal, setCopiedFromModal] = React.useState(false);
+
+  // Insufficient balance dialog state
+  const [insufficientBalanceModal, setInsufficientBalanceModal] = React.useState<{
+    needed: number;
+    balance: number;
+    deficit: number;
+    orders: Line[];
+    message?: string;
+  } | null>(null);
+
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   // State for confirming unverified MTN numbers
@@ -70,6 +89,30 @@ export default function SendOrderPage() {
     rawText: string | null;
   } | null>(null);
 
+  const fetchBalance = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const d = await res.json();
+        if (d.user && typeof d.user.balance === "number") {
+          setUserBalance(d.user.balance);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const onBalanceUpdate = () => {
+      void fetchBalance();
+    };
+    window.addEventListener("balance-update", onBalanceUpdate);
+    return () => {
+      window.removeEventListener("balance-update", onBalanceUpdate);
+    };
+  }, [fetchBalance]);
+
   React.useEffect(() => {
     fetch("/api/packages")
       .then((r) => r.json())
@@ -78,11 +121,55 @@ export default function SendOrderPage() {
         if (d.submissionEnabled !== undefined) {
           setSubmissionEnabled(d.submissionEnabled);
         }
+        if (typeof d.userBalance === "number") {
+          setUserBalance(d.userBalance);
+        }
       })
       .catch(() => toast("Failed to load packages", "error"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Restore draft from localStorage on mount
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.bulkText) {
+          setBulkText(parsed.bulkText);
+          setTab("paste");
+        }
+        if (Array.isArray(parsed.lines) && parsed.lines.length > 0) {
+          setLines(parsed.lines);
+        }
+        if (parsed.network && NETWORKS.includes(parsed.network)) {
+          setNetwork(parsed.network);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setDraftLoaded(true);
+  }, []);
+
+  // Save draft to localStorage when bulkText or lines changes
+  React.useEffect(() => {
+    if (!draftLoaded || typeof window === "undefined") return;
+    try {
+      if (bulkText.trim() || lines.length > 0) {
+        localStorage.setItem(
+          DRAFT_STORAGE_KEY,
+          JSON.stringify({ bulkText, lines, network })
+        );
+      } else {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [bulkText, lines, network, draftLoaded]);
 
   // If the selected network has no packages, fall back to the first one that does.
   React.useEffect(() => {
@@ -373,6 +460,57 @@ export default function SendOrderPage() {
 
   const total = lines.reduce((s, l) => s + (l.price ?? 0), 0);
 
+  const copyBulkText = async () => {
+    if (!bulkText.trim()) return;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(bulkText);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = bulkText;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopiedBulkText(true);
+      toast("Pasted text copied to clipboard", "success");
+      setTimeout(() => setCopiedBulkText(false), 2000);
+    } catch {
+      toast("Failed to copy text", "error");
+    }
+  };
+
+  const copyInsufficientBalanceOrders = async () => {
+    if (!insufficientBalanceModal?.orders.length) return;
+    const text = insufficientBalanceModal.orders
+      .map((o) => `${o.phoneNumber} ${o.gbAmount}gb`)
+      .join("\n");
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopiedFromModal(true);
+      toast(`Copied ${insufficientBalanceModal.orders.length} order numbers to clipboard`, "success");
+      setTimeout(() => setCopiedFromModal(false), 2000);
+    } catch {
+      toast("Failed to copy numbers", "error");
+    }
+  };
+
   const executeOrderSubmission = async (ordersToSend: Line[]) => {
     if (!ordersToSend.length) {
       toast("Add at least one order", "error");
@@ -380,6 +518,7 @@ export default function SendOrderPage() {
     }
     setSubmitting(true);
     setResult(null);
+    const orderCost = ordersToSend.reduce((s, l) => s + (l.price ?? 0), 0);
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -394,29 +533,77 @@ export default function SendOrderPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        toast(json.error ?? "Failed to send orders", "error");
+        if (res.status === 402 || json.error?.toLowerCase().includes("insufficient balance")) {
+          const currentBal = userBalance ?? 0;
+          const deficit = Math.max(0, orderCost - currentBal);
+          setInsufficientBalanceModal({
+            needed: orderCost,
+            balance: currentBal,
+            deficit: deficit > 0 ? deficit : orderCost,
+            orders: ordersToSend,
+            message: json.error,
+          });
+        } else {
+          toast(json.error ?? "Failed to send orders", "error");
+        }
         return;
       }
       setResult(`${json.count} order(s) sent — total ${formatGHS(json.total)}. Now processing.`);
       setLines([]);
+      setBulkText("");
       setFileName(null);
-      toast("Orders sent!", "success");
       if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch {}
         window.dispatchEvent(new Event("balance-update"));
       }
+      toast("Orders sent!", "success");
     } finally {
       setSubmitting(false);
     }
   };
 
   const submit = async () => {
-    if (!lines.length) {
+    let ordersToSubmit = lines;
+    if (!ordersToSubmit.length && tab === "paste" && bulkText.trim()) {
+      const rawLines = splitOrderLines(bulkText);
+      const parsed: Line[] = [];
+      let skipped = 0;
+      rawLines.forEach((line) => {
+        if (isHeaderLine(line)) return;
+        const parsedLine = parseOrderLine(line, packages, network);
+        if (parsedLine) parsed.push(parsedLine);
+        else skipped++;
+      });
+      if (parsed.length > 0) {
+        addParsed(parsed, skipped, "pasted text", bulkText);
+        return;
+      }
+    }
+
+    if (!ordersToSubmit.length) {
       toast("Add at least one order", "error");
       return;
     }
 
+    const currentTotal = ordersToSubmit.reduce((s, l) => s + (l.price ?? 0), 0);
+
+    // Pre-check balance if known
+    if (userBalance !== null && userBalance < currentTotal) {
+      const deficit = Math.max(0, currentTotal - userBalance);
+      setInsufficientBalanceModal({
+        needed: currentTotal,
+        balance: userBalance,
+        deficit,
+        orders: ordersToSubmit,
+        message: `Insufficient balance. You need GHS ${currentTotal.toFixed(2)} but have GHS ${userBalance.toFixed(2)}.`,
+      });
+      return;
+    }
+
     // Pre-submission check for any unverified MTN numbers
-    const mtnLines = lines.filter((l) => l.network === "MTN");
+    const mtnLines = ordersToSubmit.filter((l) => l.network === "MTN");
     if (mtnLines.length > 0) {
       try {
         const checkRes = await fetch("/api/mtn-verification/check", {
@@ -430,9 +617,9 @@ export default function SendOrderPage() {
           if (unverifiedList.length > 0) {
             const unverifiedSet = new Set(unverifiedList);
             setPendingUnverified({
-              toAdd: lines,
+              toAdd: ordersToSubmit,
               unverifiedNumbers: unverifiedList,
-              verifiedItems: lines.filter((l) => !unverifiedSet.has(l.phoneNumber)),
+              verifiedItems: ordersToSubmit.filter((l) => !unverifiedSet.has(l.phoneNumber)),
               verificationEnabled: checkData.verificationEnabled ?? true,
               rawText: null,
               mode: "submit",
@@ -445,7 +632,7 @@ export default function SendOrderPage() {
       }
     }
 
-    await executeOrderSubmission(lines);
+    await executeOrderSubmission(ordersToSubmit);
   };
 
   return (
@@ -655,24 +842,59 @@ export default function SendOrderPage() {
                     <span className="font-mono font-semibold">0241234567 2gb</span>. All orders go
                     to <span className="font-semibold">{NETWORK_LABELS[network]}</span>
                   </p>
-                  <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                    ✓ Duplicate numbers are automatically filtered so only one order per number is sent.
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      ✓ Duplicate numbers are automatically filtered so only one order per number is sent.
+                    </p>
+                    {bulkText.trim() && (
+                      <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[11px] font-bold text-brand-600 dark:text-brand-400">
+                        {splitOrderLines(bulkText).filter((l) => !isHeaderLine(l)).length} order(s) entered
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {bulkText.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => setBulkText(normalizeTextNumbers(bulkText))}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
-                    >
-                      Format Numbers
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={copyBulkText}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                        title="Copy text to clipboard"
+                      >
+                        {copiedBulkText ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-emerald-500" />
+                            <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5 text-slate-400" />
+                            <span>Copy Text</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBulkText(normalizeTextNumbers(bulkText))}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                      >
+                        Format Numbers
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBulkText("")}
+                        className="inline-flex h-9 items-center gap-1 rounded-lg border border-transparent px-2.5 text-xs font-semibold text-red-500 transition hover:bg-red-50 dark:hover:bg-red-500/10"
+                        title="Clear textarea"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>Clear</span>
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => {
                       handleText(bulkText, "pasted text");
-                      setBulkText("");
                     }}
                     disabled={!bulkText.trim() || !submissionEnabled}
                     className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
@@ -870,6 +1092,95 @@ export default function SendOrderPage() {
                 Proceed with All ({pendingUnverified.toAdd.length})
               </Button>
             )}
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Insufficient Balance Prompt Dialog */}
+      <Dialog
+        open={!!insufficientBalanceModal}
+        onClose={() => setInsufficientBalanceModal(null)}
+        title="Insufficient Wallet Balance"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3.5 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+            <div className="text-xs space-y-1">
+              <p className="font-semibold text-sm">
+                You do not have enough wallet balance to send these orders.
+              </p>
+              <p className="text-red-700 dark:text-red-300">
+                {insufficientBalanceModal?.message || "Please top up your wallet to proceed."}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-800 dark:bg-slate-900/50">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Total Required</p>
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {formatGHS(insufficientBalanceModal?.needed ?? 0)}
+              </p>
+            </div>
+            <div className="border-x border-slate-200 dark:border-slate-800">
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Current Balance</p>
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {formatGHS(insufficientBalanceModal?.balance ?? 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-red-500 dark:text-red-400">Top-Up Needed</p>
+              <p className="text-sm font-bold text-red-600 dark:text-red-400">
+                {formatGHS(insufficientBalanceModal?.deficit ?? 0)}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <p className="font-semibold">✓ Your numbers have NOT been cleared</p>
+            <p className="mt-0.5 text-emerald-700 dark:text-emerald-400">
+              All {insufficientBalanceModal?.orders.length ?? 0} order(s) remain safely preserved in your queue and paste box. You can copy them below, or top up your wallet and return anytime — your orders will still be here.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={copyInsufficientBalanceOrders}
+              className="gap-1.5"
+            >
+              {copiedFromModal ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Copied {insufficientBalanceModal?.orders.length} orders!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Copy Numbers ({insufficientBalanceModal?.orders.length})</span>
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setInsufficientBalanceModal(null)}
+            >
+              Keep &amp; Close
+            </Button>
+            <Link href="/dashboard/billing">
+              <Button
+                type="button"
+                size="sm"
+                className="bg-brand-600 hover:bg-brand-700 text-white gap-1.5"
+              >
+                <Wallet className="h-3.5 w-3.5" />
+                <span>Top Up Wallet</span>
+              </Button>
+            </Link>
           </div>
         </div>
       </Dialog>

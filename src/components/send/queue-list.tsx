@@ -1,6 +1,7 @@
+import * as React from "react";
 import { formatGHS } from "@/lib/types";
 import { isMtnPrefix } from "@/lib/phone-utils";
-import { Send, ShoppingBag, Trash2 } from "lucide-react";
+import { Check, Copy, Send, ShoppingBag, Trash2 } from "lucide-react";
 
 export interface Line {
   phoneNumber: string;
@@ -18,6 +19,32 @@ export function QueueList({
   onRemove: (i: number) => void;
   onClear: () => void;
 }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const copyAll = async () => {
+    if (!lines.length) return;
+    const text = lines.map((l) => `${l.phoneNumber} ${l.gbAmount}gb`).join("\n");
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/5">
@@ -28,9 +55,29 @@ export function QueueList({
           </span>
         </h2>
         {lines.length > 0 && (
-          <button onClick={onClear} className="text-xs font-semibold text-red-500 hover:underline">
-            Clear all
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={copyAll}
+              type="button"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Copy numbers</span>
+                </>
+              )}
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <button onClick={onClear} className="text-xs font-semibold text-red-500 hover:underline">
+              Clear all
+            </button>
+          </div>
         )}
       </div>
       <div className="divide-y divide-slate-100 dark:divide-white/5">

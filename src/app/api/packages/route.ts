@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     });
     const submissionEnabled = killSwitch?.value !== "false";
 
-    return NextResponse.json({ packages: data, submissionEnabled });
+    return NextResponse.json({ packages: data, submissionEnabled, userBalance: user.balance });
   } catch (err) {
     return handleRouteError(err);
   }
