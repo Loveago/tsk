@@ -34,6 +34,10 @@ interface BatchStatus {
   nextBatchGb: number;
   thresholdMet: boolean;
   timerExpired: boolean;
+  group1Count?: number;
+  group1Gb?: number;
+  group2Count?: number;
+  group2Gb?: number;
 }
 
 interface Props {
@@ -233,25 +237,48 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
             </div>
           </div>
 
-          {/* Current Batch vs Next Batch Overflow Breakdown */}
-          {status && (status.nextBatchCount > 0 || status.currentBatchGb > 0) && (
-            <div className="rounded-xl border border-slate-200 dark:border-white/10 p-3 bg-slate-50 dark:bg-white/5 text-xs space-y-1">
-              <div className="flex items-center justify-between font-medium text-slate-800 dark:text-slate-200">
-                <span>Current Batch (to dispatch):</span>
-                <span className="font-semibold text-brand-600 dark:text-brand-400">
-                  {status.currentBatchCount} order(s) • {status.currentBatchGb} GB
-                </span>
-              </div>
-              {status.nextBatchCount > 0 && (
-                <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-white/5">
-                  <span>Rolled over into Next Batch:</span>
-                  <span className="font-semibold text-amber-600 dark:text-amber-400">
-                    +{status.nextBatchCount} order(s) • {status.nextBatchGb} GB
+          {/* Two-Group Size Breakdown Preview */}
+          <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/30 bg-indigo-50/40 dark:bg-indigo-950/20 p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-indigo-900 dark:text-indigo-200">
+              <span className="flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                Auto-Grouped Batches (by size):
+              </span>
+              <span className="text-[10px] font-normal text-indigo-600 dark:text-indigo-400">
+                Dispatched as 2 separate batches
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-800/40 bg-white/80 dark:bg-slate-900/60 p-2.5 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">Group 1 (1–5 GB)</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                    Small
                   </span>
                 </div>
-              )}
+                <div className="text-sm font-bold text-slate-900 dark:text-white">
+                  {status?.group1Count ?? 0} <span className="text-xs font-normal text-slate-500">order(s)</span>
+                  <span className="ml-1.5 text-xs text-brand-600 dark:text-brand-400 font-semibold">• {status?.group1Gb ?? 0} GB</span>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-800/40 bg-white/80 dark:bg-slate-900/60 p-2.5 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">Group 2 (6+ GB)</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                    Large
+                  </span>
+                </div>
+                <div className="text-sm font-bold text-slate-900 dark:text-white">
+                  {status?.group2Count ?? 0} <span className="text-xs font-normal text-slate-500">order(s)</span>
+                  <span className="ml-1.5 text-xs text-purple-600 dark:text-purple-400 font-semibold">• {status?.group2Gb ?? 0} GB</span>
+                </div>
+              </div>
             </div>
-          )}
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+              When dispatched, orders are automatically separated and sent as two distinct batches to Clickyfied: one batch for <strong>1–5 GB</strong> and one batch for <strong>6+ GB</strong>.
+            </p>
+          </div>
 
           {/* Progress towards 100 GB threshold */}
           <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-white/5 space-y-1.5">

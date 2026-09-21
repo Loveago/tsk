@@ -75,6 +75,10 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
     nextBatchGb: number;
     thresholdMet: boolean;
     timerExpired: boolean;
+    group1Count?: number;
+    group1Gb?: number;
+    group2Count?: number;
+    group2Gb?: number;
   } | null>(null);
   const [loadingBatchStatus, setLoadingBatchStatus] = React.useState(false);
   const [dispatchingBatch, setDispatchingBatch] = React.useState(false);
@@ -1518,28 +1522,31 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                     </div>
                   </div>
 
-                  {batchStatus && (batchStatus.nextBatchCount > 0 || batchStatus.currentBatchGb > 0) && (
-                    <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 text-xs space-y-1">
-                      <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                        <span>Current Batch Limit:</span>
-                        <span className="font-semibold text-brand-600 dark:text-brand-400">
-                          {batchStatus.currentBatchCount} order(s) • {batchStatus.currentBatchGb} / {batchStatus.gbThreshold} GB
-                        </span>
+                  {/* Two-Group Size Breakdown Preview */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 rounded-lg bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300">Group 1 (1–5 GB)</span>
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-blue-200/60 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 font-medium">Small</span>
                       </div>
-                      {batchStatus.nextBatchCount > 0 && (
-                        <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-white/5">
-                          <span>Next Batch Queue:</span>
-                          <span className="font-semibold text-amber-600 dark:text-amber-400">
-                            +{batchStatus.nextBatchCount} order(s) • {batchStatus.nextBatchGb} GB
-                          </span>
-                        </div>
-                      )}
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        {batchStatus?.group1Count ?? 0} order(s) • {batchStatus?.group1Gb ?? 0} GB
+                      </div>
                     </div>
-                  )}
+                    <div className="p-2 rounded-lg bg-purple-50/60 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300">Group 2 (6+ GB)</span>
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-purple-200/60 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200 font-medium">Large</span>
+                      </div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        {batchStatus?.group2Count ?? 0} order(s) • {batchStatus?.group2Gb ?? 0} GB
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-slate-500">
-                      Dispatched batches are strictly capped at {settings.clickyfied_batch_gb_threshold ?? 100} GB. Statuses mirror Clickyfied (pending, processing, processed).
+                      Dispatched as 2 separate batches (1–5 GB & 6+ GB) to Clickyfied.
                     </span>
                     <Button
                       type="button"
