@@ -389,15 +389,33 @@ export default function AdminMtnVerificationPage() {
       const res = await fetch(`/api/admin/mtn-verification/requests?${params.toString()}`);
       if (!res.ok) throw new Error("Export failed");
 
+      // Use filename from server (contains batch reference when one was created)
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const filename = filenameMatch?.[1] ?? `verification-requests-${Date.now()}.txt`;
+
       const text = await res.text();
       const blob = new Blob([text], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `verification-requests-${Date.now()}.txt`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      toast("Numbers exported successfully", "success");
+
+      // Extract batch ref from filename for the toast message
+      const batchRefMatch = filename.match(/verification-requests-([A-Z0-9-]+?)-\d+\.txt/);
+      const batchRef = batchRefMatch?.[1];
+      toast(
+        batchRef
+          ? `Exported & moved to batch ${batchRef} in Verification Batches`
+          : "Numbers exported successfully",
+        "success"
+      );
+
+      // Refresh list and stats so requests show updated PROCESSING status
+      fetchRequests();
+      fetchStats();
     } catch (err: any) {
       toast(err.message ?? "Export failed", "error");
     } finally {

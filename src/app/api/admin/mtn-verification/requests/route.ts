@@ -48,18 +48,51 @@ export async function GET(request: NextRequest) {
     }
 
     // Export mode: return all numbers as plain text (no pagination)
+    // Also auto-creates a verification batch so requests move to PROCESSING.
     if (searchParams.get("export") === "true") {
+      const admin = await requireAdmin();
+
       const allItems = await prisma.mtnVerificationRequest.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        select: { number: true },
+        select: { id: true, number: true, status: true },
       });
+
+      if (allItems.length === 0) {
+        return new NextResponse("", {
+          status: 200,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": `attachment; filename="verification-requests-${Date.now()}.txt"`,
+          },
+        });
+      }
+
+      // Only batch requests that aren't already in a batch (SUBMITTED status)
+      const batchableIds = allItems
+        .filter((r) => r.status === "SUBMITTED")
+        .map((r) => r.id);
+
+      let batchRef = "";
+      if (batchableIds.length > 0) {
+        const { createVerificationBatch } = await import("@/lib/mtn-verification");
+        const batch = await createVerificationBatch({
+          requestIds: batchableIds,
+          actorLabel: admin.email,
+        });
+        batchRef = batch.batchReference;
+      }
+
       const txt = allItems.map((r) => r.number).join("\n");
+      const filename = batchRef
+        ? `verification-requests-${batchRef}-${Date.now()}.txt`
+        : `verification-requests-${Date.now()}.txt`;
+
       return new NextResponse(txt, {
         status: 200,
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
-          "Content-Disposition": `attachment; filename="verification-requests-${Date.now()}.txt"`,
+          "Content-Disposition": `attachment; filename="${filename}"`,
         },
       });
     }
