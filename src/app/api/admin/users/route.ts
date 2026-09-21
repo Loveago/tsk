@@ -14,19 +14,48 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
     const role = searchParams.get("role");
     const status = searchParams.get("status");
+    const balance = searchParams.get("balance");
+    const pricingProfileId = searchParams.get("pricingProfileId");
+    const hasOrders = searchParams.get("hasOrders");
+    const hasSignupCode = searchParams.get("hasSignupCode");
     const q = searchParams.get("q");
 
     const where: Record<string, unknown> = {};
     if (role) where.role = role;
     if (status) where.status = status;
+    if (pricingProfileId) where.pricingProfileId = pricingProfileId;
+
+    if (balance === "zero") {
+      where.balance = { equals: 0 };
+    } else if (balance === "positive") {
+      where.balance = { gt: 0 };
+    } else if (balance === "low") {
+      where.balance = { gt: 0, lte: 10 };
+    } else if (balance === "negative") {
+      where.balance = { lt: 0 };
+    }
+
+    if (hasOrders === "yes") {
+      where.orders = { some: {} };
+    } else if (hasOrders === "no") {
+      where.orders = { none: {} };
+    }
+
+    if (hasSignupCode === "yes") {
+      where.signupCodeUsage = { isNot: null };
+    } else if (hasSignupCode === "no") {
+      where.signupCodeUsage = null;
+    }
+
     if (q) {
       where.OR = [
-        { email: { contains: q } },
-        { name: { contains: q } },
+        { email: { contains: q, mode: "insensitive" } },
+        { name: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q, mode: "insensitive" } },
       ];
     }
 
-    const [data, total] = await Promise.all([
+    const [data, total, awaitingPaymentCount, zeroBalanceCount, frozenCount, activeCount] = await Promise.all([
       prisma.user.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -53,6 +82,10 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.user.count({ where }),
+      prisma.user.count({ where: { status: "PENDING_PAYMENT" } }),
+      prisma.user.count({ where: { balance: 0 } }),
+      prisma.user.count({ where: { status: "FROZEN" } }),
+      prisma.user.count({ where: { status: "ACTIVE" } }),
     ]);
 
     return NextResponse.json({
@@ -61,6 +94,13 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       pages: Math.ceil(total / pageSize),
+      counts: {
+        total,
+        awaitingPayment: awaitingPaymentCount,
+        zeroBalance: zeroBalanceCount,
+        frozen: frozenCount,
+        active: activeCount,
+      },
     });
   } catch (err) {
     return handleRouteError(err);

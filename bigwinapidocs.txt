@@ -1,0 +1,270 @@
+
+BIGWIN api Reference
+REST · JSON over HTTPS · HMAC-signed webhooks
+Get API Key
+Base URL
+https://bigwindatagh.com/api
+Auth Header
+X-API-Key: ak_eaccfe263…
+Getting Started
+Introduction
+Authentication
+Account
+GET /balance
+Catalogue
+GET /bundles
+Orders
+POST /purchase
+POST /bulk-purchase
+AFA
+POST /afa
+Integration
+Webhooks
+Error Codes
+Introduction
+The BIGWIN api lets you place data bundle orders, register AFA enrollments, query your wallet, and receive real-time order status updates via signed webhooks — all from your own systems.
+
+All requests use JSON over HTTPS. Successful responses return 200 OK with a status: "success" wrapper. Errors return appropriate 4xx/5xx codes with status: "error" and an errors[] array.
+
+Authentication
+Every request must include your API key in the X-API-Key header. Requests with a missing, invalid, or revoked key receive 401 Unauthorized.
+
+Authenticated Request
+Copy
+curl "https://bigwindatagh.com/api/balance" \
+  -H "X-API-Key: ak_eaccfe263cfab291ea6e240ad52c2a954c1d9b5df580864f"
+GET
+https://bigwindatagh.com/api/balance
+#
+Returns your current wallet balance and confirms your API key is valid.
+
+Request Example
+cURL
+PHP
+JS
+Copy
+curl "https://bigwindatagh.com/api/balance" \
+  -H "X-API-Key: ak_eaccfe263cfab291ea6e240ad52c2a954c1d9b5df580864f"
+Response
+Copy
+{
+  "status": "success",
+  "data": {
+    "balance":    "GH₵ 50.00",
+    "rawBalance": 50.00,
+    "currency":   "GHS"
+  }
+}
+GET
+https://bigwindatagh.com/api/bundles
+#
+Returns all active bundles with prices reflecting your assigned price group. Pass an optional network_code to filter.
+
+Parameters
+Name	Type	Required	Description
+network_code	string	Optional	Filter by network: mtn, mtn_xpress, telecel, at_ishare, at_bigtime
+Request Example
+cURL
+PHP
+JS
+Copy
+curl "https://bigwindatagh.com/api/bundles?network_code=mtn" \
+  -H "X-API-Key: ak_eaccfe263cfab291ea6e240ad52c2a954c1d9b5df580864f"
+Response
+Copy
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 1,
+      "label": "MTN 1GB",
+      "capacity_gb": 1,
+      "network_code": "mtn",
+      "network_name": "MTN",
+      "network_key": "YELLO",
+      "price": "GH₵ 5.00",
+      "rawPrice": 5.00
+    }
+  ]
+}
+POST
+https://bigwindatagh.com/api/purchase
+#
+Place a single data bundle order for one recipient. Balance is deducted immediately; dispatch happens asynchronously via the queue.
+
+Parameters
+Name	Type	Required	Description
+bundle_id	integer	Required	Bundle ID from GET /bundles
+recipient	string	Required	10-digit Ghanaian phone: 0XXXXXXXXX
+idempotency_key	string	Optional	Unique key to prevent duplicate orders
+webhook_url	string	Optional	Override webhook URL for this order only
+Request Example
+cURL
+PHP
+JS
+Copy
+curl -X POST "https://bigwindatagh.com/api/purchase" \
+  -H "X-API-Key: ak_eaccfe263cfab291ea6e240ad52c2a954c1d9b5df580864f" \
+  -H "Content-Type: application/json" \
+  -d '{"bundle_id":1,"recipient":"0241234567"}'
+Response
+Copy
+{
+  "status": "success",
+  "data": {
+    "order_id":   123,
+    "reference":  "ORD_ABC123DEF456",
+    "status":     "accepted",
+    "price":      "GH₵ 5.00",
+    "rawPrice":   5.00,
+    "balance":    "GH₵ 45.00",
+    "rawBalance": 45.00
+  }
+}
+POST
+https://bigwindatagh.com/api/bulk-purchase
+#
+Place up to 100 orders in one request. Each line is validated independently — invalid entries are skipped and reported, while valid orders are charged atomically.
+
+Parameters
+Name	Type	Required	Description
+orders	array	Required	Array of order objects (max 100)
+orders[].bundle_id	integer	Required	Bundle ID for this line
+orders[].recipient	string	Required	10-digit phone number
+orders[].idempotency_key	string	Optional	Per-order idempotency key
+Request Example
+cURL
+PHP
+JS
+Copy
+curl -X POST "https://bigwindatagh.com/api/bulk-purchase" \
+  -H "X-API-Key: ak_eaccfe263cfab291ea6e240ad52c2a954c1d9b5df580864f" \
+  -H "Content-Type: application/json" \
+  -d '{"orders":[{"bundle_id":1,"recipient":"0241234567"},{"bundle_id":2,"recipient":"0551234567"}]}'
+Response
+Copy
+{
+  "status": "success",
+  "data": {
+    "orders_placed":  2,
+    "orders_skipped": 0,
+    "total_cost":     "GH₵ 14.00",
+    "rawTotalCost":   14.00,
+    "balance":        "GH₵ 36.00",
+    "rawBalance":     36.00,
+    "orders": [
+      {
+        "line":      1,
+        "order_id":  124,
+        "reference": "BULK_API_XXXX_1",
+        "recipient": "0241234567",
+        "status":    "accepted",
+        "price":     "GH₵ 5.00"
+      }
+    ],
+    "skipped": []
+  }
+}
+POST
+https://bigwindatagh.com/api/afa
+#
+Submit an AFA (All Farmers Association) registration. Price is determined by your assigned price group. Balance is deducted immediately.
+
+Parameters
+Name	Type	Required	Description
+full_name	string	Required	Full legal name (min 3 chars)
+phone	string	Required	10-digit Ghanaian phone: 0XXXXXXXXX
+ghana_card	string	Required	Ghana Card ID: GHA-XXXXXXXXX-X
+location	string	Required	Physical location / district
+webhook_url	string	Optional	Override webhook URL for this order only
+Request Example
+cURL
+PHP
+JS
+Copy
+curl -X POST "https://bigwindatagh.com/api/afa" \
+  -H "X-API-Key: ak_eaccfe263cfab291ea6e240ad52c2a954c1d9b5df580864f" \
+  -H "Content-Type: application/json" \
+  -d '{"full_name":"Kwame Mensah","phone":"0241234567","ghana_card":"GHA-123456789-0","location":"Accra"}'
+Response
+Copy
+{
+  "status": "success",
+  "data": {
+    "order_id":   456,
+    "reference":  "AFA_ABC123DEF456",
+    "status":     "accepted",
+    "price":      "GH₵ 10.00",
+    "rawPrice":   10.00,
+    "balance":    "GH₵ 40.00",
+    "rawBalance": 40.00
+  }
+}
+Webhooks
+When an order or AFA registration changes status, PRISTAR POSTs a signed JSON payload to your registered webhook URL. Configure your webhook URL in the API Dashboard.
+
+Events
+The following events trigger webhook deliveries:
+
+order.placed
+Order sent to provider
+order.delivered
+Successfully delivered
+order.failed
+Delivery failed
+order.refunded
+Refunded to wallet
+afa.delivered
+AFA registered
+afa.failed
+AFA failed
+Signature Verification
+Every request includes an X-Pristarx-Signature header — an HMAC-SHA256 of the raw request body signed with your webhook secret. Always verify this before processing.
+
+PHP
+Node
+Copy
+<?php
+$payload   = file_get_contents("php://input");
+$signature = $_SERVER["HTTP_X_PRISTARX_SIGNATURE"] ?? "";
+$secret    = "your_webhook_secret";
+
+$expected = hash_hmac("sha256", $payload, $secret);
+
+if (!hash_equals($expected, $signature)) {
+    http_response_code(401);
+    exit("Invalid signature");
+}
+
+$event = json_decode($payload, true);
+// process $event["event"], $event["order"], $event["afa_order"]
+
+http_response_code(200);
+echo json_encode(["received" => true]);
+Webhook Payload
+Copy
+{
+  "event":     "order.delivered",
+  "timestamp": "2024-01-15T10:32:14+00:00",
+  "order": {
+    "id":        123,
+    "reference": "ORD_ABC123DEF456",
+    "status":    "delivered",
+    "recipient": "0241234567",
+    "network":   "MTN",
+    "capacity":  1,
+    "price":     5.00
+  }
+}
+Retry Policy
+Failed deliveries (non-2xx response or timeout) are retried up to 5 times with exponential back-off: 2, 4, 8, 16, 32 minutes. Your endpoint should return any 2xx status to acknowledge receipt. Delivery logs are visible in your API Dashboard.
+
+Error Codes
+HTTP	Code	Meaning	Resolution
+401	unauthorized	Missing or invalid API key	Pass a valid active key in X-API-Key header
+402	insufficient_balance	Wallet balance too low	Fund your wallet via the dashboard or /wallet/fund
+404	not_found	Endpoint or resource not found	Check the URL and reference value
+409	duplicate_order	Idempotency key already used	Retrieve the original order instead of resubmitting
+422	validation_error	Invalid parameters	Check the errors[] array in the response body
+429	rate_limited	Too many requests	Wait for Retry-After seconds before retrying
+500	server_error	Internal server error	Retry with exponential back-off; contact support if persistent

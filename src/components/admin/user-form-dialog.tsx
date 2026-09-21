@@ -100,6 +100,30 @@ export function UserFormDialog({
             </div>
           </div>
         )}
+        {user?.status === "PENDING_PAYMENT" && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 dark:border-amber-900/40 dark:bg-amber-950/30 p-3 flex justify-between items-center text-xs">
+            <div className="space-y-0.5">
+              <span className="font-bold text-amber-800 dark:text-amber-300 block">
+                ⚡ Account Awaiting Payment
+              </span>
+              <span className="text-amber-700/80 dark:text-amber-400 text-[11px]">
+                You can activate this account to grant immediate access.
+              </span>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setStatus("ACTIVE");
+                toast("Status changed to ACTIVE. Click Save changes below to persist.", "info");
+              }}
+              className="text-xs bg-white dark:bg-slate-900 border-amber-300 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/50"
+            >
+              Set Active
+            </Button>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label>Name</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />

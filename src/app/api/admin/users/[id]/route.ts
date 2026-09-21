@@ -60,3 +60,72 @@ export async function PATCH(
     return handleRouteError(err);
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const actor = await requireAdmin();
+    const { id } = await params;
+
+    if (id === actor.id) {
+      return apiError(400, "You cannot delete your own administrator account.");
+    }
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return apiError(404, "User not found");
+
+    if (user.role === "ADMIN") {
+      const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
+      if (adminCount <= 1) {
+        return apiError(400, "Cannot delete the only remaining administrator account.");
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Clean up raw chat table if present
+      try {
+        await tx.$executeRawUnsafe(`DELETE FROM support_chat_messages WHERE user_id = $1`, id);
+      } catch {
+        // silent
+      }
+
+      // API request logs via user's API keys
+      const userKeys = await tx.apiKey.findMany({ where: { userId: id }, select: { id: true } });
+      if (userKeys.length > 0) {
+        await tx.apiRequestLog.deleteMany({ where: { apiKeyId: { in: userKeys.map((k) => k.id) } } });
+        await tx.apiKey.deleteMany({ where: { userId: id } });
+      }
+
+      // Delivery reports and events
+      const reports = await tx.deliveryReport.findMany({ where: { userId: id }, select: { id: true } });
+      if (reports.length > 0) {
+        await tx.deliveryReportEvent.deleteMany({ where: { reportId: { in: reports.map((r) => r.id) } } });
+        await tx.deliveryReport.deleteMany({ where: { userId: id } });
+      }
+
+      // Orders and batches
+      await tx.order.deleteMany({ where: { userId: id } });
+      await tx.orderBatch.deleteMany({ where: { userId: id } });
+
+      // Delete user
+      await tx.user.delete({ where: { id } });
+    });
+
+    await recordAudit({
+      userId: actor.id,
+      actorLabel: actor.email,
+      action: "user.delete",
+      target: `user:${id}`,
+      previousValue: JSON.stringify({ email: user.email, name: user.name, role: user.role }),
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: `User ${user.name} (${user.email}) deleted successfully`,
+    });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}

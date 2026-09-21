@@ -32,13 +32,6 @@ interface Conversation {
   unreadCount: number;
 }
 
-const QUICK_TOPICS = [
-  { label: "⚡ Order status inquiry", text: "Hello! Could you please check on the status of my recent order?" },
-  { label: "💳 Wallet top-up query", text: "Hi, I have a question regarding my wallet balance top-up." },
-  { label: "📶 MTN network speed", text: "Hello support, how fast are MTN bundle deliveries today?" },
-  { label: "👋 Chat with an agent", text: "Hello, I would like to speak directly with an administrator." },
-];
-
 export function SystemChatWidget({ user }: { user: AuthUser }) {
   const isStaff = user.role === "ADMIN" || user.role === "MANAGER" || user.role === "SECRETARY";
   const [open, setOpen] = React.useState(false);
@@ -235,10 +228,6 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
       setSending(false);
       setTimeout(scrollToBottom, 100);
     }
-  };
-
-  const handleQuickTopic = (text: string) => {
-    setInput(text);
   };
 
   return (
@@ -595,22 +584,6 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                 })}
                 <div ref={messagesEndRef} />
               </div>
-
-              {/* Quick action topic chips (User only) */}
-              {!isStaff && (
-                <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-t border-slate-100 bg-white dark:border-white/5 dark:bg-[#0d1526] no-scrollbar">
-                  {QUICK_TOPICS.map((t, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleQuickTopic(t.text)}
-                      className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:border-brand-500/40 hover:bg-brand-50/50 hover:text-brand-600 transition dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-brand-400"
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              )}
 
               {/* Message Input Box */}
               <form
