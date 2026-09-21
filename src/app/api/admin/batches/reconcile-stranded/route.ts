@@ -7,25 +7,44 @@ import { dispatchClickyfiedMtnBatch } from "@/lib/provider-apis/clickyfied-batch
 
 export const dynamic = "force-dynamic";
 
+function isStrandedClickyfiedOrder(order: {
+  providerReference: string | null;
+  externalReference?: string | null;
+}): boolean {
+  if (!order.providerReference) return true;
+  const ref = order.providerReference.trim();
+  if (ref === "") return true;
+  if (ref.startsWith("CLICKYFIED_CLAIMED")) return true;
+  if (ref.includes("CF-BATCH-")) return true;
+  // A confirmed Clickyfied submission always returns an order ID starting with "order-"
+  if (!ref.includes("order-")) return true;
+  return false;
+}
+
 /**
  * GET /api/admin/batches/reconcile-stranded
  * Detects MTN orders that are marked as PROCESSING but have no confirmed provider reference
- * (e.g. providerReference is null or CLICKYFIED_CLAIMED token), indicating they were never
- * received or accepted by Clickyfied.
+ * (e.g. providerReference is null, empty, batch code, or missing Clickyfied's order ID),
+ * indicating they were never received or accepted by Clickyfied.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await requireStaff();
+    const { searchParams } = new URL(request.url);
+    const batchCode = searchParams.get("batchCode");
 
-    const strandedOrders = await prisma.order.findMany({
+    const processingOrders = await prisma.order.findMany({
       where: {
         status: "PROCESSING",
-        network: "MTN",
-        OR: [
-          { providerReference: null },
-          { providerReference: "" },
-          { providerReference: { startsWith: "CLICKYFIED_CLAIMED" } },
-        ],
+        network: { equals: "MTN", mode: "insensitive" },
+        ...(batchCode
+          ? {
+              OR: [
+                { externalReference: { contains: batchCode } },
+                { batch: { batchCode: { contains: batchCode } } },
+              ],
+            }
+          : {}),
       },
       select: {
         id: true,
@@ -43,6 +62,7 @@ export async function GET() {
       orderBy: { createdAt: "asc" },
     });
 
+    const strandedOrders = processingOrders.filter(isStrandedClickyfiedOrder);
     const totalGb = strandedOrders.reduce((sum, o) => sum + o.gbAmount, 0);
 
     return NextResponse.json({
@@ -61,31 +81,42 @@ export async function GET() {
  * 
  * Body options:
  * - action: "revert" | "revert_and_dispatch" (default: "revert_and_dispatch")
+ * - batchCode?: string (optional: target only orders belonging to a specific batch code like "CF-BATCH-000104")
  */
 export async function POST(request: NextRequest) {
   try {
     const user = await requireStaff();
     const body = await request.json().catch(() => ({}));
     const action = body.action || "revert_and_dispatch";
+    const targetBatchCode = body.batchCode ? String(body.batchCode).trim() : null;
 
-    const strandedOrders = await prisma.order.findMany({
+    const processingOrders = await prisma.order.findMany({
       where: {
         status: "PROCESSING",
-        network: "MTN",
-        OR: [
-          { providerReference: null },
-          { providerReference: "" },
-          { providerReference: { startsWith: "CLICKYFIED_CLAIMED" } },
-        ],
+        network: { equals: "MTN", mode: "insensitive" },
+        ...(targetBatchCode
+          ? {
+              OR: [
+                { externalReference: { contains: targetBatchCode } },
+                { batch: { batchCode: { contains: targetBatchCode } } },
+              ],
+            }
+          : {}),
       },
       select: {
         id: true,
         phoneNumber: true,
         network: true,
         gbAmount: true,
+        amount: true,
+        status: true,
+        providerReference: true,
+        externalReference: true,
         batchId: true,
       },
     });
+
+    const strandedOrders = processingOrders.filter(isStrandedClickyfiedOrder);
 
     if (strandedOrders.length === 0) {
       return NextResponse.json({
@@ -116,7 +147,7 @@ export async function POST(request: NextRequest) {
         orderId: o.id,
         status: "PENDING",
         previousStatus: "PROCESSING",
-        note: `Reconciled stranded order (was PROCESSING without provider reference). Safely reverted to PENDING by ${actor}.`,
+        note: `Reconciled stranded order (was PROCESSING without valid Clickyfied order ID). Safely reverted to PENDING by ${actor}.`,
         changedBy: `Admin (${actor})`,
       })),
     });

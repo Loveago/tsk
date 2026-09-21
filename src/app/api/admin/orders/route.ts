@@ -10,6 +10,13 @@ import { normalizeOrderStatus } from "@/lib/types";
 export async function GET(request: NextRequest) {
   try {
     await requireStaff();
+
+    // Auto-heal: ensure any stranded processing MTN orders are safely returned to pending
+    try {
+      const { recoverStrandedMtnOrders } = await import("@/lib/provider-apis/router");
+      await recoverStrandedMtnOrders();
+    } catch {}
+
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));

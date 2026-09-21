@@ -140,13 +140,19 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
     }
   };
 
-  const handleReconcile = async () => {
+  const [manualBatchCode, setManualBatchCode] = React.useState("");
+
+  const handleReconcile = async (batchCodeTarget?: string) => {
     try {
       setReconciling(true);
+      const codeToSend = typeof batchCodeTarget === "string" ? batchCodeTarget.trim() : manualBatchCode.trim();
       const res = await fetch("/api/admin/batches/reconcile-stranded", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "revert_and_dispatch" }),
+        body: JSON.stringify({
+          action: "revert_and_dispatch",
+          batchCode: codeToSend || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -157,6 +163,7 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
         data.message || `Reconciled ${data.reconciledCount} stranded orders.`,
         "success"
       );
+      setManualBatchCode("");
       await fetchStatus();
       onSuccess?.();
     } catch (err: any) {
@@ -236,7 +243,7 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
                 <Button
                   type="button"
                   size="sm"
-                  onClick={handleReconcile}
+                  onClick={() => handleReconcile()}
                   disabled={reconciling || dispatching}
                   className="h-7 text-xs bg-rose-600 hover:bg-rose-700 text-white font-semibold gap-1 shrink-0 shadow-sm"
                 >
@@ -390,12 +397,41 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
             </div>
           </div>
 
-          {/* Empty state notice */}
-          {pendingCount === 0 && (
-            <div className="rounded-xl border border-slate-200 dark:border-white/10 p-3 bg-slate-50 dark:bg-slate-800/40 text-center text-xs text-slate-500 dark:text-slate-400">
-              There are currently no pending MTN orders waiting to be dispatched to Clickyfied.
+          {/* Targeted Batch Recovery Tool */}
+          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <RefreshCw className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                Targeted Batch Recovery
+              </span>
+              <span className="text-[11px] text-slate-400">Force recover & dispatch stuck batch</span>
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={manualBatchCode}
+                onChange={(e) => setManualBatchCode(e.target.value)}
+                placeholder="e.g. CF-BATCH-000104 (or leave blank for all)"
+                className="flex-1 h-8 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-brand-500"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => handleReconcile(manualBatchCode)}
+                disabled={reconciling || dispatching}
+                className="h-8 text-xs bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white shrink-0 gap-1 font-medium"
+              >
+                {reconciling ? (
+                  <>
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    <span>Reconciling...</span>
+                  </>
+                ) : (
+                  <span>Reconcile Batch</span>
+                )}
+              </Button>
+            </div>
+          </div>
 
           {/* Dialog Action Buttons */}
           <div className="flex items-center justify-between pt-2">

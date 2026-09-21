@@ -779,15 +779,101 @@ export function mapClickyfiedStatus(
  * Crucially: User-created OrderBatches are NEVER split into chunks or modified!
  * The user sees their submission as one single batch order.
  */
-export async function splitMultiDispatchBatches(): Promise<void> {
+/**
+ * Self-healing: Detects and recovers any MTN orders that are marked PROCESSING
+ * but were never accepted or submitted to Clickyfied (i.e. providerReference is null,
+ * empty, a batch code, or missing Clickyfied's "order-" prefix).
+ */
+export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: number; recoveredGb: number }> {
   try {
-    const existingBatches = await prisma.orderBatch.findMany({
-      include: {
-        _count: { select: { orders: true } },
+    const processingMtnOrders = await prisma.order.findMany({
+      where: {
+        status: "PROCESSING",
+        network: { equals: "MTN", mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        batchId: true,
+        gbAmount: true,
+        providerReference: true,
+        externalReference: true,
       },
     });
 
-    for (const b of existingBatches) {
+    const stranded = processingMtnOrders.filter((o) => {
+      if (!o.providerReference) return true;
+      const ref = o.providerReference.trim();
+      if (ref === "") return true;
+      if (ref.startsWith("CLICKYFIED_CLAIMED")) return true;
+      if (ref.includes("CF-BATCH-")) return true;
+      // Real Clickyfied dispatch references always contain "order-" (e.g. CLICKYFIED:order-1790032774889)
+      if (!ref.includes("order-")) return true;
+      return false;
+    });
+
+    if (stranded.length === 0) {
+      return { recoveredCount: 0, recoveredGb: 0 };
+    }
+
+    const ids = stranded.map((o) => o.id);
+    const totalGb = stranded.reduce((sum, o) => sum + o.gbAmount, 0);
+
+    console.warn(`[recoverStrandedMtnOrders] Automatically recovering ${stranded.length} stranded MTN orders (${totalGb} GB).`);
+
+    await prisma.order.updateMany({
+      where: { id: { in: ids } },
+      data: {
+        status: "PENDING",
+        providerReference: null,
+        externalReference: null,
+      },
+    });
+
+    // Create history entries
+    await prisma.orderStatusHistory.createMany({
+      data: stranded.map((o) => ({
+        orderId: o.id,
+        status: "PENDING",
+        previousStatus: "PROCESSING",
+        note: `Self-healing: Reverted stranded order from PROCESSING to PENDING (was missing valid Clickyfied order reference).`,
+        changedBy: "System Self-Healing",
+      })),
+    }).catch(() => {});
+
+    // Recompute parent batch statuses
+    const batchIds = Array.from(
+      new Set(stranded.map((o) => o.batchId).filter(Boolean))
+    ) as string[];
+    const { recomputeBatchStatus } = await import("../orders");
+    for (const bId of batchIds) {
+      await recomputeBatchStatus(bId).catch(() => {});
+    }
+
+    return { recoveredCount: stranded.length, recoveredGb: totalGb };
+  } catch (err) {
+    console.error("[recoverStrandedMtnOrders] Error:", err);
+    return { recoveredCount: 0, recoveredGb: 0 };
+  }
+}
+
+export async function splitMultiDispatchBatches(): Promise<void> {
+  try {
+    // 1. Recover any stranded orders FIRST so they don't get blocked
+    await recoverStrandedMtnOrders();
+
+    // 2. Only inspect recent in-flight or pending batches to keep performance instantaneous
+    const activeBatches = await prisma.orderBatch.findMany({
+      where: {
+        status: { in: ["PENDING", "PROCESSING"] },
+      },
+      include: {
+        _count: { select: { orders: true } },
+      },
+      take: 50,
+      orderBy: { createdAt: "desc" },
+    });
+
+    for (const b of activeBatches) {
       const actualCount = b._count.orders;
       if (actualCount === 0) {
         // Delete ghost batch with 0 orders so it doesn't show with an empty recipients modal
@@ -815,7 +901,7 @@ export async function splitMultiDispatchBatches(): Promise<void> {
       }
     }
 
-    // 1. Reconcile any dispatched Clickyfied orders that were confirmed sent but left in PENDING
+    // 3. Reconcile any dispatched Clickyfied orders that were confirmed sent but left in PENDING
     const staleDispatchedOrders = await prisma.order.findMany({
       where: {
         status: "PENDING",
@@ -831,39 +917,6 @@ export async function splitMultiDispatchBatches(): Promise<void> {
       });
       const batchIds = Array.from(
         new Set(staleDispatchedOrders.map((o) => o.batchId).filter(Boolean))
-      ) as string[];
-      const { recomputeBatchStatus } = await import("../orders");
-      for (const bId of batchIds) {
-        await recomputeBatchStatus(bId);
-      }
-    }
-
-    // 2. Self-healing: Detect and recover any stranded orders that were prematurely marked PROCESSING
-    // but never actually accepted or submitted to Clickyfied (no valid providerReference)
-    const strandedOrders = await prisma.order.findMany({
-      where: {
-        status: "PROCESSING",
-        network: "MTN",
-        OR: [
-          { providerReference: null },
-          { providerReference: { startsWith: "CLICKYFIED_CLAIMED" } },
-        ],
-      },
-      select: { id: true, batchId: true },
-    });
-    if (strandedOrders.length > 0) {
-      console.warn(`[splitMultiDispatchBatches] Recovering ${strandedOrders.length} stranded MTN orders that were marked PROCESSING without Clickyfied confirmation.`);
-      const ids = strandedOrders.map((o) => o.id);
-      await prisma.order.updateMany({
-        where: { id: { in: ids } },
-        data: {
-          status: "PENDING",
-          providerReference: null,
-          externalReference: null,
-        },
-      });
-      const batchIds = Array.from(
-        new Set(strandedOrders.map((o) => o.batchId).filter(Boolean))
       ) as string[];
       const { recomputeBatchStatus } = await import("../orders");
       for (const bId of batchIds) {

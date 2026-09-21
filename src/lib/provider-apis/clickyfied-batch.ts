@@ -213,6 +213,12 @@ export async function getPendingMtnClickyfiedOrders() {
  * Gets a complete overview of the current MTN batch queue and timer status
  */
 export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> {
+  // Self-heal any stranded processing orders so they immediately rejoin the pending queue
+  try {
+    const { recoverStrandedMtnOrders } = await import("./router");
+    await recoverStrandedMtnOrders();
+  } catch {}
+
   const config = await getProviderRoutingConfig();
   const batchConfig = await getClickyfiedBatchConfig();
   const { orders, count, totalGb } = await getPendingMtnClickyfiedOrders();
