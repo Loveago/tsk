@@ -714,8 +714,6 @@ export default function SendOrderPage() {
             </div>
           </div>
 
-          <LiveDeliverySpeedCard network={network} />
-
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5">
             {(
               [
@@ -926,6 +924,9 @@ export default function SendOrderPage() {
         submitting={submitting || !submissionEnabled}
         onSubmit={submit}
       />
+
+      {/* Live Delivery Turnaround & Network Speed (Bottom) */}
+      <LiveDeliverySpeedCard network={network} />
 
       {/* Confirmation modal for Ported numbers */}
       <Dialog
