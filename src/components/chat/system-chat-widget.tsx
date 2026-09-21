@@ -9,6 +9,8 @@ import {
   Sparkles,
   Search,
   Trash2,
+  Check,
+  CheckCheck,
 } from "lucide-react";
 import type { AuthUser } from "@/lib/types";
 
@@ -77,6 +79,11 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
     }
   }, []);
 
+  const selectedUserIdRef = React.useRef<string | null>(selectedUserId);
+  React.useEffect(() => {
+    selectedUserIdRef.current = selectedUserId;
+  }, [selectedUserId]);
+
   const loadAdminConversations = React.useCallback(async (search?: string) => {
     try {
       const url = search ? `/api/admin/chat?search=${encodeURIComponent(search)}` : "/api/admin/chat";
@@ -84,8 +91,12 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
       if (!res.ok) return;
       const json = await res.json();
       const convs: Conversation[] = json.conversations ?? [];
-      setConversations(convs);
-      const totalUnread = convs.reduce((sum, c) => sum + c.unreadCount, 0);
+      const currentActiveId = selectedUserIdRef.current;
+      const updatedConvs = convs.map((c) =>
+        c.userId === currentActiveId ? { ...c, unreadCount: 0 } : c
+      );
+      setConversations(updatedConvs);
+      const totalUnread = updatedConvs.reduce((sum, c) => sum + c.unreadCount, 0);
       setUnreadCount(totalUnread);
     } catch {
       // silent
@@ -99,6 +110,14 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
       if (!res.ok) return;
       const json = await res.json();
       setMessages(json.messages ?? []);
+      setConversations((prev) => {
+        const next = prev.map((c) =>
+          c.userId === targetUserId ? { ...c, unreadCount: 0 } : c
+        );
+        const totalUnread = next.reduce((sum, c) => sum + c.unreadCount, 0);
+        setUnreadCount(totalUnread);
+        return next;
+      });
     } finally {
       setLoading(false);
     }
@@ -175,9 +194,11 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
   React.useEffect(() => {
     if (open) {
       scrollToBottom();
-      setUnreadCount(0);
+      if (!isStaff) {
+        setUnreadCount(0);
+      }
     }
-  }, [open, messages]);
+  }, [open, messages, isStaff]);
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -339,7 +360,17 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                     >
                       <button
                         type="button"
-                        onClick={() => setSelectedUserId(c.userId)}
+                        onClick={() => {
+                          setSelectedUserId(c.userId);
+                          setConversations((prev) => {
+                            const next = prev.map((item) =>
+                              item.userId === c.userId ? { ...item, unreadCount: 0 } : item
+                            );
+                            const totalUnread = next.reduce((sum, item) => sum + item.unreadCount, 0);
+                            setUnreadCount(totalUnread);
+                            return next;
+                          });
+                        }}
                         className="flex flex-1 items-start gap-3 p-3 text-left min-w-0"
                       >
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-brand-600 font-bold text-xs">
@@ -423,6 +454,7 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                         setSelectedUserId(null);
                         setConfirmDeleteThread(false);
                         setConfirmDeleteMsgId(null);
+                        loadAdminConversations(searchQuery.trim() || undefined);
                       }}
                       className="text-[11px] font-bold text-brand-600 hover:underline dark:text-brand-400 shrink-0"
                     >
@@ -543,9 +575,21 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                           </div>
                         )}
                       </div>
-                      <span className="mt-1 px-1 text-[10px] text-slate-400">
-                        {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
+                      <div className="mt-1 flex items-center gap-1 px-1 text-[10px] text-slate-400">
+                        <span>
+                          {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        {isMe && (
+                          <span className="flex items-center gap-0.5 ml-0.5 text-[9px] text-slate-400 dark:text-slate-500">
+                            · {m.read ? "Read" : "Sent"}
+                            {m.read ? (
+                              <CheckCheck className="h-3 w-3 text-brand-500 dark:text-brand-400" />
+                            ) : (
+                              <Check className="h-3 w-3 text-slate-400" />
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

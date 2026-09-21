@@ -4,7 +4,8 @@ import {
   deleteChatMessage,
   deleteUserChatThread,
   getAdminChatConversations,
-  getUserChatMessages,
+  getAdminUserChatMessages,
+  markChatAsRead,
   sendAdminChatMessage,
 } from "@/lib/chat";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
@@ -17,12 +18,26 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined;
 
     if (userId) {
-      const messages = await getUserChatMessages(userId);
+      const messages = await getAdminUserChatMessages(userId);
       return NextResponse.json({ messages });
     }
 
     const conversations = await getAdminChatConversations(search);
     return NextResponse.json({ conversations });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    await requireStaff();
+    const body = await request.json();
+    const userId = typeof body.userId === "string" ? body.userId : "";
+    if (!userId) return apiError(400, "userId is required");
+
+    await markChatAsRead(userId, "USER");
+    return NextResponse.json({ ok: true });
   } catch (err) {
     return handleRouteError(err);
   }

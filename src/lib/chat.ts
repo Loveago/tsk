@@ -50,6 +50,12 @@ export async function ensureChatTable(): Promise<void> {
 export async function getUserChatMessages(userId: string): Promise<ChatMessage[]> {
   await ensureChatTable();
   try {
+    // Mark admin messages as read when user opens the chat
+    await prisma.$executeRawUnsafe(
+      `UPDATE support_chat_messages SET read = TRUE WHERE user_id = $1 AND sender = 'ADMIN' AND read = FALSE`,
+      userId
+    );
+
     const rows = await prisma.$queryRawUnsafe<
       Array<{
         id: string;
@@ -69,9 +75,46 @@ export async function getUserChatMessages(userId: string): Promise<ChatMessage[]
       userId
     );
 
-    // Mark admin messages as read when user opens
+    return rows.map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      sender: r.sender as "USER" | "ADMIN",
+      adminId: r.admin_id,
+      message: r.message,
+      read: Boolean(r.read),
+      createdAt: r.created_at.toISOString(),
+    }));
+  } catch (err) {
+    console.error("Error fetching chat messages:", err);
+    return [];
+  }
+}
+
+export async function getAdminUserChatMessages(userId: string): Promise<ChatMessage[]> {
+  await ensureChatTable();
+  try {
+    // Mark user messages as read when staff/admin views the user's thread
     await prisma.$executeRawUnsafe(
-      `UPDATE support_chat_messages SET read = TRUE WHERE user_id = $1 AND sender = 'ADMIN' AND read = FALSE`,
+      `UPDATE support_chat_messages SET read = TRUE WHERE user_id = $1 AND sender = 'USER' AND read = FALSE`,
+      userId
+    );
+
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{
+        id: string;
+        user_id: string;
+        sender: string;
+        admin_id: string | null;
+        message: string;
+        read: boolean;
+        created_at: Date;
+      }>
+    >(
+      `SELECT id, user_id, sender, admin_id, message, read, created_at
+       FROM support_chat_messages
+       WHERE user_id = $1
+       ORDER BY created_at ASC
+       LIMIT 100`,
       userId
     );
 
@@ -85,8 +128,21 @@ export async function getUserChatMessages(userId: string): Promise<ChatMessage[]
       createdAt: r.created_at.toISOString(),
     }));
   } catch (err) {
-    console.error("Error fetching chat messages:", err);
+    console.error("Error fetching admin user chat messages:", err);
     return [];
+  }
+}
+
+export async function markChatAsRead(userId: string, senderToMark: "USER" | "ADMIN"): Promise<void> {
+  await ensureChatTable();
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE support_chat_messages SET read = TRUE WHERE user_id = $1 AND sender = $2 AND read = FALSE`,
+      userId,
+      senderToMark
+    );
+  } catch (err) {
+    console.error("Error marking chat messages as read:", err);
   }
 }
 

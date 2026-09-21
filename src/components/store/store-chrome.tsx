@@ -13,6 +13,7 @@ import {
   RotateCcw,
   ChevronDown,
   UserRound,
+  Send,
 } from "lucide-react";
 import { NetworkLogo } from "./network-logo";
 import { NETWORK_BRANDS, networkHref, storeHref } from "./brands";
@@ -24,6 +25,7 @@ export interface StoreChromeProps {
   description?: string | null;
   logoUrl?: string | null;
   whatsapp?: string | null;
+  whatsappGroupLink?: string | null;
   email?: string | null;
   location?: string | null;
   contactText?: string | null;
@@ -33,11 +35,11 @@ export interface StoreChromeProps {
   children: React.ReactNode;
 }
 
-function whatsappLink(number: string | null | undefined, text: string): string | null {
+function whatsappLink(number: string | null | undefined, text?: string): string | null {
   if (!number) return null;
   const digits = number.replace(/\D/g, "");
   const intl = digits.startsWith("0") ? `233${digits.slice(1)}` : digits;
-  return `https://wa.me/${intl}?text=${encodeURIComponent(text)}`;
+  return text ? `https://wa.me/${intl}?text=${encodeURIComponent(text)}` : `https://wa.me/${intl}`;
 }
 
 /** Official-style WhatsApp glyph (not in lucide). */
@@ -132,18 +134,36 @@ function StoreMark({
 }
 
 export function StoreChrome(props: StoreChromeProps) {
-  const { name, slug, description, logoUrl, whatsapp, email, location, contactText, whatsappLabel, notice, networks, children } = props;
+  const {
+    name,
+    slug,
+    description,
+    logoUrl,
+    whatsapp,
+    whatsappGroupLink,
+    email,
+    location,
+    contactText,
+    whatsappLabel,
+    notice,
+    networks,
+    children,
+  } = props;
   const [shopOpen, setShopOpen] = React.useState(false);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [promoVisible, setPromoVisible] = React.useState(true);
-  const wa = whatsappLink(whatsapp, `Hello ${name}, I need help with an order.`);
-  const bubbleLabel = contactText || `Need help? Chat with ${name}`;
+  const [chatBoxOpen, setChatBoxOpen] = React.useState(false);
+  const [chatMessage, setChatMessage] = React.useState("");
+
+  // Direct clean admin WhatsApp link (no pre-written message)
+  const wa = whatsappLink(whatsapp);
+
+  // WhatsApp Channel link: uses configured group link or falls back to admin WhatsApp
+  const channelUrl = whatsappGroupLink || wa;
   const bannerText = (notice?.trim()) || "🔥 Secure MoMo checkout — bundles delivered to any number, reliably.";
 
   return (
     <div className="min-h-screen bg-[#e9ebf5] dark:bg-[#0a101e]">
-      {/* Floating WhatsApp contact bubble */}
-      {wa && <WhatsAppBubble href={wa} label={bubbleLabel} />}
       {/* Promo bar / Announcement banner */}
       {promoVisible && (
         <div
@@ -330,38 +350,132 @@ export function StoreChrome(props: StoreChromeProps) {
         </div>
       </footer>
 
-      {/* Floating support buttons */}
-      <div className="fixed bottom-5 right-5 z-30 flex flex-col gap-3">
-        {wa && (
-          <>
+      {/* Floating support buttons & Admin Chat Box */}
+      <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
+        {/* Admin Chat Box Popup */}
+        {chatBoxOpen && (
+          <div
+            role="dialog"
+            aria-label="Chat with Admin"
+            className="w-[calc(100vw-2.5rem)] sm:w-88 md:w-96 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xl transition-all duration-200 animate-in fade-in zoom-in-95 dark:border-white/10 dark:bg-[#111a2c]"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/5">
+              <div className="flex items-center gap-2.5">
+                <StoreMark name={name} logoUrl={logoUrl} size="h-8 w-8" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Chat with Admin
+                  </h3>
+                  <p className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Direct support for {name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close chat box"
+                onClick={() => setChatBoxOpen(false)}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Prompt Notice: Go straight to the point */}
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/80 p-2.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+              <div className="flex items-start gap-2">
+                <span className="text-sm">⚡</span>
+                <div>
+                  <p className="font-bold">Go straight to the point</p>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                    Please state your question, complaint, or order reference directly so we can assist you quickly.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Input Form: No pre-written message */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = chatMessage.trim();
+                const target = trimmed ? whatsappLink(whatsapp, trimmed) : wa;
+                if (target) {
+                  window.open(target, "_blank", "noopener,noreferrer");
+                  setChatBoxOpen(false);
+                  setChatMessage("");
+                }
+              }}
+              className="mt-3 space-y-3"
+            >
+              <textarea
+                rows={3}
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                placeholder="Type your message here..."
+                autoFocus
+                className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-amber-400"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Opens directly in WhatsApp
+                </span>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-600 px-4 py-2 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/20 transition-all hover:from-yellow-400 hover:to-amber-500 hover:scale-[1.02] active:scale-95"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Send to Admin</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Floating buttons stack: Chat icon & WhatsApp bubble */}
+        <div className="flex flex-col gap-2.5 items-end">
+          {/* Button 1: Chat icon leading to Admin Chat Box */}
+          {wa && (
             <button
               type="button"
-              aria-label="Chat with support"
-              onClick={() => window.open(wa, "_blank", "noopener")}
-              className="flex items-center justify-center rounded-full bg-gradient-to-br from-yellow-600 via-yellow-800 to-yellow-950 shadow-lg transition-transform hover:scale-105"
-              style={{ height: 52, width: 52 }}
+              aria-label="Chat with Admin"
+              onClick={() => setChatBoxOpen((v) => !v)}
+              className="group relative flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-yellow-500 via-amber-600 to-yellow-700 text-white shadow-lg shadow-amber-900/25 transition-all hover:scale-105 active:scale-95"
             >
-              <svg viewBox="0 0 24 24" className="h-6 w-6 fill-white">
-                <path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
-                <circle cx="8.5" cy="10.5" r="1" fill="#7c5e00" />
-                <circle cx="12" cy="10.5" r="1" fill="#7c5e00" />
-                <circle cx="15.5" cy="10.5" r="1" fill="#7c5e00" />
-              </svg>
+              {chatBoxOpen ? (
+                <X className="h-6 w-6" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-6 w-6 fill-white">
+                  <path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+                  <circle cx="8.5" cy="10.5" r="1" fill="#7c5e00" />
+                  <circle cx="12" cy="10.5" r="1" fill="#7c5e00" />
+                  <circle cx="15.5" cy="10.5" r="1" fill="#7c5e00" />
+                </svg>
+              )}
+              <span className="pointer-events-none absolute right-full mr-2.5 hidden whitespace-nowrap rounded-lg bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-white shadow-md backdrop-blur-xs sm:group-hover:inline-block">
+                {chatBoxOpen ? "Close chat" : "Chat with Admin"}
+              </span>
             </button>
+          )}
+
+          {/* Button 2: WhatsApp bubble leading to WhatsApp Channel */}
+          {channelUrl && (
             <a
-              href={wa}
+              href={channelUrl}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="WhatsApp"
-              className="flex items-center justify-center rounded-full bg-[#25D366] shadow-lg transition-transform hover:scale-105"
-              style={{ height: 52, width: 52 }}
+              aria-label="WhatsApp Channel"
+              className="group relative flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg shadow-emerald-900/25 transition-all hover:scale-105 active:scale-95"
             >
-              <svg viewBox="0 0 24 24" className="h-7 w-7 fill-white">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
-              </svg>
+              <WhatsAppIcon className="h-6 w-6" />
+              <span className="pointer-events-none absolute right-full mr-2.5 hidden whitespace-nowrap rounded-lg bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-white shadow-md backdrop-blur-xs sm:group-hover:inline-block">
+                Join WhatsApp Channel
+              </span>
             </a>
-          </>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Mobile / menu drawer */}

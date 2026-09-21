@@ -14,24 +14,28 @@ export default async function StoreLayout({
 }) {
   const { slug } = await params;
 
-  const storefront = await prisma.storefront.findUnique({
-    where: { slug },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      description: true,
-      logoUrl: true,
-      whatsapp: true,
-      email: true,
-      location: true,
-      contactText: true,
-      whatsappLabel: true,
-      notice: true,
-      status: true,
-      isActive: true,
-    },
-  });
+  const [storefront, supportSetting] = await Promise.all([
+    prisma.storefront.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        logoUrl: true,
+        whatsapp: true,
+        whatsappGroupLink: true,
+        email: true,
+        location: true,
+        contactText: true,
+        whatsappLabel: true,
+        notice: true,
+        status: true,
+        isActive: true,
+      },
+    }),
+    prisma.systemSetting.findUnique({ where: { key: "support_whatsapp" } }),
+  ]);
 
   // Disabled/unknown stores: skip chrome; the page itself renders notFound().
   if (!storefront || storefront.status !== "ENABLED") {
@@ -58,7 +62,8 @@ export default async function StoreLayout({
       slug={storefront.slug}
       description={storefront.description}
       logoUrl={storefront.logoUrl}
-      whatsapp={storefront.whatsapp}
+      whatsapp={storefront.whatsapp || supportSetting?.value || null}
+      whatsappGroupLink={storefront.whatsappGroupLink}
       email={storefront.email}
       location={storefront.location}
       contactText={storefront.contactText}
