@@ -98,10 +98,89 @@ export async function PATCH(request: NextRequest) {
   try {
     const admin = await requireAdmin();
     const body = await request.json();
-    const { id, action, rejectionReason } = body;
+    const { id, ids, action, rejectionReason } = body;
 
-    if (!id || !action) {
-      return apiError(400, "Request ID and action are required");
+    if (!action) {
+      return apiError(400, "Action is required");
+    }
+
+    // ── Bulk mode ──────────────────────────────────────────────────────────
+    if (Array.isArray(ids) && ids.length > 0) {
+      const records = await prisma.mtnVerificationRequest.findMany({
+        where: { id: { in: ids } },
+      });
+      if (records.length === 0) {
+        return apiError(404, "No matching verification requests found");
+      }
+
+      const now = new Date();
+
+      if (action === "VERIFY") {
+        await prisma.$transaction(async (tx) => {
+          await tx.mtnVerificationRequest.updateMany({
+            where: { id: { in: ids } },
+            data: { status: "VERIFIED", verifiedAt: now },
+          });
+
+          for (const rec of records) {
+            await tx.acceptedMtnNumber.upsert({
+              where: { normalizedNumber: rec.normalizedNumber },
+              create: {
+                number: rec.normalizedNumber,
+                normalizedNumber: rec.normalizedNumber,
+                source: "SINGLE_REQUEST_VERIFICATION",
+                verifiedBy: admin.email,
+                verifiedAt: now,
+              },
+              update: { verifiedAt: now, verifiedBy: admin.email },
+            });
+            await tx.blockedMtnNumber.updateMany({
+              where: { normalizedNumber: rec.normalizedNumber },
+              data: { status: "ACCEPTED" },
+            });
+          }
+        });
+
+        await recordAudit({
+          actorLabel: admin.email,
+          action: "ADMIN_BULK_VERIFIED_MTN_REQUESTS",
+          target: `requests:${ids.join(",")}`,
+          newValue: JSON.stringify({ count: records.length }),
+        });
+
+        return NextResponse.json({ success: true, status: "VERIFIED", count: records.length });
+      } else if (action === "REJECT") {
+        const reason = rejectionReason || "Verification rejected by admin";
+        await prisma.$transaction(async (tx) => {
+          await tx.mtnVerificationRequest.updateMany({
+            where: { id: { in: ids } },
+            data: { status: "REJECTED", rejectedAt: now, rejectionReason: reason },
+          });
+
+          for (const rec of records) {
+            await tx.blockedMtnNumber.updateMany({
+              where: { normalizedNumber: rec.normalizedNumber },
+              data: { status: "REJECTED" },
+            });
+          }
+        });
+
+        await recordAudit({
+          actorLabel: admin.email,
+          action: "ADMIN_BULK_REJECTED_MTN_REQUESTS",
+          target: `requests:${ids.join(",")}`,
+          newValue: JSON.stringify({ count: records.length, reason }),
+        });
+
+        return NextResponse.json({ success: true, status: "REJECTED", count: records.length });
+      }
+
+      return apiError(400, "Unsupported action");
+    }
+
+    // ── Single mode ────────────────────────────────────────────────────────
+    if (!id) {
+      return apiError(400, "Request ID or IDs array is required");
     }
 
     const reqRecord = await prisma.mtnVerificationRequest.findUnique({

@@ -287,6 +287,28 @@ export default function AdminMtnVerificationPage() {
     }
   };
 
+  const handleBulkReqAction = async (action: "VERIFY" | "REJECT") => {
+    if (!selectedReqIds.size) return;
+    const count = selectedReqIds.size;
+    const label = action === "VERIFY" ? "verify" : "reject";
+    if (!confirm(`Are you sure you want to ${label} ${count} selected request${count > 1 ? "s" : ""}?`)) return;
+    try {
+      const res = await fetch("/api/admin/mtn-verification/requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedReqIds), action }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Bulk action failed");
+      toast(`${d.count} request${d.count > 1 ? "s" : ""} marked as ${action}!`, "success");
+      setSelectedReqIds(new Set());
+      fetchRequests();
+      fetchStats();
+    } catch (err: any) {
+      toast(err.message ?? "Error", "error");
+    }
+  };
+
   const handleDeleteAccepted = async (id: string) => {
     if (!confirm("Are you sure you want to remove this number from the accepted whitelist?")) return;
     try {
@@ -654,14 +676,33 @@ export default function AdminMtnVerificationPage() {
                   {exportingRequests ? "Exporting..." : "Export TXT"}
                 </Button>
                 {selectedReqIds.size > 0 && (
-                  <Button
-                    size="sm"
-                    onClick={() => setCreateBatchModalOpen(true)}
-                    className="h-8.5 text-xs"
-                  >
-                    <Layers className="h-3.5 w-3.5 mr-1" />
-                    Create Batch ({selectedReqIds.size})
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={() => handleBulkReqAction("VERIFY")}
+                      className="h-8.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                      Verify ({selectedReqIds.size})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleBulkReqAction("REJECT")}
+                      className="h-8.5 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-950/30"
+                    >
+                      <XCircle className="h-3.5 w-3.5 mr-1" />
+                      Reject ({selectedReqIds.size})
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setCreateBatchModalOpen(true)}
+                      className="h-8.5 text-xs"
+                    >
+                      <Layers className="h-3.5 w-3.5 mr-1" />
+                      Create Batch ({selectedReqIds.size})
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
