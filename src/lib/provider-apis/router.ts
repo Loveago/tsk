@@ -815,14 +815,11 @@ export async function splitMultiDispatchBatches(): Promise<void> {
       }
     }
 
-    // Reconcile any dispatched Clickyfied orders that were left in PENDING
+    // 1. Reconcile any dispatched Clickyfied orders that were confirmed sent but left in PENDING
     const staleDispatchedOrders = await prisma.order.findMany({
       where: {
         status: "PENDING",
-        OR: [
-          { providerReference: { startsWith: "CLICKYFIED" } },
-          { externalReference: { startsWith: "CF-BATCH-" } },
-        ],
+        providerReference: { startsWith: "CLICKYFIED:order-" },
       },
       select: { id: true, batchId: true },
     });
@@ -834,6 +831,39 @@ export async function splitMultiDispatchBatches(): Promise<void> {
       });
       const batchIds = Array.from(
         new Set(staleDispatchedOrders.map((o) => o.batchId).filter(Boolean))
+      ) as string[];
+      const { recomputeBatchStatus } = await import("../orders");
+      for (const bId of batchIds) {
+        await recomputeBatchStatus(bId);
+      }
+    }
+
+    // 2. Self-healing: Detect and recover any stranded orders that were prematurely marked PROCESSING
+    // but never actually accepted or submitted to Clickyfied (no valid providerReference)
+    const strandedOrders = await prisma.order.findMany({
+      where: {
+        status: "PROCESSING",
+        network: "MTN",
+        OR: [
+          { providerReference: null },
+          { providerReference: { startsWith: "CLICKYFIED_CLAIMED" } },
+        ],
+      },
+      select: { id: true, batchId: true },
+    });
+    if (strandedOrders.length > 0) {
+      console.warn(`[splitMultiDispatchBatches] Recovering ${strandedOrders.length} stranded MTN orders that were marked PROCESSING without Clickyfied confirmation.`);
+      const ids = strandedOrders.map((o) => o.id);
+      await prisma.order.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          status: "PENDING",
+          providerReference: null,
+          externalReference: null,
+        },
+      });
+      const batchIds = Array.from(
+        new Set(strandedOrders.map((o) => o.batchId).filter(Boolean))
       ) as string[];
       const { recomputeBatchStatus } = await import("../orders");
       for (const bId of batchIds) {

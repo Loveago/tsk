@@ -365,7 +365,10 @@ async function submitSingleBatchChunk(
     where: {
       id: { in: targetOrderIds },
       status: "PENDING",
-      providerReference: null,
+      OR: [
+        { providerReference: null },
+        { providerReference: { startsWith: "CLICKYFIED_CLAIMED" } },
+      ],
     },
     data: {
       providerReference: claimToken,
@@ -398,9 +401,8 @@ async function submitSingleBatchChunk(
   }
 
   const entries = targetOrders.map((o) => {
-    let num = o.phoneNumber.trim();
-    if (num.startsWith("+233")) num = "0" + num.slice(4);
-    else if (num.startsWith("233")) num = "0" + num.slice(3);
+    let num = o.phoneNumber.replace(/\D/g, "");
+    if (num.startsWith("233")) num = "0" + num.slice(3);
     if (num.length === 9 && !num.startsWith("0")) num = "0" + num;
     return { number: num, allocationGB: o.gbAmount };
   });
@@ -592,11 +594,17 @@ async function submitSingleBatchChunk(
     await prisma.order.updateMany({
       where: {
         id: { in: targetOrderIds },
-        providerReference: claimToken,
+        OR: [
+          { providerReference: claimToken },
+          { providerReference: null },
+          { providerReference: { startsWith: "CLICKYFIED_CLAIMED" } },
+        ],
       },
       data: {
+        status: "PENDING",
         providerReference: null,
         externalReference: null,
+        failureReason: batchErr?.message ? `Dispatch failed: ${String(batchErr.message).slice(0, 200)}` : "Batch dispatch failed",
       },
     }).catch(() => {});
 
@@ -762,9 +770,15 @@ export async function dispatchClickyfiedMtnBatch(
     let totalDispatchedCount = 0;
     let totalDispatchedGb = 0;
 
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
     // 1. Dispatch Group 1 (1–5 GB) batches
-    for (const chunk of group1Chunks) {
+    for (let i = 0; i < group1Chunks.length; i++) {
+      const chunk = group1Chunks[i];
       if (chunk.orders.length === 0) continue;
+      if (i > 0) {
+        await sleep(1500);
+      }
       const res = await submitSingleBatchChunk(
         chunk.orders,
         "Group 1 (1–5 GB)",
@@ -789,8 +803,12 @@ export async function dispatchClickyfiedMtnBatch(
     }
 
     // 2. Dispatch Group 2 (6+ GB) batches
-    for (const chunk of group2Chunks) {
+    for (let i = 0; i < group2Chunks.length; i++) {
+      const chunk = group2Chunks[i];
       if (chunk.orders.length === 0) continue;
+      if (dispatchedBatches.length > 0 || i > 0) {
+        await sleep(1500);
+      }
       const res = await submitSingleBatchChunk(
         chunk.orders,
         "Group 2 (6+ GB)",

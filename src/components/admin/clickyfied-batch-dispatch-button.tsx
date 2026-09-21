@@ -50,16 +50,25 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
   const [modalOpen, setModalOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [dispatching, setDispatching] = React.useState(false);
+  const [reconciling, setReconciling] = React.useState(false);
   const [status, setStatus] = React.useState<BatchStatus | null>(null);
+  const [strandedInfo, setStrandedInfo] = React.useState<{ count: number; totalGb: number } | null>(null);
   const [countdownSec, setCountdownSec] = React.useState<number | null>(null);
 
   const fetchStatus = React.useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/admin/provider-apis/clickyfied-batch");
+      const [res, strandedRes] = await Promise.all([
+        fetch("/api/admin/provider-apis/clickyfied-batch"),
+        fetch("/api/admin/batches/reconcile-stranded"),
+      ]);
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
+      }
+      if (strandedRes.ok) {
+        const sData = await strandedRes.json();
+        setStrandedInfo({ count: sData.count ?? 0, totalGb: sData.totalGb ?? 0 });
       }
     } catch {
       // ignore
@@ -131,10 +140,37 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
     }
   };
 
+  const handleReconcile = async () => {
+    try {
+      setReconciling(true);
+      const res = await fetch("/api/admin/batches/reconcile-stranded", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "revert_and_dispatch" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast(data.error || "Failed to reconcile stranded orders", "error");
+        return;
+      }
+      toast(
+        data.message || `Reconciled ${data.reconciledCount} stranded orders.`,
+        "success"
+      );
+      await fetchStatus();
+      onSuccess?.();
+    } catch (err: any) {
+      toast(err?.message || "Error reconciling orders", "error");
+    } finally {
+      setReconciling(false);
+    }
+  };
+
   const pendingCount = status?.pendingCount ?? 0;
   const totalGb = status?.totalGb ?? 0;
   const threshold = status?.gbThreshold ?? 100;
   const isReady = (status?.thresholdMet || status?.timerExpired) && pendingCount > 0;
+  const hasStranded = (strandedInfo?.count ?? 0) > 0;
 
   return (
     <>
@@ -146,7 +182,9 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
           setModalOpen(true);
         }}
         className={`relative inline-flex items-center gap-1.5 text-xs font-semibold shadow-sm transition ${
-          pendingCount > 0
+          hasStranded
+            ? "bg-rose-600 hover:bg-rose-700 text-white"
+            : pendingCount > 0
             ? isReady
               ? "bg-amber-600 hover:bg-amber-700 text-white animate-pulse"
               : "bg-brand-600 hover:bg-brand-700 text-white"
@@ -165,6 +203,14 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
         >
           {pendingCount} ({totalGb} GB)
         </span>
+        {hasStranded && (
+          <span
+            className="ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold bg-amber-400 text-rose-950 animate-pulse"
+            title={`${strandedInfo?.count} stranded orders detected`}
+          >
+            {strandedInfo?.count} stranded!
+          </span>
+        )}
       </Button>
 
       <Dialog
@@ -179,6 +225,40 @@ export function ClickyfiedBatchDispatchButton({ onSuccess, className = "" }: Pro
         className="max-w-lg"
       >
         <div className="space-y-4">
+          {/* Stranded Orders Alert Banner */}
+          {hasStranded && (
+            <div className="rounded-xl border border-rose-300 bg-rose-50 p-3.5 dark:border-rose-500/30 dark:bg-rose-500/10 text-rose-900 dark:text-rose-200 text-xs space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-bold text-rose-800 dark:text-rose-300">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                  <span>{strandedInfo?.count} Stranded Order(s) Detected ({strandedInfo?.totalGb} GB)</span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleReconcile}
+                  disabled={reconciling || dispatching}
+                  className="h-7 text-xs bg-rose-600 hover:bg-rose-700 text-white font-semibold gap-1 shrink-0 shadow-sm"
+                >
+                  {reconciling ? (
+                    <>
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      <span>Reconciling...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-3 w-3" />
+                      <span>Reconcile & Dispatch Now</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-snug">
+                These {strandedInfo?.count} order(s) are marked <strong>Processing</strong> locally without a confirmed Clickyfied Order ID (e.g. from an interrupted batch claim). Click <strong>Reconcile & Dispatch Now</strong> to safely return them to queue and submit them to Clickyfied.
+              </p>
+            </div>
+          )}
+
           {/* Warning Banner */}
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 dark:border-amber-500/30 dark:bg-amber-500/10 text-amber-900 dark:text-amber-300 text-xs leading-relaxed space-y-1">
             <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200">
