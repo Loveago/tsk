@@ -2,25 +2,52 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { requireActiveStorefront, ensureWallet, fromPesewas } from "@/lib/storefront";
 import { WithdrawalForm } from "./withdrawal-form";
+import { WalletWithdrawalsView } from "@/components/storefront/wallet-withdrawals-view";
+import { WalletLedgerView } from "@/components/storefront/wallet-ledger-view";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function StorefrontWalletPage() {
+export default async function StorefrontWalletPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ wdPage?: string; txPage?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  const wdPage = Math.max(1, parseInt(resolvedParams.wdPage || "1", 10));
+  const txPage = Math.max(1, parseInt(resolvedParams.txPage || "1", 10));
+  const wdPageSize = 10;
+  const txPageSize = 15;
+
   const user = await requireUser();
   const storefront = await requireActiveStorefront(user.id);
   const wallet = await ensureWallet(user.id);
 
-  const [transactions, withdrawals, approvedSum, pending] = await Promise.all([
+  const [
+    transactions,
+    totalTransactions,
+    withdrawals,
+    totalWithdrawals,
+    approvedSum,
+    pending,
+  ] = await Promise.all([
     prisma.storefrontWalletTransaction.findMany({
       where: { walletId: wallet.id },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      skip: (txPage - 1) * txPageSize,
+      take: txPageSize,
+    }),
+    prisma.storefrontWalletTransaction.count({
+      where: { walletId: wallet.id },
     }),
     prisma.storefrontWithdrawal.findMany({
       where: { userId: user.id },
       orderBy: { requestedAt: "desc" },
-      take: 20,
+      skip: (wdPage - 1) * wdPageSize,
+      take: wdPageSize,
+    }),
+    prisma.storefrontWithdrawal.count({
+      where: { userId: user.id },
     }),
     prisma.storefrontWithdrawal.aggregate({
       where: { userId: user.id, status: "APPROVED" },
@@ -65,77 +92,56 @@ export default async function StorefrontWalletPage() {
         disabled={storefront.status !== "ENABLED"}
       />
 
-      <section>
-        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">Withdrawals</h2>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0d1526]">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-white/5">
-              <tr>
-                <th className="px-4 py-2">Ref</th>
-                <th className="px-4 py-2">Gross</th>
-                <th className="px-4 py-2">Fee</th>
-                <th className="px-4 py-2">Net Payout</th>
-                <th className="px-4 py-2">Destination</th>
-                <th className="px-4 py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {withdrawals.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-500">No withdrawals yet</td></tr>
-              )}
-              {withdrawals.map((w) => {
-                const feeP = w.fee ?? 100;
-                const netP = w.netAmount ?? (w.amount - feeP);
-                return (
-                  <tr key={w.id} className="border-t border-slate-100 dark:border-slate-800">
-                    <td className="px-4 py-2 font-mono text-xs">{w.reference ?? `CF-WD-${String(w.seq).padStart(5, "0")}`}</td>
-                    <td className="px-4 py-2 text-slate-600 dark:text-slate-400">GHS {fromPesewas(w.amount).toFixed(2)}</td>
-                    <td className="px-4 py-2 text-xs text-red-500">-GHS {fromPesewas(feeP).toFixed(2)}</td>
-                    <td className="px-4 py-2 font-semibold text-emerald-600 dark:text-emerald-400">GHS {fromPesewas(netP).toFixed(2)}</td>
-                    <td className="px-4 py-2">{w.network} · {w.momoNumber}</td>
-                    <td className="px-4 py-2">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${w.status === "APPROVED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : w.status === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"}`}>
-                        {w.status}
-                      </span>
-                      {w.adminNote && <span className="ml-2 text-xs text-slate-400">{w.adminNote}</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Withdrawals ({totalWithdrawals})
+          </h2>
         </div>
+        <WalletWithdrawalsView
+          withdrawals={withdrawals.map((w) => ({
+            id: w.id,
+            seq: w.seq,
+            reference: w.reference ?? `CF-WD-${String(w.seq).padStart(5, "0")}`,
+            amount: w.amount,
+            fee: w.fee ?? 100,
+            netAmount: w.netAmount ?? Math.max(0, w.amount - (w.fee ?? 100)),
+            network: w.network,
+            momoNumber: w.momoNumber,
+            accountName: w.accountName,
+            status: w.status,
+            adminNote: w.adminNote,
+            requestedAt: w.requestedAt.toISOString(),
+          }))}
+          total={totalWithdrawals}
+          page={wdPage}
+          pageSize={wdPageSize}
+        />
       </section>
 
-      <section>
-        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">Ledger (last 50)</h2>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0d1526]">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-white/5">
-              <tr>
-                <th className="px-4 py-2">Date</th>
-                <th className="px-4 py-2">Type</th>
-                <th className="px-4 py-2">Amount</th>
-                <th className="px-4 py-2">Balance after</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500">No transactions yet</td></tr>
-              )}
-              {transactions.map((t) => (
-                <tr key={t.id} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="px-4 py-2 text-xs text-slate-500">{t.createdAt.toLocaleString("en-GB")}</td>
-                  <td className="px-4 py-2 text-xs font-semibold">{t.type}</td>
-                  <td className={`px-4 py-2 font-semibold ${t.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
-                    {t.amount >= 0 ? "+" : "−"}GHS {fromPesewas(Math.abs(t.amount)).toFixed(2)}
-                  </td>
-                  <td className="px-4 py-2">GHS {fromPesewas(t.balanceAfter).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Commission Ledger ({totalTransactions})
+          </h2>
         </div>
+        <WalletLedgerView
+          transactions={transactions.map((t) => ({
+            id: t.id,
+            type: t.type,
+            amount: t.amount,
+            balanceBefore: t.balanceBefore,
+            balanceAfter: t.balanceAfter,
+            pendingBefore: t.pendingBefore,
+            pendingAfter: t.pendingAfter,
+            reference: t.reference,
+            description: t.description,
+            createdAt: t.createdAt.toISOString(),
+          }))}
+          total={totalTransactions}
+          page={txPage}
+          pageSize={txPageSize}
+        />
       </section>
     </div>
   );

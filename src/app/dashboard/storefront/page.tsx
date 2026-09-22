@@ -15,45 +15,36 @@ import { requireUser } from "@/lib/auth";
 import { requireActiveStorefront, ensureWallet, fromPesewas, storefrontOrderCode } from "@/lib/storefront";
 import { CopyShareButtons } from "@/components/storefront/copy-share-buttons";
 import { StoreStatusToggle } from "@/components/storefront/store-status-toggle";
+import { RecentOrdersView } from "@/components/storefront/recent-orders-view";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const ORDER_BADGES: Record<string, string> = {
-  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  PROCESSING: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
-  COMPLETED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  FAILED: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300",
-  REFUNDED: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
-};
+export default async function StorefrontOverviewPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ orderPage?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  const orderPage = Math.max(1, parseInt(resolvedParams.orderPage || "1", 10));
+  const orderPageSize = 10;
 
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-        ORDER_BADGES[status] ?? "bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300"
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
-
-export default async function StorefrontOverviewPage() {
   const user = await requireUser();
   const storefront = await requireActiveStorefront(user.id);
   const wallet = await ensureWallet(user.id);
 
-  const [productCount, activeCount, recentOrders, pendingWithdrawal, completedCount] =
+  const [productCount, activeCount, recentOrders, totalStoreOrders, pendingWithdrawal, completedCount] =
     await Promise.all([
       prisma.storefrontProduct.count({ where: { storefrontId: storefront.id } }),
       prisma.storefrontProduct.count({ where: { storefrontId: storefront.id, isActive: true } }),
       prisma.storefrontOrder.findMany({
         where: { storefrontId: storefront.id },
         orderBy: { createdAt: "desc" },
-        take: 8,
+        skip: (orderPage - 1) * orderPageSize,
+        take: orderPageSize,
         include: { product: { include: { dataPackage: true } } },
       }),
+      prisma.storefrontOrder.count({ where: { storefrontId: storefront.id } }),
       prisma.storefrontWithdrawal.findFirst({ where: { userId: user.id, status: "PENDING" } }),
       prisma.storefrontOrder.count({
         where: { storefrontId: storefront.id, status: "COMPLETED" },
@@ -204,64 +195,36 @@ export default async function StorefrontOverviewPage() {
         </div>
       )}
 
-      {/* Recent orders */}
-      <section>
-        <div className="mb-2 flex items-center justify-between">
+      {/* Storefront orders */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Recent storefront orders
+            Storefront orders ({totalStoreOrders})
           </h2>
         </div>
-        {recentOrders.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
-            <Package className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
-            <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">No sales yet</p>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Tap <span className="font-semibold">Share on WhatsApp</span> above to spread your store link{" "}
-              <span className="font-semibold text-violet-600 dark:text-violet-400">{storeUrl}</span> and get
-              your first order.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0d1526]">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-white/5 dark:text-slate-400">
-                <tr>
-                  <th className="px-4 py-2">Order</th>
-                  <th className="px-4 py-2">Bundle</th>
-                  <th className="px-4 py-2">Recipient</th>
-                  <th className="px-4 py-2">Price</th>
-                  <th className="px-4 py-2">Commission</th>
-                  <th className="px-4 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentOrders.map((o) => (
-                  <tr key={o.id} className="border-t border-slate-100 dark:border-slate-800">
-                    <td className="px-4 py-2 font-mono text-xs">{storefrontOrderCode(o.seq, o.paymentReference)}</td>
-                    <td className="px-4 py-2">
-                      {o.product.dataPackage.network} {o.product.dataPackage.gbAmount}GB
-                    </td>
-                    <td className="px-4 py-2">
-                      <p className="font-medium text-slate-900 dark:text-white">{o.customerPhone}</p>
-                      {o.customerEmail && (
-                        <p className="text-[11px] text-slate-400 max-w-[150px] truncate" title={o.customerEmail}>
-                          {o.customerEmail}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">GHS {fromPesewas(o.sellingPrice).toFixed(2)}</td>
-                    <td className="px-4 py-2 text-emerald-600 dark:text-emerald-400">
-                      GHS {fromPesewas(o.commission).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-2">
-                      <StatusBadge status={o.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <RecentOrdersView
+          orders={recentOrders.map((o) => ({
+            id: o.id,
+            seq: o.seq,
+            paymentReference: o.paymentReference,
+            customerPhone: o.customerPhone,
+            customerEmail: o.customerEmail,
+            sellingPrice: o.sellingPrice,
+            commission: o.commission,
+            status: o.status,
+            createdAt: o.createdAt.toISOString(),
+            product: {
+              dataPackage: {
+                network: o.product.dataPackage.network,
+                gbAmount: o.product.dataPackage.gbAmount,
+              },
+            },
+          }))}
+          totalOrders={totalStoreOrders}
+          page={orderPage}
+          pageSize={orderPageSize}
+          storeUrl={storeUrl}
+        />
       </section>
 
       {/* Quick actions */}

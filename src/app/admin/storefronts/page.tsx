@@ -44,7 +44,7 @@ export default async function AdminStorefrontsPage() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto whitespace-nowrap">
           <Link
             href="/admin/storefronts"
             className="flex items-center gap-2 border-b-2 border-brand-600 px-3 py-2 text-sm font-semibold text-brand-600 dark:border-brand-400 dark:text-brand-400"
