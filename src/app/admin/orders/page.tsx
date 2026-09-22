@@ -41,6 +41,7 @@ export default function AdminOrdersPage() {
   const [q, setQ] = React.useState("");
   const [dateFilter, setDateFilter] = React.useState<DateFilterValue>(getTodayRange());
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(15);
   const [loading, setLoading] = React.useState(true);
   const [reconciling, setReconciling] = React.useState(false);
   const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null);
@@ -61,6 +62,7 @@ export default function AdminOrdersPage() {
   React.useEffect(() => {
     if (viewMode !== "storefront" && /\d{3,}/.test(q.trim())) {
       setViewMode("single");
+      setPageSize(100);
     }
   }, [q, viewMode]);
 
@@ -88,7 +90,7 @@ export default function AdminOrdersPage() {
     if (!silent) setLoading(true);
     try {
       if (viewMode === "storefront") {
-        const params = new URLSearchParams({ page: String(page), pageSize: "15" });
+        const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
         if (network) params.set("network", network);
         if (status) params.set("status", status);
         if (q) params.set("q", q);
@@ -100,7 +102,7 @@ export default function AdminOrdersPage() {
         setSfTotal(json.total ?? 0);
         setSfPages(json.pages ?? 1);
       } else if (viewMode === "single") {
-        const params = new URLSearchParams({ page: String(page), pageSize: "15" });
+        const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
         if (network) params.set("network", network);
         if (status) params.set("status", status);
         if (q) params.set("q", q);
@@ -113,7 +115,7 @@ export default function AdminOrdersPage() {
         setSinglePages(json.pages ?? 1);
       } else {
         // batches
-        const params = new URLSearchParams({ page: String(page), pageSize: "15" });
+        const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
         if (network) params.set("network", network);
         if (status) params.set("status", status);
         if (q) params.set("q", q);
@@ -130,7 +132,7 @@ export default function AdminOrdersPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [viewMode, page, network, status, q, dateFilter]);
+  }, [viewMode, page, pageSize, network, status, q, dateFilter]);
 
   React.useEffect(() => {
     const t = setTimeout(() => { void load(false); }, 250);
@@ -160,6 +162,13 @@ export default function AdminOrdersPage() {
     setViewMode(v);
     setPage(1);
     setStatus("");
+    if (v === "single") {
+      setPageSize(100);
+    } else {
+      setPageSize(15);
+    }
+    setSelectedOrderIds(new Set());
+    setSelectedBatchIds(new Set());
   };
 
   // ── batch actions ─────────────────────────────────────────────
@@ -483,6 +492,28 @@ export default function AdminOrdersPage() {
             }}
           />
 
+          {/* Page size select */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Show:</span>
+            <select
+              className={selectCls}
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+                setSelectedOrderIds(new Set());
+                setSelectedBatchIds(new Set());
+              }}
+              title="Items per page"
+            >
+              <option value={15}>15 / page</option>
+              <option value={25}>25 / page</option>
+              <option value={50}>50 / page</option>
+              <option value={100}>100 / page</option>
+              <option value={200}>200 / page</option>
+            </select>
+          </div>
+
           {/* Sync Paystack button for storefront */}
           {viewMode === "storefront" && (
             <Button
@@ -530,7 +561,18 @@ export default function AdminOrdersPage() {
       {/* Bulk action bar — Single orders */}
       {viewMode === "single" && selectedOrderIds.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200">
-          <span>{selectedOrderIds.size} order(s) selected</span>
+          <div className="flex items-center gap-2">
+            <span>{selectedOrderIds.size} order(s) selected</span>
+            {selectedOrderIds.size < singleOrders.length && (
+              <button
+                type="button"
+                onClick={() => setSelectedOrderIds(new Set(singleOrders.map((o) => o.id)))}
+                className="underline hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer"
+              >
+                (Select all {singleOrders.length} on this page)
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Pending")}>
               Pending
@@ -555,7 +597,7 @@ export default function AdminOrdersPage() {
             <button
               type="button"
               onClick={() => setSelectedOrderIds(new Set())}
-              className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
             >
               Clear
             </button>
@@ -617,7 +659,19 @@ export default function AdminOrdersPage() {
         page={page}
         pages={currentPages}
         total={currentTotal}
-        onPage={setPage}
+        onPage={(p) => {
+          setPage(p);
+          setSelectedOrderIds(new Set());
+          setSelectedBatchIds(new Set());
+        }}
+        pageSize={pageSize}
+        pageSizeOptions={[15, 25, 50, 100, 200]}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+          setSelectedOrderIds(new Set());
+          setSelectedBatchIds(new Set());
+        }}
       />
 
       <BatchDetailSheet

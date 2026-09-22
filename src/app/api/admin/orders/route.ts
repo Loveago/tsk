@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
-    const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
+    const pageSize = Math.min(250, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
     const status = searchParams.get("status");
     const network = searchParams.get("network");
     const q = searchParams.get("q");
