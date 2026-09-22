@@ -426,6 +426,7 @@ export async function changeOrderStatus(
         status: target,
         // The 24h "Not Received" reporting window starts at completion (§3)
         ...(target === "SUCCESS" ? { completedAt: new Date() } : {}),
+        ...(target === "PENDING" ? { exportBatchId: null, providerReference: null } : {}),
         failureReason: target === "FAILED" ? reason || order.failureReason : null,
       },
     }),

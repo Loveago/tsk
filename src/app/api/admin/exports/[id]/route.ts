@@ -119,6 +119,7 @@ export async function POST(
 
     const target = ACTION_TARGET[input.action] || normalizeOrderStatus(input.action);
     const eligible = BATCH_ACTION_ELIGIBLE[input.action] ?? (BATCH_ACTION_ELIGIBLE[target] ?? []);
+    const force = input.force ?? true;
 
     let candidates = await prisma.order.findMany({
       where: input.orderIds?.length
@@ -129,6 +130,44 @@ export async function POST(
       candidates = candidates.filter((o) => eligible.includes(o.status as never));
     }
 
+    // If there are no candidate orders (e.g. orders were re-exported or already reassigned),
+    // update the ExportBatch status directly so the admin can mark it Completed, Processing, etc.
+    if (candidates.length === 0) {
+      let exportStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" = "COMPLETED";
+      if (target === "SUCCESS" || input.action === "MARK_COMPLETED" || input.action === "COMPLETED") {
+        exportStatus = "COMPLETED";
+      } else if (target === "PROCESSING" || input.action === "MARK_PROCESSING") {
+        exportStatus = "PROCESSING";
+      } else if (target === "FAILED" || input.action === "MARK_FAILED") {
+        exportStatus = "FAILED";
+      } else if (target === "REFUNDED" || target === "CANCELLED" || input.action === "CANCEL") {
+        exportStatus = "CANCELLED";
+      } else {
+        exportStatus = "PROCESSING";
+      }
+
+      await prisma.exportBatch.update({
+        where: { id },
+        data: { status: exportStatus },
+      });
+
+      await recordAudit({
+        userId: actor.id,
+        actorLabel: actor.email,
+        action: `export.status_update`,
+        target: `export:${exportBatch.exportCode}`,
+        newValue: JSON.stringify({ status: exportStatus }),
+      });
+
+      return NextResponse.json({
+        applied: 1,
+        skipped: 0,
+        overrideRequired: false,
+        total: 0,
+        message: `Export batch ${exportBatch.exportCode} marked as ${exportStatus}`,
+      });
+    }
+
     let applied = 0;
     let skipped = 0;
     let overrideRequired = false;
@@ -136,6 +175,29 @@ export async function POST(
 
     for (const order of candidates) {
       try {
+        // If moving order to PENDING, un-link it from this exportBatch so it re-enters the pending queue
+        if (target === "PENDING" || input.action === "MARK_PENDING") {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: "PENDING",
+              exportBatchId: null,
+              providerReference: null,
+            },
+          });
+          await prisma.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              status: "PENDING",
+              previousStatus: order.status,
+              note: input.reason || `Reset to PENDING by admin from export ${exportBatch.exportCode}`,
+              changedBy: actor.email,
+            },
+          });
+          applied += 1;
+          continue;
+        }
+
         // Transition to SUCCESS from PENDING must pass through PROCESSING (§16 rules)
         if ((input.action === "MARK_COMPLETED" || target === "SUCCESS") && order.status === "PENDING") {
           await changeOrderStatus(
@@ -143,7 +205,7 @@ export async function POST(
             "PROCESSING",
             input.reason || `Export ${exportBatch.exportCode} action: marked processing`,
             label,
-            { skipBatchRecompute: true }
+            { force: true, skipBatchRecompute: true }
           );
         }
         const result = await changeOrderStatus(
@@ -151,7 +213,7 @@ export async function POST(
           target,
           input.reason || null,
           label,
-          { force: input.force, skipBatchRecompute: true }
+          { force, skipBatchRecompute: true }
         );
         if (result.changed) applied += 1;
         else skipped += 1;
@@ -167,6 +229,14 @@ export async function POST(
       await recomputeBatchStatus(batchId);
     }
     await recomputeExportBatchStatus(id);
+
+    // If all candidate orders were completed, guarantee exportBatch status is updated to COMPLETED
+    if (target === "SUCCESS" || input.action === "MARK_COMPLETED") {
+      await prisma.exportBatch.update({
+        where: { id },
+        data: { status: "COMPLETED" },
+      }).catch(() => {});
+    }
 
     await recordAudit({
       userId: actor.id,

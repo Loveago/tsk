@@ -16,7 +16,7 @@ import { formatDateTime, formatGHS, BATCH_ACTION_ELIGIBLE } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
 import { Download } from "lucide-react";
 
-type ExportAction = "Pending" | "Processing" | "Processed" | "Refund" | "MARK_PROCESSING" | "MARK_COMPLETED" | "MARK_FAILED" | "CANCEL";
+type ExportAction = "MARK_PENDING" | "MARK_PROCESSING" | "MARK_COMPLETED" | "MARK_FAILED" | "CANCEL" | "Pending" | "Processing" | "Processed" | "Refund";
 
 interface DetailOrder {
   id: number;
@@ -57,9 +57,11 @@ interface ExportDetail {
 }
 
 const ACTIONS: Array<{ action: ExportAction; label: string; destructive?: boolean }> = [
-  { action: "Processing", label: "Processing" },
-  { action: "Processed", label: "Processed" },
-  { action: "Refund", label: "Refund", destructive: true },
+  { action: "MARK_PENDING", label: "→ Move to Pending" },
+  { action: "MARK_PROCESSING", label: "→ Processing" },
+  { action: "MARK_COMPLETED", label: "→ Completed" },
+  { action: "MARK_FAILED", label: "→ Failed", destructive: true },
+  { action: "Refund", label: "Refund / Cancel", destructive: true },
 ];
 
 export function ExportDetailSheet({
@@ -105,13 +107,16 @@ export function ExportDetailSheet({
     const eligible = (BATCH_ACTION_ELIGIBLE as Record<string, string[]>)[action] ?? [];
     const pool =
       selected.size > 0 ? detail?.orders.filter((o) => selected.has(o.id)) ?? [] : detail?.orders ?? [];
+    if (eligible.length === 0) {
+      return pool.map((o) => o.id);
+    }
     return pool.filter((o) => eligible.includes(o.status)).map((o) => o.id);
   };
 
-  const runAction = async (action: ExportAction, force: boolean) => {
+  const runAction = async (action: ExportAction, _force = true) => {
     if (!detail) return;
     const ids = scopeIds(action);
-    if (ids.length === 0) {
+    if (ids.length === 0 && (detail.orders?.length ?? 0) > 0) {
       toast("No eligible recipients for this action", "error");
       return;
     }
@@ -124,18 +129,14 @@ export function ExportDetailSheet({
       const res = await fetch(`/api/admin/exports/${detail.exportBatch.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, force, orderIds: selected.size > 0 ? ids : undefined, reason }),
+        body: JSON.stringify({ action, force: true, orderIds: selected.size > 0 ? ids : undefined, reason }),
       });
       const json = await res.json();
       if (!res.ok) {
         toast(json.error ?? "Action failed", "error");
         return;
       }
-      if (json.overrideRequired && json.skipped > 0) {
-        toast(`${json.applied} applied · ${json.skipped} skipped — tick "override safeguard" to force`, "error");
-      } else {
-        toast(`${json.applied} recipient(s) updated`, "success");
-      }
+      toast(json.message ?? `${json.applied ?? 0} recipient(s) updated`, "success");
       setConfirm(null);
       setSelected(new Set());
       await load();

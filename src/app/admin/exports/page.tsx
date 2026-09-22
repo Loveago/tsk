@@ -387,6 +387,7 @@ export default function AdminExportsPage() {
                         className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-900 outline-none transition hover:border-brand-500 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 cursor-pointer [&>option]:bg-white dark:[&>option]:bg-[#0d1526]"
                       >
                         <option value="" disabled>Change Status ▾</option>
+                        <option value="MARK_PENDING">→ Pending</option>
                         <option value="MARK_PROCESSING">→ Processing</option>
                         <option value="MARK_COMPLETED">→ Completed</option>
                         <option value="MARK_FAILED">→ Failed</option>

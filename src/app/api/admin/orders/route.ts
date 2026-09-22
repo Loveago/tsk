@@ -122,7 +122,7 @@ export async function PATCH(request: NextRequest) {
         input.status,
         input.reason ?? null,
         { id: actor.id, label: actor.email },
-        { force: input.force }
+        { force: input.force ?? true }
       );
       await recordAudit({
         userId: actor.id,
@@ -147,7 +147,7 @@ export async function PATCH(request: NextRequest) {
       input.status,
       input.reason ?? null,
       { id: actor.id, label: actor.email },
-      { force: input.force }
+      { force: input.force ?? true }
     );
 
     // Override transitions (e.g. SUCCESS -> REFUNDED) need explicit confirmation

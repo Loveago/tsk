@@ -191,7 +191,7 @@ export async function POST(
           target,
           input.reason || null,
           label,
-          { force: input.force, skipBatchRecompute: true }
+          { force: input.force ?? true, skipBatchRecompute: true }
         );
         if (result.changed) applied += 1;
         else skipped += 1;

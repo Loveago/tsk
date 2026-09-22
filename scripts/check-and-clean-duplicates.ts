@@ -245,7 +245,7 @@ async function main() {
       id: true,
       exportCode: true,
       network: true,
-      orderCount: true,
+      totalRecipients: true,
       totalGb: true,
       status: true,
       createdAt: true,
@@ -255,7 +255,7 @@ async function main() {
 
   console.log(`  • Excel ExportBatches in 3:50 PM window: ${exportBatchesIn350.length}`);
   for (const eb of exportBatchesIn350) {
-    console.log(`      Export ${eb.exportCode} | ${eb.network} | ${eb.orderCount} orders | ${eb.totalGb} GB | Created: ${eb.createdAt.toISOString()}`);
+    console.log(`      Export ${eb.exportCode} | ${eb.network} | ${eb.totalRecipients} orders | ${eb.totalGb} GB | Created: ${eb.createdAt.toISOString()}`);
   }
 
   // C. Check all orders created or updated in this 3:50 PM window
