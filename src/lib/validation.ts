@@ -570,7 +570,7 @@ export type SignupCodeCreateInput = z.infer<typeof signupCodeCreateSchema>;
 
 // ---------- MTN Number Verification ----------
 export const mtnVerificationSubmitSchema = z.object({
-  phoneNumber: mtnPhoneSchema,
+  phoneNumber: phoneSchema,
 });
 
 export const mtnBatchCreateSchema = z.object({

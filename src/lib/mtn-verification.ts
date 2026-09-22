@@ -778,9 +778,8 @@ export async function submitVerificationRequest(
     throw new Error("Enter a valid Ghanaian phone number (e.g. 0241234567)");
   }
 
-  if (!isMtnPhoneNumber(normalized)) {
-    throw new Error("Only MTN numbers can be submitted for MTN verification (prefixes 024, 025, 053, 054, 055, 059)");
-  }
+  const isPorted = !isMtnPhoneNumber(normalized);
+  const detectedNetwork = isPorted ? detectNetworkNameByPrefix(normalized) : "MTN";
 
   // 1. Check if already in Accepted MTN Numbers
   const isAccepted = await isMtnNumberAccepted(normalized);
@@ -829,7 +828,7 @@ export async function submitVerificationRequest(
     actorLabel: userEmail ?? "User",
     action: "USER_SUBMITTED_MTN_VERIFICATION",
     target: `mtn_request:${normalized}`,
-    newValue: JSON.stringify({ requestId: request.id, number: normalized }),
+    newValue: JSON.stringify({ requestId: request.id, number: normalized, isPorted, originalNetwork: detectedNetwork }),
   });
 
   return {

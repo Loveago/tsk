@@ -12,6 +12,7 @@ import { dispatchWebhookEvent } from "@/lib/webhooks";
 import { phoneSchema } from "@/lib/validation";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 import { sanitizeCustomerRefundNote } from "@/lib/types";
+import { detectNetworkNameByPrefix } from "@/lib/phone-utils";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -366,6 +367,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (!pkg) {
+      const gbOnlyMatch = requestedPackageId.match(/^([0-9.]+)gb?$/i);
+      if (gbOnlyMatch) {
+        const gb = parseFloat(gbOnlyMatch[1]);
+        const netToTry = requestedNetwork || "MTN";
+        pkg = await prisma.dataPackage.findUnique({
+          where: { network_gbAmount: { network: netToTry, gbAmount: gb } },
+        });
+      }
+    }
+
+    if (!pkg) {
       const allPkgs = await prisma.dataPackage.findMany({ where: { active: true } });
       pkg = allPkgs.find(
         (p) =>
@@ -379,11 +391,19 @@ export async function POST(request: NextRequest) {
     }
 
     if (requestedNetwork && pkg.network.toUpperCase() !== requestedNetwork) {
-      throw new ApiError(
-        "INVALID_NETWORK",
-        `Selected package belongs to ${pkg.network}, but ${requestedNetwork} was requested`,
-        400
-      );
+      // Check if requestedNetwork was derived from the recipient's phone number prefix (e.g. Telecel prefix for 020 number ported to MTN).
+      // If the client's automated integration sent the prefix network, but selected an MTN package (or vice versa),
+      // allow this ported order to proceed using the selected package's network.
+      const prefixNetwork = detectNetworkNameByPrefix(recipient);
+      const isPortedPrefixMatch = requestedNetwork === prefixNetwork;
+
+      if (!isPortedPrefixMatch) {
+        throw new ApiError(
+          "INVALID_NETWORK",
+          `Selected package belongs to ${pkg.network}, but ${requestedNetwork} was requested`,
+          400
+        );
+      }
     }
 
     const netSetting = await prisma.systemSetting.findUnique({

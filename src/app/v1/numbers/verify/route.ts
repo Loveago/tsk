@@ -11,6 +11,8 @@ import {
   normalizeGhanaPhoneNumber,
   isValidGhanaPhoneNumber,
   getNetworkFromGhanaPhone,
+  isMtnPhoneNumber,
+  detectNetworkNameByPrefix,
 } from "@/lib/phone-utils";
 
 export async function OPTIONS() {
@@ -28,6 +30,7 @@ type NumberEntry = {
   raw: string;
   normalized: string;
   network: "MTN" | "TELECEL" | "AIRTELTIGO" | null;
+  targetNetwork?: "MTN" | "TELECEL" | "AIRTELTIGO" | null;
   valid: boolean;
 };
 
@@ -37,10 +40,16 @@ type VerifyResult = {
   valid: boolean;
   verified: boolean;
   canOrder: boolean;
+  isPorted?: boolean;
+  originalNetwork?: string | null;
   note?: string;
 };
 
-async function executeVerification(rawNumbers: unknown[], authContext: any) {
+async function executeVerification(
+  rawNumbers: unknown[],
+  authContext: any,
+  globalTargetNetwork?: string | null
+) {
   if (!Array.isArray(rawNumbers) || rawNumbers.length === 0) {
     throw new ApiError(
       "INVALID_REQUEST",
@@ -57,13 +66,32 @@ async function executeVerification(rawNumbers: unknown[], authContext: any) {
     );
   }
 
+  const validTarget =
+    globalTargetNetwork && ["MTN", "TELECEL", "AIRTELTIGO"].includes(globalTargetNetwork)
+      ? (globalTargetNetwork as "MTN" | "TELECEL" | "AIRTELTIGO")
+      : null;
+
   // ── Normalize & validate each number ──────────────────────────────────
   const entries: NumberEntry[] = rawNumbers.map((n) => {
-    const raw = typeof n === "string" ? n.trim() : String(n ?? "").trim();
+    let raw = "";
+    let itemNetwork: "MTN" | "TELECEL" | "AIRTELTIGO" | null = null;
+    if (typeof n === "object" && n !== null) {
+      const obj = n as any;
+      raw = String(obj.number || obj.phone || obj.phoneNumber || "").trim();
+      if (obj.network && typeof obj.network === "string") {
+        const up = obj.network.trim().toUpperCase();
+        if (["MTN", "TELECEL", "AIRTELTIGO"].includes(up)) {
+          itemNetwork = up as any;
+        }
+      }
+    } else {
+      raw = typeof n === "string" ? n.trim() : String(n ?? "").trim();
+    }
     const normalized = normalizeGhanaPhoneNumber(raw);
     const valid = isValidGhanaPhoneNumber(normalized);
-    const network = valid ? getNetworkFromGhanaPhone(normalized) : null;
-    return { raw, normalized, network, valid };
+    const prefixNetwork = valid ? getNetworkFromGhanaPhone(normalized) : null;
+    const targetNetwork = itemNetwork || validTarget || null;
+    return { raw, normalized, network: prefixNetwork, targetNetwork, valid };
   });
 
   // ── Fetch MTN verification setting ────────────────────────────────────
@@ -72,24 +100,27 @@ async function executeVerification(rawNumbers: unknown[], authContext: any) {
   });
   const mtnVerificationEnabled = mtnVerifySetting?.value === "true";
 
-  // ── Batch-fetch accepted MTN numbers (single DB round-trip) ───────────
-  const mtnNormalized = entries
-    .filter((e) => e.valid && e.network === "MTN")
-    .map((e) => e.normalized);
+  // ── Batch-fetch accepted MTN numbers for all valid numbers ───────────
+  // Querying all valid numbers allows detecting ported numbers that are already whitelisted.
+  const validNormalized = entries.filter((e) => e.valid).map((e) => e.normalized);
 
   const acceptedRows =
-    mtnNormalized.length > 0 && !authContext.isSandbox
+    validNormalized.length > 0 && !authContext.isSandbox
       ? await prisma.acceptedMtnNumber.findMany({
-          where: { normalizedNumber: { in: mtnNormalized } },
+          where: { normalizedNumber: { in: validNormalized } },
           select: { normalizedNumber: true },
         })
       : [];
 
   const acceptedSet = new Set(acceptedRows.map((r) => r.normalizedNumber));
 
-  // If Clickyfied verification is enabled, query Clickyfied for any MTN numbers not yet in local DB
-  if (mtnNormalized.length > 0 && !authContext.isSandbox) {
-    const missingFromLocal = mtnNormalized.filter((num) => !acceptedSet.has(num));
+  // If Clickyfied verification is enabled, query Clickyfied for any candidate MTN numbers not yet in local DB
+  if (!authContext.isSandbox) {
+    const candidateMtn = entries
+      .filter((e) => e.valid && (e.targetNetwork === "MTN" || e.network === "MTN"))
+      .map((e) => e.normalized);
+    const missingFromLocal = candidateMtn.filter((num) => !acceptedSet.has(num));
+
     if (missingFromLocal.length > 0) {
       const clickyfiedSetting = await prisma.systemSetting.findUnique({
         where: { key: "clickyfied_mtn_verification_enabled" },
@@ -129,41 +160,70 @@ async function executeVerification(rawNumbers: unknown[], authContext: any) {
       };
     }
 
-    if (entry.network !== "MTN") {
-      // Telecel and AirtelTigo do not require number pre-verification
+    const isNativeMtn = isMtnPhoneNumber(entry.normalized);
+    const isWhitelistedMtn = acceptedSet.has(entry.normalized);
+    const checkAsMtn = entry.targetNetwork === "MTN" || isNativeMtn || isWhitelistedMtn;
+
+    // 1. In accepted MTN whitelist:
+    if (isWhitelistedMtn) {
+      const isPorted = !isNativeMtn;
+      const originalNetwork = isPorted ? detectNetworkNameByPrefix(entry.normalized) : null;
       return {
         number: entry.normalized,
-        network: entry.network,
+        network: "MTN",
         valid: true,
         verified: true,
         canOrder: true,
-        note: `${entry.network} numbers do not require pre-verification`,
+        isPorted,
+        originalNetwork: originalNetwork || undefined,
+        note: isPorted
+          ? `Ported number (${originalNetwork}) verified for MTN`
+          : undefined,
       };
     }
 
-    // MTN: sandbox always passes, production checks the DB
-    const isVerified = authContext.isSandbox || acceptedSet.has(entry.normalized);
-    const canOrder = isVerified || !mtnVerificationEnabled;
+    // 2. Evaluated for MTN (requested for MTN or native MTN prefix), but not yet verified:
+    if (checkAsMtn) {
+      const isPorted = !isNativeMtn;
+      const originalNetwork = isPorted ? detectNetworkNameByPrefix(entry.normalized) : null;
+      const isVerified = authContext.isSandbox;
+      const canOrder = isVerified || !mtnVerificationEnabled;
 
-    const result: VerifyResult = {
-      number: entry.normalized,
-      network: "MTN",
-      valid: true,
-      verified: isVerified,
-      canOrder,
-    };
+      const result: VerifyResult = {
+        number: entry.normalized,
+        network: "MTN",
+        valid: true,
+        verified: isVerified,
+        canOrder,
+        isPorted,
+        originalNetwork: originalNetwork || undefined,
+      };
 
-    if (authContext.isSandbox) {
-      result.note = "Sandbox mode: all valid MTN numbers are treated as verified";
-    } else if (!isVerified && mtnVerificationEnabled) {
-      result.note =
-        "This MTN number is not in our verified database. Ordering will be rejected until it is verified.";
-    } else if (!isVerified && !mtnVerificationEnabled) {
-      result.note =
-        "This MTN number is not yet verified, but ordering is currently permitted while verification is disabled.";
+      if (authContext.isSandbox) {
+        result.note = "Sandbox mode: all valid MTN numbers are treated as verified";
+      } else if (!isVerified && mtnVerificationEnabled) {
+        result.note = isPorted
+          ? `This ported number (${originalNetwork}) is not verified for MTN. Submit for verification before placing MTN orders.`
+          : "This MTN number is not in our verified database. Ordering will be rejected until it is verified.";
+      } else if (!isVerified && !mtnVerificationEnabled) {
+        result.note = isPorted
+          ? `This ported number (${originalNetwork}) is not yet verified, but ordering is currently permitted while verification is disabled.`
+          : "This MTN number is not yet verified, but ordering is currently permitted while verification is disabled.";
+      }
+
+      return result;
     }
 
-    return result;
+    // 3. Telecel and AirtelTigo do not require number pre-verification
+    return {
+      number: entry.normalized,
+      network: entry.network,
+      valid: true,
+      verified: true,
+      canOrder: true,
+      isPorted: false,
+      note: `${entry.network} numbers do not require pre-verification`,
+    };
   });
 
   // ── Helper lists & summary counters ──────────────────────────────────
@@ -236,7 +296,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const data = await executeVerification(rawNumbers, authContext);
+    const targetNetwork = body?.network ? String(body.network).trim().toUpperCase() : null;
+    const data = await executeVerification(rawNumbers, authContext, targetNetwork);
 
     await logApiRequestEntry({
       userId: authContext.userId,
@@ -279,7 +340,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /v1/numbers/verify?number=0241234567
- * GET /v1/numbers/verify?numbers=0241234567,0201234567
+ * GET /v1/numbers/verify?numbers=0241234567,0201234567&network=MTN
  */
 export async function GET(request: NextRequest) {
   const start = Date.now();
@@ -309,7 +370,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const data = await executeVerification(rawNumbers, authContext);
+    const targetNetwork = searchParams.get("network") ? String(searchParams.get("network")).trim().toUpperCase() : null;
+    const data = await executeVerification(rawNumbers, authContext, targetNetwork);
 
     await logApiRequestEntry({
       userId: authContext.userId,

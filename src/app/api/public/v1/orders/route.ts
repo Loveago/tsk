@@ -4,6 +4,7 @@ import { requireApiKey, ApiKeyError, logApiRequest } from "@/lib/api-auth";
 import { publicOrderSchema } from "@/lib/validation";
 import { changeOrderStatus, isOrderProcessingHalted, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
+import { detectNetworkNameByPrefix } from "@/lib/phone-utils";
 import { handleRouteError } from "@/lib/api-helpers";
 import { z } from "zod";
 
@@ -73,8 +74,21 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return fail(request, keyId, endpoint, 403, "Account not found");
 
-    const network = input.network ?? pkg.network;
-    const amount = await resolveUserWholesalePrice(user, { ...pkg, network });
+    let network = pkg.network;
+    if (input.network && input.network !== pkg.network) {
+      const prefixNetwork = detectNetworkNameByPrefix(input.phoneNumber);
+      const isPortedPrefixMatch = input.network === prefixNetwork;
+      if (!isPortedPrefixMatch) {
+        return fail(
+          request,
+          keyId,
+          endpoint,
+          400,
+          `Selected package belongs to ${pkg.network}, but ${input.network} was requested`
+        );
+      }
+    }
+    const amount = await resolveUserWholesalePrice(user, pkg);
     if (amount <= 0) return fail(request, keyId, endpoint, 400, "No price configured for this package");
 
     // Check if recipient number already has an active order

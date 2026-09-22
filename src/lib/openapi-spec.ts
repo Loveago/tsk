@@ -145,6 +145,12 @@ export const openApiSpec = {
             example: ["0241234567", "0201234567", "0261234567"],
             description: "List of Ghanaian phone numbers to verify (max 100 per request). Accepts 0XXXXXXXXX, +233XXXXXXXXX, or 233XXXXXXXXX formats.",
           },
+          network: {
+            type: "string",
+            enum: ["MTN", "TELECEL", "AIRTELTIGO"],
+            example: "MTN",
+            description: "Optional target network to check verification for. If querying ported numbers for MTN, set network to 'MTN'.",
+          },
         },
       },
       NumberVerifyResult: {
@@ -173,12 +179,14 @@ export const openApiSpec = {
             items: {
               type: "object",
               properties: {
-                number:   { type: "string", example: "0241234567", description: "Normalized 10-digit Ghanaian number" },
-                network:  { type: "string", nullable: true, enum: ["MTN", "TELECEL", "AIRTELTIGO", null], example: "MTN" },
-                valid:    { type: "boolean", example: true, description: "Whether the number is a valid Ghanaian mobile number" },
-                verified: { type: "boolean", example: true, description: "Whether the number exists in our verified database" },
-                canOrder: { type: "boolean", example: true, description: "Whether an order can currently be placed for this number" },
-                note:     { type: "string", nullable: true, example: "Sandbox mode: all valid MTN numbers are treated as verified" },
+                number:          { type: "string", example: "0241234567", description: "Normalized 10-digit Ghanaian number" },
+                network:         { type: "string", nullable: true, enum: ["MTN", "TELECEL", "AIRTELTIGO", null], example: "MTN" },
+                valid:           { type: "boolean", example: true, description: "Whether the number is a valid Ghanaian mobile number" },
+                verified:        { type: "boolean", example: true, description: "Whether the number exists in our verified database" },
+                canOrder:        { type: "boolean", example: true, description: "Whether an order can currently be placed for this number" },
+                isPorted:        { type: "boolean", example: false, description: "Whether this number is ported to MTN from another network" },
+                originalNetwork: { type: "string", nullable: true, example: "TELECEL", description: "Original network based on phone prefix if ported" },
+                note:            { type: "string", nullable: true, example: "Sandbox mode: all valid MTN numbers are treated as verified" },
               },
             },
           },
@@ -296,6 +304,13 @@ export const openApiSpec = {
             required: false,
             schema: { type: "string", example: "0241234567,0201234567" },
             description: "Comma-separated list of Ghanaian phone numbers to verify",
+          },
+          {
+            name: "network",
+            in: "query",
+            required: false,
+            schema: { type: "string", enum: ["MTN", "TELECEL", "AIRTELTIGO"], example: "MTN" },
+            description: "Optional target network to verify against (e.g. check if a ported number is verified for MTN)",
           },
         ],
         responses: {

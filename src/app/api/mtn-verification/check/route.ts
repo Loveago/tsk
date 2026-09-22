@@ -5,7 +5,7 @@ import { handleRouteError } from "@/lib/api-helpers";
 import {
   isMtnVerificationEnabled,
   normalizeGhanaPhoneNumber,
-  isMtnPhoneNumber,
+  isValidGhanaPhoneNumber,
   recordUnverifiedMtnNumbersBatch,
 } from "@/lib/mtn-verification";
 import { z } from "zod";
@@ -22,11 +22,11 @@ export async function POST(request: NextRequest) {
 
     const verificationEnabled = await isMtnVerificationEnabled();
 
-    // Normalize and filter MTN phone numbers
+    // Normalize and filter valid Ghanaian phone numbers (including ported numbers)
     const mtnNumbersMap = new Map<string, string>(); // normalized -> original
     for (const raw of phoneNumbers) {
       const canonical = normalizeGhanaPhoneNumber(raw);
-      if (isMtnPhoneNumber(canonical)) {
+      if (isValidGhanaPhoneNumber(canonical)) {
         if (!mtnNumbersMap.has(canonical)) {
           mtnNumbersMap.set(canonical, raw);
         }
