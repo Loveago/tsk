@@ -425,6 +425,10 @@ export const storefrontCheckoutSchema = z.object({
     .string()
     .trim()
     .regex(/^0\d{9}$/, "Enter a valid 10-digit number starting with 0"),
+  customerEmail: z
+    .string()
+    .trim()
+    .email("Enter a valid email address for your payment receipt"),
 });
 
 export const storefrontTrackSchema = z.object({

@@ -19,6 +19,15 @@ export interface AdminUser {
     signupCode: { code: string };
     usedAt: string;
   } | null;
+  registrationPayment?: {
+    id: string;
+    reference: string | null;
+    amount: number;
+    status: string;
+    note: string | null;
+    paidAt: string | null;
+    createdAt: string;
+  } | null;
 }
 
 const ROLES = ["USER", "RESELLER", "MANAGER", "SECRETARY", "ADMIN"];
@@ -175,6 +184,40 @@ export function UserFormDialog({
             </Select>
           </div>
         </div>
+        {user?.registrationPayment && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5 dark:border-slate-800 dark:bg-slate-800/40">
+            <div className="flex items-center justify-between font-semibold">
+              <span className="text-slate-700 dark:text-slate-300">Registration Fee</span>
+              {user.registrationPayment.status === "APPROVED" ? (
+                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                  Paid (₵{user.registrationPayment.amount.toFixed(2)})
+                </span>
+              ) : user.registrationPayment.status === "PENDING" ? (
+                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                  Pending (₵{user.registrationPayment.amount.toFixed(2)})
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300">
+                  {user.registrationPayment.status}
+                </span>
+              )}
+            </div>
+            {user.registrationPayment.reference && (
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+                <span>Paystack Reference:</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200 select-all">
+                  {user.registrationPayment.reference}
+                </span>
+              </div>
+            )}
+            {user.registrationPayment.note && (
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-200/60 dark:border-slate-700/60 pt-1">
+                {user.registrationPayment.note}
+              </div>
+            )}
+          </div>
+        )}
+
         <Button className="w-full" onClick={save} disabled={saving}>
           {saving && <Spinner />} {user ? "Save changes" : "Create user"}
         </Button>

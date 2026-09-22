@@ -362,7 +362,12 @@ export function AdminStorefrontPanel({
 
       {/* Pending withdrawals */}
       <section>
-        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">Pending withdrawals ({pendingWithdrawals.length})</h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Pending withdrawals ({pendingWithdrawals.length})</h2>
+          <a href="/admin/storefronts/withdrawals" className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400">
+            Open Dedicated Withdrawals Page →
+          </a>
+        </div>
         <div className="space-y-3">
           {pendingWithdrawals.length === 0 && (
             <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">No withdrawal requests awaiting review.</p>

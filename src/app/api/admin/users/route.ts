@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     const pricingProfileId = searchParams.get("pricingProfileId");
     const hasOrders = searchParams.get("hasOrders");
     const hasSignupCode = searchParams.get("hasSignupCode");
+    const registrationPayment = searchParams.get("registrationPayment");
     const q = searchParams.get("q");
 
     const where: Record<string, unknown> = {};
@@ -47,15 +48,24 @@ export async function GET(request: NextRequest) {
       where.signupCodeUsage = null;
     }
 
+    if (registrationPayment === "paid") {
+      where.walletTransactions = { some: { type: "SIGNUP_FEE", status: "APPROVED" } };
+    } else if (registrationPayment === "pending") {
+      where.walletTransactions = { some: { type: "SIGNUP_FEE", status: "PENDING" } };
+    } else if (registrationPayment === "exempt") {
+      where.walletTransactions = { none: { type: "SIGNUP_FEE" } };
+    }
+
     if (q) {
       where.OR = [
         { email: { contains: q, mode: "insensitive" } },
         { name: { contains: q, mode: "insensitive" } },
         { phone: { contains: q, mode: "insensitive" } },
+        { walletTransactions: { some: { type: "SIGNUP_FEE", reference: { contains: q, mode: "insensitive" } } } },
       ];
     }
 
-    const [data, total, awaitingPaymentCount, zeroBalanceCount, frozenCount, activeCount] = await Promise.all([
+    const [data, total, awaitingPaymentCount, zeroBalanceCount, frozenCount, activeCount, paidRegistrationCount] = await Promise.all([
       prisma.user.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -79,6 +89,20 @@ export async function GET(request: NextRequest) {
               usedAt: true,
             },
           },
+          walletTransactions: {
+            where: { type: "SIGNUP_FEE" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              reference: true,
+              amount: true,
+              status: true,
+              note: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
         },
       }),
       prisma.user.count({ where }),
@@ -86,10 +110,40 @@ export async function GET(request: NextRequest) {
       prisma.user.count({ where: { balance: 0 } }),
       prisma.user.count({ where: { status: "FROZEN" } }),
       prisma.user.count({ where: { status: "ACTIVE" } }),
+      prisma.walletTransaction.count({ where: { type: "SIGNUP_FEE", status: "APPROVED" } }),
     ]);
 
+    const users = data.map((u) => {
+      const regTx = u.walletTransactions?.[0] ?? null;
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        status: u.status,
+        balance: u.balance,
+        phone: u.phone,
+        pricingProfileId: u.pricingProfileId,
+        lastLoginAt: u.lastLoginAt,
+        createdAt: u.createdAt,
+        _count: u._count,
+        signupCodeUsage: u.signupCodeUsage,
+        registrationPayment: regTx
+          ? {
+              id: regTx.id,
+              reference: regTx.reference,
+              amount: regTx.amount,
+              status: regTx.status,
+              note: regTx.note,
+              paidAt: regTx.status === "APPROVED" ? regTx.updatedAt : null,
+              createdAt: regTx.createdAt,
+            }
+          : null,
+      };
+    });
+
     return NextResponse.json({
-      data,
+      data: users,
       total,
       page,
       pageSize,
@@ -100,6 +154,7 @@ export async function GET(request: NextRequest) {
         zeroBalance: zeroBalanceCount,
         frozen: frozenCount,
         active: activeCount,
+        paidRegistration: paidRegistrationCount,
       },
     });
   } catch (err) {

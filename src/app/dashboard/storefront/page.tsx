@@ -241,7 +241,14 @@ export default async function StorefrontOverviewPage() {
                     <td className="px-4 py-2">
                       {o.product.dataPackage.network} {o.product.dataPackage.gbAmount}GB
                     </td>
-                    <td className="px-4 py-2">{o.customerPhone}</td>
+                    <td className="px-4 py-2">
+                      <p className="font-medium text-slate-900 dark:text-white">{o.customerPhone}</p>
+                      {o.customerEmail && (
+                        <p className="text-[11px] text-slate-400 max-w-[150px] truncate" title={o.customerEmail}>
+                          {o.customerEmail}
+                        </p>
+                      )}
+                    </td>
                     <td className="px-4 py-2">GHS {fromPesewas(o.sellingPrice).toFixed(2)}</td>
                     <td className="px-4 py-2 text-emerald-600 dark:text-emerald-400">
                       GHS {fromPesewas(o.commission).toFixed(2)}

@@ -12,18 +12,22 @@ export async function GET() {
   try {
     await requireStaff();
 
-    const [pendingOrders, underReviewReports] = await Promise.all([
+    const [pendingOrders, underReviewReports, pendingWithdrawals] = await Promise.all([
       prisma.order.count({
         where: { status: "PENDING" },
       }),
       prisma.deliveryReport.count({
         where: { status: "UNDER_REVIEW" },
       }),
+      prisma.storefrontWithdrawal.count({
+        where: { status: "PENDING" },
+      }),
     ]);
 
     return NextResponse.json({
       pendingOrders,
       underReviewReports,
+      pendingWithdrawals,
     });
   } catch (err) {
     return handleRouteError(err);

@@ -63,12 +63,18 @@ export async function POST(
           { paymentReference: { contains: q.toUpperCase() } },
         ],
       };
+    } else if (q.includes("@")) {
+      where = {
+        storefrontId: storefront.id,
+        customerEmail: { equals: q.trim().toLowerCase(), mode: "insensitive" },
+      };
     } else {
       where = {
         storefrontId: storefront.id,
         OR: [
           { paymentReference: { contains: q.toUpperCase() } },
           { paymentReference: q },
+          { customerEmail: { contains: q, mode: "insensitive" } },
         ],
       };
     }
@@ -162,6 +168,7 @@ export async function POST(
           code: o.paymentReference || storefrontOrderCode(o.seq, o.paymentReference),
           reference: o.paymentReference,
           phone: o.customerPhone,
+          email: o.customerEmail,
           network: o.product.dataPackage.network,
           size: `${o.product.dataPackage.gbAmount}GB`,
           amount: fromPesewas(o.sellingPrice),

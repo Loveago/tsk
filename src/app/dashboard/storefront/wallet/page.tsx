@@ -58,28 +58,36 @@ export default async function StorefrontWalletPage() {
             <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-white/5">
               <tr>
                 <th className="px-4 py-2">Ref</th>
-                <th className="px-4 py-2">Amount</th>
+                <th className="px-4 py-2">Gross</th>
+                <th className="px-4 py-2">Fee</th>
+                <th className="px-4 py-2">Net Payout</th>
                 <th className="px-4 py-2">Destination</th>
                 <th className="px-4 py-2">Status</th>
               </tr>
             </thead>
             <tbody>
               {withdrawals.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500">No withdrawals yet</td></tr>
+                <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-500">No withdrawals yet</td></tr>
               )}
-              {withdrawals.map((w) => (
-                <tr key={w.id} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="px-4 py-2 font-mono text-xs">{w.reference ?? `CF-WD-${String(w.seq).padStart(5, "0")}`}</td>
-                  <td className="px-4 py-2 font-semibold">GHS {fromPesewas(w.amount).toFixed(2)}</td>
-                  <td className="px-4 py-2">{w.network} · {w.momoNumber}</td>
-                  <td className="px-4 py-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${w.status === "APPROVED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : w.status === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"}`}>
-                      {w.status}
-                    </span>
-                    {w.adminNote && <span className="ml-2 text-xs text-slate-400">{w.adminNote}</span>}
-                  </td>
-                </tr>
-              ))}
+              {withdrawals.map((w) => {
+                const feeP = w.fee ?? 100;
+                const netP = w.netAmount ?? (w.amount - feeP);
+                return (
+                  <tr key={w.id} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="px-4 py-2 font-mono text-xs">{w.reference ?? `CF-WD-${String(w.seq).padStart(5, "0")}`}</td>
+                    <td className="px-4 py-2 text-slate-600 dark:text-slate-400">GHS {fromPesewas(w.amount).toFixed(2)}</td>
+                    <td className="px-4 py-2 text-xs text-red-500">-GHS {fromPesewas(feeP).toFixed(2)}</td>
+                    <td className="px-4 py-2 font-semibold text-emerald-600 dark:text-emerald-400">GHS {fromPesewas(netP).toFixed(2)}</td>
+                    <td className="px-4 py-2">{w.network} · {w.momoNumber}</td>
+                    <td className="px-4 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${w.status === "APPROVED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : w.status === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"}`}>
+                        {w.status}
+                      </span>
+                      {w.adminNote && <span className="ml-2 text-xs text-slate-400">{w.adminNote}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

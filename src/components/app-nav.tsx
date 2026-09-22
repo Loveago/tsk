@@ -30,6 +30,7 @@ import {
   Activity,
   Loader2,
   MessageSquare,
+  Banknote,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -97,7 +98,8 @@ export const adminNav: NavItem[] = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/chat", label: "Support Chat", icon: MessageSquare },
   { href: "/admin/users/signup-codes", label: "Signup Codes", icon: Ticket },
-  { href: "/admin/storefronts", label: "Storefronts", icon: Store },
+  { href: "/admin/storefronts", label: "Storefronts", icon: Store, badge: true },
+  { href: "/admin/storefronts/withdrawals", label: "Withdrawals", icon: Banknote, badge: true },
   { href: "/admin/packages", label: "Packages", icon: Package },
   { href: "/admin/pricing", label: "Pricing", icon: Receipt },
   { href: "/admin/billing", label: "Billing", icon: Receipt },
@@ -108,7 +110,7 @@ export const adminNav: NavItem[] = [
 ];
 
 export function isActive(pathname: string, href: string) {
-  if (href === "/dashboard" || href === "/admin") return pathname === href;
+  if (href === "/dashboard" || href === "/admin" || href === "/admin/storefronts") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -193,6 +195,16 @@ export function useNavBadges(admin?: boolean): Record<string, NavBadgeData> {
               count: typeof data.underReviewReports === "number" ? data.underReviewReports : 0,
               label: "under review",
               variant: "danger",
+            },
+            "/admin/storefronts/withdrawals": {
+              count: typeof data.pendingWithdrawals === "number" ? data.pendingWithdrawals : 0,
+              label: "pending withdrawals",
+              variant: "warning",
+            },
+            "/admin/storefronts": {
+              count: typeof data.pendingWithdrawals === "number" ? data.pendingWithdrawals : 0,
+              label: "pending withdrawals",
+              variant: "warning",
             },
           });
         }

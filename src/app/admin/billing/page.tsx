@@ -5,7 +5,7 @@ import { PageHeader, EmptyState, Spinner } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { ExportButtons } from "@/components/admin/export-buttons";
-import { Select, Label } from "@/components/ui/input";
+import { Select, Label, Input } from "@/components/ui/input";
 import { useToast } from "@/components/toast";
 import { formatGHS, formatDateTime } from "@/lib/types";
 import { IncomingMomoTable } from "@/components/admin/incoming-momo-table";
@@ -35,6 +35,8 @@ export default function AdminBillingPage() {
   const [pages, setPages] = React.useState(1);
   const [page, setPage] = React.useState(1);
   const [status, setStatus] = React.useState("PENDING");
+  const [type, setType] = React.useState("");
+  const [searchQuery, setSearchQuery] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
@@ -47,16 +49,19 @@ export default function AdminBillingPage() {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), pageSize: "20" });
     if (status) params.set("status", status);
+    if (type) params.set("type", type);
+    if (searchQuery) params.set("q", searchQuery);
     const res = await fetch(`/api/admin/billing?${params}`);
     const json = await res.json();
     setData(json.data ?? []);
     setTotal(json.total ?? 0);
     setPages(json.pages ?? 1);
     setLoading(false);
-  }, [page, status]);
+  }, [page, status, type, searchQuery]);
 
   React.useEffect(() => {
-    load();
+    const t = setTimeout(load, 200);
+    return () => clearTimeout(t);
   }, [load]);
 
   // Read URL query tab
@@ -197,14 +202,38 @@ export default function AdminBillingPage() {
       {/* Tab 1: Ledger Transactions */}
       {tab === "transactions" && (
         <div className="space-y-4">
-          <div className="max-w-xs space-y-1.5">
-            <Label>Filter by status</Label>
-            <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-              <option value="PENDING">Pending approval</option>
-              <option value="APPROVED">Approved</option>
-              <option value="REJECTED">Rejected</option>
-              <option value="">All</option>
-            </Select>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-44 space-y-1.5">
+              <Label>Filter by status</Label>
+              <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+                <option value="PENDING">Pending approval</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="">All Statuses</option>
+              </Select>
+            </div>
+
+            <div className="w-52 space-y-1.5">
+              <Label>Transaction type</Label>
+              <Select value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}>
+                <option value="">All Types</option>
+                <option value="SIGNUP_FEE">Registration Fees (SIGNUP_FEE)</option>
+                <option value="TOPUP">Top-ups (TOPUP)</option>
+                <option value="DEBIT">Debits (DEBIT)</option>
+                <option value="ADJUSTMENT">Adjustments (ADJUSTMENT)</option>
+                <option value="REFUND">Refunds (REFUND)</option>
+              </Select>
+            </div>
+
+            <div className="w-72 space-y-1.5">
+              <Label>Search reference / user</Label>
+              <Input
+                placeholder="Search reference (REG-…), user name, email"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+                className="h-10 text-xs"
+              />
+            </div>
           </div>
 
           <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">

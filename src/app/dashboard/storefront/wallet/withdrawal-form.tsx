@@ -55,7 +55,9 @@ export function WithdrawalForm({
           You already have a withdrawal awaiting review.
         </p>
       )}
-      <p className="text-xs text-slate-500">Minimum GHS 50.00 · Available: GHS {(available / 100).toFixed(2)}</p>
+      <p className="text-xs text-slate-500">
+        Minimum GHS 50.00 · Available: GHS {(available / 100).toFixed(2)} · Withdrawal fee: <span className="font-semibold text-slate-700 dark:text-slate-300">GHS 1.00</span>
+      </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <input
           value={amount}
@@ -91,6 +93,26 @@ export function WithdrawalForm({
           className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
         />
       </div>
+
+      {parseFloat(amount || "0") > 0 && (
+        <div className="rounded-lg bg-slate-50 p-3 text-xs dark:bg-white/5 border border-slate-200 dark:border-slate-800">
+          <div className="flex justify-between py-0.5 text-slate-500 dark:text-slate-400">
+            <span>Requested withdrawal:</span>
+            <span className="font-medium text-slate-700 dark:text-slate-300">GHS {parseFloat(amount || "0").toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between py-0.5 text-slate-500 dark:text-slate-400">
+            <span>Withdrawal fee:</span>
+            <span className="font-medium text-red-500">- GHS 1.00</span>
+          </div>
+          <div className="mt-1 flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-900 dark:border-slate-700 dark:text-white">
+            <span>Net payout to your MoMo:</span>
+            <span className="text-emerald-600 dark:text-emerald-400">
+              GHS {Math.max(0, parseFloat(amount || "0") - 1).toFixed(2)}
+            </span>
+          </div>
+        </div>
+      )}
+
       <button
         type="submit"
         disabled={busy || disabled || pending}

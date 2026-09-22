@@ -670,7 +670,7 @@ export async function reconcileUnsettledStorefrontOrders(hoursBack = 48): Promis
  * Approves a withdrawal: debits the wallet balance, writes the ledger row and
  * flips the request state — all atomically (§28).
  */
-export async function approveWithdrawal(withdrawalId: string, adminNote?: string) {
+export async function approveWithdrawal(withdrawalId: string, adminNote?: string, processedBy?: string) {
   return prisma.$transaction(async (tx) => {
     const wd = await tx.storefrontWithdrawal.findUnique({ where: { id: withdrawalId } });
     if (!wd) throw new Error("Withdrawal not found");
@@ -688,19 +688,29 @@ export async function approveWithdrawal(withdrawalId: string, adminNote?: string
 
     return tx.storefrontWithdrawal.update({
       where: { id: withdrawalId },
-      data: { status: "APPROVED", adminNote },
+      data: {
+        status: "APPROVED",
+        adminNote: adminNote ?? wd.adminNote,
+        processedBy,
+        processedAt: new Date(),
+      },
     });
   });
 }
 
 /** Rejects a pending withdrawal without touching the wallet (§28). */
-export async function rejectWithdrawal(withdrawalId: string, adminNote?: string) {
+export async function rejectWithdrawal(withdrawalId: string, adminNote?: string, processedBy?: string) {
   const wd = await prisma.storefrontWithdrawal.findUnique({ where: { id: withdrawalId } });
   if (!wd) throw new Error("Withdrawal not found");
   if (wd.status !== "PENDING") throw new Error("Withdrawal is not pending review");
   return prisma.storefrontWithdrawal.update({
     where: { id: withdrawalId },
-    data: { status: "REJECTED", adminNote },
+    data: {
+      status: "REJECTED",
+      adminNote: adminNote ?? wd.adminNote,
+      processedBy,
+      processedAt: new Date(),
+    },
   });
 }
 

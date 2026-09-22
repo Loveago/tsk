@@ -22,6 +22,7 @@ import {
   Clock,
   ArrowDownLeft,
   ShieldCheck,
+  Banknote,
 } from "lucide-react";
 
 export default async function AdminDashboardPage() {
@@ -50,6 +51,7 @@ export default async function AdminDashboardPage() {
     processingMtnCount,
     rejectedMtnCount,
     blockedMtnCount,
+    pendingWithdrawalsCount,
   ] = await Promise.all([
     getOrderStats({}),
     prisma.user.count(),
@@ -95,6 +97,7 @@ export default async function AdminDashboardPage() {
     prisma.mtnVerificationRequest.count({ where: { status: "PROCESSING" } }),
     prisma.mtnVerificationRequest.count({ where: { status: "REJECTED" } }),
     prisma.blockedMtnNumber.count(),
+    prisma.storefrontWithdrawal.count({ where: { status: "PENDING" } }),
   ]);
 
   return (
@@ -115,6 +118,25 @@ export default async function AdminDashboardPage() {
             </Link>
             .
           </span>
+        </div>
+      )}
+
+      {pendingWithdrawalsCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-200 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300">
+              <Banknote className="h-4 w-4 animate-pulse" />
+            </span>
+            <span>
+              <strong>{pendingWithdrawalsCount} storefront withdrawal request{pendingWithdrawalsCount === 1 ? "" : "s"}</strong> awaiting MoMo payout review.
+            </span>
+          </div>
+          <Link
+            href="/admin/storefronts/withdrawals"
+            className="rounded-xl bg-amber-600 px-3.5 py-1.5 text-xs font-bold text-white shadow hover:bg-amber-500 transition-colors"
+          >
+            Review &amp; Pay Out →
+          </Link>
         </div>
       )}
 

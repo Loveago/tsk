@@ -248,7 +248,7 @@ export function StoreChrome(props: StoreChromeProps) {
                     <Link href={storeHref(slug, "#shop")} onClick={() => setShopOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/10">
                       Advanced browse →
                     </Link>
-                    <Link href={storeHref(slug, "track")} onClick={() => setShopOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/10">
+                    <Link href={storeHref(slug, "#track")} onClick={() => setShopOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/10">
                       Track an order →
                     </Link>
                     {wa && (
@@ -319,7 +319,7 @@ export function StoreChrome(props: StoreChromeProps) {
               <p className="text-xs font-bold uppercase tracking-widest text-yellow-500">Company</p>
               <ul className="mt-4 space-y-2.5 text-sm font-medium text-slate-700 dark:text-slate-300">
                 <li>
-                  <Link href={storeHref(slug, "track")} className="hover:text-slate-950 dark:hover:text-white">
+                  <Link href={storeHref(slug, "#track")} className="hover:text-slate-950 dark:hover:text-white">
                     Track Order
                   </Link>
                 </li>
@@ -506,8 +506,8 @@ export function StoreChrome(props: StoreChromeProps) {
                   <UserRound className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold">Guest User</p>
-                  <p className="text-xs opacity-75">Guest checkout — no account needed</p>
+                  <p className="text-sm font-bold">Storefront Customer</p>
+                  <p className="text-xs opacity-75">Instant MoMo checkout & delivery</p>
                 </div>
                 <ChevronRight className="h-4 w-4" />
               </div>
@@ -527,7 +527,7 @@ export function StoreChrome(props: StoreChromeProps) {
                 <ChevronRight className="ml-auto h-4 w-4 text-slate-300" />
               </Link>
               <Link
-                href={storeHref(slug, "track")}
+                href={storeHref(slug, "#track")}
                 onClick={() => setDrawerOpen(false)}
                 className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
               >

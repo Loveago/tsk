@@ -13,6 +13,7 @@ export interface StorefrontOrderRow {
   storeName: string;
   storeSlug: string;
   customerPhone: string;
+  customerEmail?: string | null;
   network: string;
   gbAmount: number;
   sellingPrice: number; // pesewas
@@ -103,9 +104,14 @@ export function StorefrontOrdersTable({
                     </div>
                   </td>
 
-                  {/* Phone */}
-                  <td className="px-4 py-3 font-mono font-bold text-slate-900 dark:text-white">
-                    {o.customerPhone}
+                  {/* Phone & Email */}
+                  <td className="px-4 py-3">
+                    <p className="font-mono font-bold text-slate-900 dark:text-white">{o.customerPhone}</p>
+                    {o.customerEmail && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-[170px] truncate" title={o.customerEmail}>
+                        {o.customerEmail}
+                      </p>
+                    )}
                   </td>
 
                   {/* Network */}

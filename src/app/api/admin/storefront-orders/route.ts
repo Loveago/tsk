@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
     if (q) {
       where.OR = [
         { customerPhone: { contains: q } },
+        { customerEmail: { contains: q, mode: "insensitive" } },
         { paymentReference: { contains: q.toUpperCase() } },
         { storefront: { is: { name: { contains: q } } } },
       ];
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
           storeName: o.storefront.name,
           storeSlug: o.storefront.slug,
           customerPhone: o.customerPhone,
+          customerEmail: o.customerEmail,
           network: o.product.dataPackage.network,
           gbAmount: o.product.dataPackage.gbAmount,
           sellingPrice: o.sellingPrice, // pesewas

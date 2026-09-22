@@ -20,6 +20,7 @@ import {
   X,
   AlertTriangle,
   Zap,
+  Receipt,
 } from "lucide-react";
 
 export default function AdminUsersPage() {
@@ -41,6 +42,7 @@ export default function AdminUsersPage() {
   const [pricingProfileId, setPricingProfileId] = React.useState("");
   const [hasOrders, setHasOrders] = React.useState("");
   const [hasSignupCode, setHasSignupCode] = React.useState("");
+  const [registrationPayment, setRegistrationPayment] = React.useState("");
 
   // Counts for tabs/badges
   const [counts, setCounts] = React.useState({
@@ -49,6 +51,7 @@ export default function AdminUsersPage() {
     zeroBalance: 0,
     frozen: 0,
     active: 0,
+    paidRegistration: 0,
   });
 
   // Modals & single actions
@@ -92,6 +95,7 @@ export default function AdminUsersPage() {
     if (pricingProfileId) params.set("pricingProfileId", pricingProfileId);
     if (hasOrders) params.set("hasOrders", hasOrders);
     if (hasSignupCode) params.set("hasSignupCode", hasSignupCode);
+    if (registrationPayment) params.set("registrationPayment", registrationPayment);
 
     try {
       const res = await fetch(`/api/admin/users?${params}`);
@@ -107,7 +111,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, role, status, balance, pricingProfileId, hasOrders, hasSignupCode, toast]);
+  }, [page, q, role, status, balance, pricingProfileId, hasOrders, hasSignupCode, registrationPayment, toast]);
 
   React.useEffect(() => {
     const t = setTimeout(load, 250);
@@ -227,7 +231,8 @@ export default function AdminUsersPage() {
     Boolean(balance) ||
     Boolean(pricingProfileId) ||
     Boolean(hasOrders) ||
-    Boolean(hasSignupCode);
+    Boolean(hasSignupCode) ||
+    Boolean(registrationPayment);
 
   const clearAllFilters = () => {
     setQ("");
@@ -237,6 +242,7 @@ export default function AdminUsersPage() {
     setPricingProfileId("");
     setHasOrders("");
     setHasSignupCode("");
+    setRegistrationPayment("");
     setPage(1);
   };
 
@@ -363,12 +369,35 @@ export default function AdminUsersPage() {
             {counts.active}
           </span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setRegistrationPayment(registrationPayment === "paid" ? "" : "paid");
+            setStatus("");
+            setBalance("");
+            setPage(1);
+          }}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+            registrationPayment === "paid"
+              ? "bg-purple-600 text-white shadow-sm"
+              : "bg-purple-50 text-purple-800 border border-purple-200/80 hover:bg-purple-100 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-800/40"
+          }`}
+        >
+          <Receipt className="h-3.5 w-3.5" />
+          Reg Fee Paid
+          {counts.paidRegistration > 0 && (
+            <span className="rounded-full bg-purple-600/20 dark:bg-purple-400/20 px-1.5 py-0.2 text-[10px] font-bold">
+              {counts.paidRegistration}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Advanced Filter Toolbar */}
       <div className="flex flex-wrap items-center gap-2.5">
         <Input
-          placeholder="Search name, email or phone…"
+          placeholder="Search name, email, phone, or REG-…"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -466,9 +495,24 @@ export default function AdminUsersPage() {
           }}
           className="w-40 h-9 text-xs"
         >
-          <option value="">All Signups</option>
+          <option value="">All Signup Codes</option>
           <option value="yes">Used Signup Code</option>
           <option value="no">No Signup Code</option>
+        </Select>
+
+        {/* Registration Payment Filter */}
+        <Select
+          value={registrationPayment}
+          onChange={(e) => {
+            setRegistrationPayment(e.target.value);
+            setPage(1);
+          }}
+          className="w-44 h-9 text-xs font-medium"
+        >
+          <option value="">All Registration Fees</option>
+          <option value="paid">Registration Paid</option>
+          <option value="pending">Payment Pending</option>
+          <option value="exempt">Fee Exempt / Free</option>
         </Select>
 
         {hasActiveFilters && (

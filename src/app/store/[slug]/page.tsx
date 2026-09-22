@@ -6,6 +6,7 @@ import { fromPesewas } from "@/lib/storefront";
 import { NetworkLogo } from "@/components/store/network-logo";
 import { NetworkWheel } from "@/components/store/network-wheel";
 import { NETWORK_BRANDS, NETWORK_ORDER, ghs, networkHref, storeHref } from "@/components/store/brands";
+import { TrackForm } from "./track/track-form";
 import type { NetworkProvider } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -132,13 +133,13 @@ export default async function PublicStorePage({
               <ShoppingBag className="h-4 w-4" />
               Buy Now
             </a>
-            <Link
-              href={storeHref(slug, "track")}
-              className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+            <a
+              href="#track"
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-all hover:bg-slate-50 hover:scale-105 active:scale-95 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
             >
-              <Clock className="h-4 w-4" />
+              <Clock className="h-4 w-4 text-yellow-500" />
               Track your order
-            </Link>
+            </a>
             {storefront.whatsapp && (
               <a
                 href={`https://wa.me/233${storefront.whatsapp.replace(/^0/, "").replace(/\D/g, "")}`}
@@ -193,6 +194,32 @@ export default async function PublicStorePage({
         )}
       </section>
 
+      {/* Dedicated Order Tracking Section */}
+      <section id="track" className="mx-auto max-w-4xl scroll-mt-24 px-4 pb-14">
+        <div className="relative overflow-hidden rounded-3xl border border-slate-200/90 bg-white/85 p-6 sm:p-10 shadow-xl shadow-slate-200/40 backdrop-blur-md dark:border-white/10 dark:bg-[#111a2c]/85 dark:shadow-none">
+          {/* Ambient decorative glow */}
+          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-yellow-400/15 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-emerald-400/15 blur-3xl" />
+
+          <div className="relative z-10 mx-auto max-w-2xl text-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-yellow-400/40 bg-yellow-400/10 px-3.5 py-1.5 text-xs font-bold text-yellow-700 dark:text-yellow-400">
+              <Clock className="h-3.5 w-3.5 text-yellow-500" />
+              Live Order Tracking
+            </span>
+            <h2 className="mt-3 font-serif text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+              Track Your Bundle Order
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-300">
+              Enter your recipient phone number, receipt email, or Paystack order reference below to check real-time delivery status.
+            </p>
+          </div>
+
+          <div className="relative z-10 mx-auto mt-8 max-w-xl">
+            <TrackForm slug={slug} />
+          </div>
+        </div>
+      </section>
+
       {/* Bottom info section */}
       <section className="mx-auto max-w-4xl px-4 pb-12 pt-4">
         <div className="rounded-3xl border border-slate-200/80 bg-white/70 p-8 sm:p-12 text-center backdrop-blur-sm shadow-sm dark:border-slate-800 dark:bg-[#111a2c]/70">
@@ -216,13 +243,13 @@ export default async function PublicStorePage({
               <ShoppingBag className="h-4 w-4" />
               Buy bundles
             </a>
-            <Link
-              href={storeHref(slug, "track")}
+            <a
+              href="#track"
               className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/5 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
             >
               <Clock className="h-4 w-4" />
               Track your order
-            </Link>
+            </a>
           </div>
           <div className="mt-8 flex flex-wrap justify-center gap-2">
             {[

@@ -13,6 +13,8 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
     const status = searchParams.get("status");
+    const type = searchParams.get("type");
+    const q = searchParams.get("q");
 
     // Self-heal: automatically check and approve pending Paystack top-ups
     if (!status || status === "PENDING") {
@@ -40,6 +42,14 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
+    if (type) where.type = type;
+    if (q) {
+      where.OR = [
+        { reference: { contains: q, mode: "insensitive" } },
+        { user: { is: { name: { contains: q, mode: "insensitive" } } } },
+        { user: { is: { email: { contains: q, mode: "insensitive" } } } },
+      ];
+    }
 
     const [data, total] = await Promise.all([
       prisma.walletTransaction.findMany({

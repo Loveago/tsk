@@ -433,6 +433,7 @@ model StorefrontOrder {
   underlyingOrderId Int?  @unique
   underlyingOrder   Order?   @relation(fields: [underlyingOrderId], references: [id])
   customerPhone     String // recipient number shown to the store owner (§36)
+  customerEmail     String? // customer email for Paystack receipt
   sellingPrice      Int // pesewas (GHS x 100)
   productCost       Int // pesewas — captured at purchase time
   commission        Int // pesewas — sellingPrice - productCost, computed server-side (§48)
@@ -488,7 +489,9 @@ model StorefrontWithdrawal {
   seq         Int       @unique // CF-WD-00001
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  amount      Int // pesewas
+  amount      Int // pesewas (gross amount debited from wallet)
+  fee         Int       @default(100) // pesewas (1 GHS platform fee)
+  netAmount   Int?      // pesewas (amount - fee, payout sent to user)
   network     String // MTN | TELECEL | AIRTELTIGO
   momoNumber  String
   accountName String

@@ -29,6 +29,7 @@ interface TrackedOrder {
   code: string;
   reference: string;
   phone?: string;
+  email?: string | null;
   network: string;
   size: string;
   amount: number; // GHS
@@ -344,20 +345,32 @@ export function TrackForm({ slug }: { slug: string }) {
     <>
       <form onSubmit={track}>
         <label htmlFor="track-query" className="block text-sm font-bold text-slate-800 dark:text-slate-100">
-          Recipient phone number, order ID, or payment reference
+          Recipient phone number, receipt email, or order reference
         </label>
         <input
           id="track-query"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="024 XXX XXXX · CF-ST-00001 · pay_..."
+          placeholder="024 XXX XXXX · you@example.com · CF-ST-... · STF-..."
           className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-yellow-400 caret-yellow-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:caret-yellow-400"
         />
+
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-slate-600 dark:text-slate-300">Lookup by:</span>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium dark:bg-white/10">📱 10-digit Phone</span>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium dark:bg-white/10">✉️ Receipt Email</span>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium dark:bg-white/10">🔖 Order Ref</span>
+        </div>
 
         <div className="mt-3">
           <div className="flex items-center justify-between">
             <label htmlFor="track-date" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Order Date <span className="text-[11px] font-normal text-slate-500">(Required for phone lookup)</span>
+              Order Date{" "}
+              <span className="text-[11px] font-normal text-slate-500">
+                {query.includes("@") || /^CF-ST-|^STF-|^PSK-|^REG-/i.test(query.trim())
+                  ? "(Optional for email / ref lookup)"
+                  : "(Required for phone lookup)"}
+              </span>
             </label>
             <button
               type="button"
@@ -376,7 +389,9 @@ export function TrackForm({ slug }: { slug: string }) {
             className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-yellow-400 dark:border-white/10 dark:bg-white/5 dark:text-white"
           />
           <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            Filters orders to the specific date placed to protect customer privacy.
+            {query.includes("@") || /^CF-ST-|^STF-|^PSK-|^REG-/i.test(query.trim())
+              ? "Matches all recent orders matching your email or reference."
+              : "Filters orders to the specific date placed to protect customer privacy."}
           </p>
         </div>
 
@@ -421,13 +436,18 @@ export function TrackForm({ slug }: { slug: string }) {
               className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white p-3.5 sm:px-4 sm:py-3 dark:border-white/10 dark:bg-white/5"
             >
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-bold text-slate-900 dark:text-white">
                     {o.network} {o.size} — ₵{o.amount.toFixed(2)}
                   </p>
                   {o.phone && (
                     <span className="font-mono text-xs font-semibold text-slate-600 dark:text-slate-300">
                       ({o.phone})
+                    </span>
+                  )}
+                  {o.email && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[180px]" title={o.email}>
+                      · {o.email}
                     </span>
                   )}
                 </div>

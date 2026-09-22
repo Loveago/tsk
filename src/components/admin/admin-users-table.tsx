@@ -15,7 +15,31 @@ import {
   CheckCircle2,
   Trash2,
   Clock,
+  Copy,
+  Check,
 } from "lucide-react";
+
+function CopyRefButton({ text }: { text: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const onCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      title="Copy reference"
+      className="inline-flex items-center p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+    >
+      {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
+}
 
 export interface UserRow {
   id: string;
@@ -30,6 +54,15 @@ export interface UserRow {
   signupCodeUsage?: {
     signupCode: { code: string };
     usedAt: string;
+  } | null;
+  registrationPayment?: {
+    id: string;
+    reference: string | null;
+    amount: number;
+    status: string;
+    note: string | null;
+    paidAt: string | null;
+    createdAt: string;
   } | null;
 }
 
@@ -91,6 +124,7 @@ export function AdminUsersTable({
                 <th className="px-4 py-3 font-medium">User</th>
                 <th className="px-4 py-3 font-medium">Role</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Registration / Ref</th>
                 <th className="px-4 py-3 font-medium">Balance</th>
                 <th className="hidden px-4 py-3 font-medium md:table-cell">Signup Code</th>
                 <th className="hidden px-4 py-3 font-medium lg:table-cell">Orders</th>
@@ -140,6 +174,43 @@ export function AdminUsersTable({
                         {u.status === "PENDING_PAYMENT" && <Clock className="h-3 w-3" />}
                         {u.status === "PENDING_PAYMENT" ? "Awaiting Payment" : u.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {u.registrationPayment ? (
+                        <div className="flex flex-col gap-1 min-w-[130px]">
+                          <div>
+                            {u.registrationPayment.status === "APPROVED" ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20"
+                                title={u.registrationPayment.paidAt ? `Paid on ${formatDateTime(u.registrationPayment.paidAt)}` : undefined}
+                              >
+                                <CheckCircle2 className="h-2.5 w-2.5" /> Paid {formatGHS(u.registrationPayment.amount)}
+                              </span>
+                            ) : u.registrationPayment.status === "PENDING" ? (
+                              <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
+                                <Clock className="h-2.5 w-2.5" /> Pending {formatGHS(u.registrationPayment.amount)}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                                {u.registrationPayment.status}
+                              </span>
+                            )}
+                          </div>
+                          {u.registrationPayment.reference && (
+                            <div className="flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300">
+                              <span
+                                className="truncate max-w-[125px]"
+                                title={u.registrationPayment.note || u.registrationPayment.reference}
+                              >
+                                {u.registrationPayment.reference}
+                              </span>
+                              <CopyRefButton text={u.registrationPayment.reference} />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">Exempt / Free</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">
                       {formatGHS(u.balance)}

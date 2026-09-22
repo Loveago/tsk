@@ -10,8 +10,6 @@ import {
   nextStorefrontSeq,
   storefrontOrderCode,
   generateStorefrontOrderCode,
-  resolveStorefrontDomain,
-  generateGuestEmail,
 } from "@/lib/storefront";
 import { isPaystackConfigured, initializeTransaction } from "@/lib/paystack";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
@@ -107,6 +105,7 @@ export async function POST(
         storefrontId: storefront.id,
         productId: product.id,
         customerPhone: input.customerPhone,
+        customerEmail: input.customerEmail,
         sellingPrice,
         productCost,
         commission,
@@ -121,11 +120,9 @@ export async function POST(
 
     try {
       const origin = getRequestOrigin(request);
-      const storefrontDomain = resolveStorefrontDomain(request.headers);
-      const guestEmail = generateGuestEmail(storefrontDomain);
 
       const authorization = await initializeTransaction({
-        email: guestEmail, // Guest buyer checkout - does not leak admin/reseller email
+        email: input.customerEmail,
         amountPesewas: totalPesewas,
         reference: paymentReference,
         callbackUrl: `${origin}/api/store/paystack/callback`,
@@ -133,7 +130,7 @@ export async function POST(
           storefrontOrderId: row.id,
           slug,
           seq,
-          guestEmail,
+          customerEmail: input.customerEmail,
           customerPhone: input.customerPhone,
           sellingPrice,
           feePesewas,

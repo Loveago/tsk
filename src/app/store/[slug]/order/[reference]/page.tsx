@@ -215,6 +215,16 @@ export default async function StorefrontOrderPage({
             </dd>
           </div>
 
+          {/* Receipt Email */}
+          {order.customerEmail && (
+            <div className="flex items-start justify-between gap-4">
+              <dt className="font-medium text-slate-500 dark:text-slate-400">Receipt email</dt>
+              <dd className="font-medium text-slate-900 dark:text-white">
+                {order.customerEmail}
+              </dd>
+            </div>
+          )}
+
           {/* Amount Breakdown */}
           <div className="flex items-start justify-between gap-4">
             <dt className="font-medium text-slate-500 dark:text-slate-400">Bundle price</dt>

@@ -56,16 +56,18 @@ export async function POST(request: NextRequest) {
       return apiError(400, `Maximum withdrawal is GHS ${fromPesewas(dynamicMaxWithdrawalP).toFixed(2)}`);
     }
 
-    // Apply fee
-    const feeSetting = await prisma.systemSetting.findUnique({
-      where: { key: "storefront_withdrawal_fee_percent" },
+    // Apply 1 GHS (100 pesewas) fixed fee for withdrawals
+    const fixedFeeSetting = await prisma.systemSetting.findUnique({
+      where: { key: "storefront_withdrawal_fee_fixed" },
     });
-    const feePercent = feeSetting?.value ? parseFloat(feeSetting.value) : 0;
-    const feeP = Math.floor(amount * (feePercent / 100));
-    
-    // We debit the full amount, but payout will be amount - fee
-    // Note: since schema may not have a fee field, we rely on the amount for the debit
-    const totalDebitP = amount; 
+    const feeP = fixedFeeSetting?.value ? toPesewas(parseFloat(fixedFeeSetting.value)) : 100; // 100 pesewas = 1 GHS
+
+    if (amount <= feeP) {
+      return apiError(400, `Withdrawal amount must be greater than the GHS ${fromPesewas(feeP).toFixed(2)} fee`);
+    }
+
+    // We debit the full requested amount from the wallet, payout will be net of fee
+    const totalDebitP = amount;
     const payoutAmountP = amount - feeP;
 
     if (wallet.balance < totalDebitP) {
@@ -84,12 +86,14 @@ export async function POST(request: NextRequest) {
         seq,
         userId: user.id,
         amount: totalDebitP, // Amount debited from wallet
+        fee: feeP, // 1 GHS fee
+        netAmount: payoutAmountP, // Net payout to user
         network: input.network,
         momoNumber: input.momoNumber,
         accountName: input.accountName,
         status: "PENDING",
-        // Storing the net payout in the note for admin reference, since there's no dedicated fee column
-        adminNote: feeP > 0 ? `Fee: GHS ${fromPesewas(feeP).toFixed(2)} | Net Payout: GHS ${fromPesewas(payoutAmountP).toFixed(2)}` : undefined,
+        note: `Withdrawal request of GHS ${fromPesewas(amount).toFixed(2)} (Fee: GHS ${fromPesewas(feeP).toFixed(2)}, Net Payout: GHS ${fromPesewas(payoutAmountP).toFixed(2)})`,
+        adminNote: `Net payout to send: GHS ${fromPesewas(payoutAmountP).toFixed(2)} (Fee: GHS ${fromPesewas(feeP).toFixed(2)})`,
       },
     });
 
@@ -98,7 +102,7 @@ export async function POST(request: NextRequest) {
     });
     
     if (autoApproveSetting?.value === "true") {
-      await approveWithdrawal(withdrawal.id, withdrawal.adminNote || "Auto-approved");
+      await approveWithdrawal(withdrawal.id, withdrawal.adminNote || "Auto-approved", "SYSTEM");
       withdrawal.status = "APPROVED";
     }
 
@@ -119,8 +123,8 @@ export async function PATCH(request: NextRequest) {
 
     const withdrawal =
       input.action === "APPROVE"
-        ? await approveWithdrawal(id, input.adminNote || undefined)
-        : await rejectWithdrawal(id, input.adminNote || undefined);
+        ? await approveWithdrawal(id, input.adminNote || undefined, admin.email || admin.id)
+        : await rejectWithdrawal(id, input.adminNote || undefined, admin.email || admin.id);
 
     return NextResponse.json({ withdrawal });
   } catch (err) {

@@ -11,17 +11,18 @@ interface Product {
 }
 
 /**
- * Data-size picker + beneficiary phone + BUY — mirrors the Clequa product page:
- * grid of size cards, then the phone field and a full-width yellow BUY button.
- * Guest checkout via the existing Paystack hosted flow.
+ * Data-size picker + beneficiary phone + email receipt + BUY.
+ * Direct checkout with Paystack hosted flow and instant payment receipt.
  */
 export function NetworkBuyForm({ slug, products }: { slug: string; products: Product[] }) {
   const [selected, setSelected] = React.useState<Product>(products[0]);
   const [phone, setPhone] = React.useState("");
+  const [email, setEmail] = React.useState("");
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
 
   const phoneValid = /^0\d{9}$/.test(phone.trim());
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   async function buy(e: React.FormEvent) {
     e.preventDefault();
@@ -30,13 +31,21 @@ export function NetworkBuyForm({ slug, products }: { slug: string; products: Pro
       setError("Enter a valid 10-digit number starting with 0, e.g. 0241234567");
       return;
     }
+    if (!emailValid) {
+      setError("Enter a valid email address so Paystack can send your payment receipt.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
       const res = await fetch(`/api/store/${slug}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId: selected.packageId, customerPhone: phone.trim() }),
+        body: JSON.stringify({
+          packageId: selected.packageId,
+          customerPhone: phone.trim(),
+          customerEmail: email.trim().toLowerCase(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not start payment");
@@ -91,12 +100,25 @@ export function NetworkBuyForm({ slug, products }: { slug: string; products: Pro
       />
       <p className="mt-1.5 text-xs text-slate-400">10 digits starting with 0 only (not 233…)</p>
 
+      <label htmlFor="receipt-email" className="mt-5 block text-sm font-bold text-slate-800 dark:text-slate-100">
+        Email address <span className="text-red-500">*</span>
+      </label>
+      <input
+        id="receipt-email"
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="you@example.com"
+        autoComplete="email"
+        className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base tracking-wide text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-yellow-400 caret-yellow-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:caret-yellow-400"
+      />
+      <p className="mt-1.5 text-xs text-slate-400">Your Paystack payment receipt and order updates will be sent here</p>
+
       {error && (
         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
           {error}
         </p>
       )}
-
 
       {selected && (
         <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs space-y-1 dark:border-white/10 dark:bg-white/5">
@@ -117,7 +139,7 @@ export function NetworkBuyForm({ slug, products }: { slug: string; products: Pro
 
       <button
         type="submit"
-        disabled={busy || !selected || !phoneValid}
+        disabled={busy || !selected || !phoneValid || !emailValid}
         className="mt-4 h-13 w-full rounded-full bg-yellow-300 text-sm font-bold tracking-wide text-slate-900 shadow-md shadow-yellow-400/30 transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
         style={{ height: 52 }}
       >
