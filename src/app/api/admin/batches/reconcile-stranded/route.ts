@@ -11,9 +11,14 @@ function isStrandedClickyfiedOrder(order: {
   providerReference: string | null;
   externalReference?: string | null;
   exportBatchId?: string | null;
+  updatedAt?: Date;
 }): boolean {
   // If order was exported via Excel file, it is handled manually/by vendor and is NOT a stranded Clickyfied order
   if (order.exportBatchId) return false;
+  // Orders updated within the last 15 minutes are actively in-flight and must NEVER be treated as stranded
+  if (order.updatedAt && Date.now() - order.updatedAt.getTime() < 15 * 60 * 1000) {
+    return false;
+  }
   if (!order.providerReference) return true;
   const ref = order.providerReference.trim();
   if (ref === "") return true;
@@ -120,6 +125,7 @@ export async function POST(request: NextRequest) {
         externalReference: true,
         exportBatchId: true,
         batchId: true,
+        updatedAt: true,
       },
     });
 

@@ -513,6 +513,7 @@ export default function SendOrderPage() {
   };
 
   const executeOrderSubmission = async (ordersToSend: Line[]) => {
+    if (submitting) return;
     if (!ordersToSend.length) {
       toast("Add at least one order", "error");
       return;

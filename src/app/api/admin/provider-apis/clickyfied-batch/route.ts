@@ -15,20 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     await requireStaff();
-    let status = await getClickyfiedBatchStatus();
-
-    // If threshold is reached or timer has expired, trigger dispatch and return updated status
-    if (
-      status.batchEnabled &&
-      status.clickyfiedEnabled &&
-      status.pendingCount > 0 &&
-      (status.thresholdMet || status.timerExpired)
-    ) {
-      const { checkAndTriggerMtnBatch } = await import("@/lib/provider-apis/clickyfied-batch");
-      await checkAndTriggerMtnBatch(status.thresholdMet ? "THRESHOLD" : "TIMER");
-      status = await getClickyfiedBatchStatus();
-    }
-
+    const status = await getClickyfiedBatchStatus();
     return NextResponse.json(status);
   } catch (err) {
     return handleRouteError(err);

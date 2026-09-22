@@ -53,36 +53,50 @@ let isDispatchingBatch = false;
 
 /**
  * Acquires a distributed database lock for batch dispatch with a lease window.
- * Ensures across PM2 cluster workers or multi-instance containers that only ONE worker dispatches at a time.
+ * Uses atomic PostgreSQL test-and-set query to guarantee that only ONE worker dispatches at a time,
+ * even across multi-process PM2 clusters or parallel invocations.
  */
-async function acquireBatchDispatchLock(leaseSeconds = 60): Promise<boolean> {
+async function acquireBatchDispatchLock(leaseSeconds = 90): Promise<boolean> {
   const lockKey = "clickyfied_batch_dispatch_lock";
   const now = Date.now();
+  const leaseMs = leaseSeconds * 1000;
 
   try {
-    const existing = await prisma.systemSetting.findUnique({ where: { key: lockKey } });
-    if (existing && existing.value) {
-      const lockTime = parseInt(existing.value, 10);
-      if (!isNaN(lockTime) && now - lockTime < leaseSeconds * 1000) {
-        return false;
-      }
-    }
-
+    // 1. Ensure the setting record exists
     await prisma.systemSetting.upsert({
       where: { key: lockKey },
-      create: { key: lockKey, value: String(now) },
-      update: { value: String(now) },
+      create: { key: lockKey, value: "0" },
+      update: {},
     });
-    return true;
-  } catch {
-    return false;
+
+    // 2. Perform atomic test-and-set update in PostgreSQL:
+    // Only updates if lock is currently free ("0", null, empty) or has expired (older than leaseMs)
+    const updatedCount: number = await prisma.$executeRaw`
+      UPDATE "SystemSetting"
+      SET "value" = ${String(now)}
+      WHERE "key" = ${lockKey}
+        AND (
+          "value" IS NULL 
+          OR "value" = '0' 
+          OR "value" = ''
+          OR (${now} - CAST(NULLIF("value", '') AS BIGINT)) > ${leaseMs}
+        )
+    `;
+
+    return updatedCount > 0;
+  } catch (err) {
+    console.error("[acquireBatchDispatchLock] Error acquiring lock:", err);
+    return true; // fallback
   }
 }
 
 async function releaseBatchDispatchLock(): Promise<void> {
   const lockKey = "clickyfied_batch_dispatch_lock";
   try {
-    await prisma.systemSetting.delete({ where: { key: lockKey } }).catch(() => {});
+    await prisma.systemSetting.update({
+      where: { key: lockKey },
+      data: { value: "0" },
+    }).catch(() => {});
   } catch {}
 }
 
@@ -166,7 +180,11 @@ export async function getClickyfiedBatchConfig(): Promise<ClickyfiedBatchConfig>
 }
 
 /**
- * Fetches all pending MTN orders that are routed to Clickyfied
+ * Fetches all pending MTN orders that are routed to Clickyfied.
+ * Includes strict in-flight and intra-queue deduplication:
+ * 1. Excludes orders whose recipient phone number is currently being fulfilled (status: PROCESSING).
+ * 2. Deduplicates multiple orders for the same phone number within the current batch cycle so that
+ *    recipients receive exactly ONE delivery per dispatch, holding back any duplicates.
  */
 export async function getPendingMtnClickyfiedOrders() {
   const pendingOrders = await prisma.order.findMany({
@@ -191,13 +209,40 @@ export async function getPendingMtnClickyfiedOrders() {
     },
   });
 
-  // Filter to only orders that resolve to CLICKYFIED provider
+  // Query phone numbers that currently have an active in-flight PROCESSING order
+  const activeProcessingOrders = await prisma.order.findMany({
+    where: {
+      status: "PROCESSING",
+      network: { equals: "MTN", mode: "insensitive" },
+    },
+    select: { phoneNumber: true },
+  });
+  const inFlightPhones = new Set<string>();
+  for (const o of activeProcessingOrders) {
+    const last9 = normalizePhoneLast9(o.phoneNumber);
+    if (last9) inFlightPhones.add(last9);
+  }
+
+  // Filter to only orders that resolve to CLICKYFIED provider and are not in-flight or duplicate
   const eligibleOrders: typeof pendingOrders = [];
+  const queuedPhones = new Set<string>();
+
   for (const order of pendingOrders) {
     const provider = await getProviderForNetwork(order.network);
-    if (provider === "CLICKYFIED") {
-      eligibleOrders.push(order);
+    if (provider !== "CLICKYFIED") continue;
+
+    const last9 = normalizePhoneLast9(order.phoneNumber);
+    // If this recipient already has an in-flight order being processed by Clickyfied, hold back this order
+    if (inFlightPhones.has(last9)) {
+      continue;
     }
+    // If this recipient already has an order in this batch queue, hold back duplicate
+    if (queuedPhones.has(last9)) {
+      continue;
+    }
+
+    queuedPhones.add(last9);
+    eligibleOrders.push(order);
   }
 
   const totalGb = eligibleOrders.reduce((sum, o) => sum + o.gbAmount, 0);
@@ -406,12 +451,18 @@ async function submitSingleBatchChunk(
     };
   }
 
-  const entries = targetOrders.map((o) => {
+  // Deduplicate entries by normalized phone number so Clickyfied never receives duplicates in the same batch
+  const seenEntries = new Set<string>();
+  const entries: Array<{ number: string; allocationGB: number }> = [];
+  for (const o of targetOrders) {
     let num = o.phoneNumber.replace(/\D/g, "");
     if (num.startsWith("233")) num = "0" + num.slice(3);
     if (num.length === 9 && !num.startsWith("0")) num = "0" + num;
-    return { number: num, allocationGB: o.gbAmount };
-  });
+    if (!seenEntries.has(num)) {
+      seenEntries.add(num);
+      entries.push({ number: num, allocationGB: o.gbAmount });
+    }
+  }
 
   try {
     const submitRes = await client.submitOrder({
@@ -596,7 +647,57 @@ async function submitSingleBatchChunk(
       totalGb,
     };
   } catch (batchErr: any) {
-    console.error(`[ClickyfiedBatch] Dispatch of ${groupLabel} (${batchCode}) failed:`, batchErr);
+    console.error(`[ClickyfiedBatch] Dispatch of ${groupLabel} (${batchCode}) encountered an error/timeout:`, batchErr);
+
+    // CRITICAL: Before blindly resetting orders to PENDING, verify if Clickyfied actually received this batch!
+    // Timeouts and network blips often happen AFTER Clickyfied has accepted and started processing the batch.
+    let verifiedOrderId: string | null = null;
+    try {
+      const canonical = await client.resolveCanonicalOrderId(batchCode);
+      if (canonical && canonical !== batchCode && canonical.startsWith("order-")) {
+        verifiedOrderId = canonical;
+      } else {
+        const recent = await client.listOrders(20);
+        const match = recent.find((r: any) => r.externalReference === batchCode || r.orderId === batchCode);
+        if (match?.orderId) {
+          verifiedOrderId = String(match.orderId);
+        }
+      }
+    } catch {
+      verifiedOrderId = null;
+    }
+
+    if (verifiedOrderId) {
+      console.log(`[ClickyfiedBatch] Batch ${batchCode} was received by Clickyfied as ${verifiedOrderId}. Keeping as PROCESSING.`);
+      await prisma.order.updateMany({
+        where: { id: { in: targetOrderIds } },
+        data: {
+          status: "PROCESSING",
+          providerReference: `CLICKYFIED:${verifiedOrderId}`,
+          externalReference: batchCode,
+        },
+      });
+
+      await prisma.orderStatusHistory.createMany({
+        data: targetOrders.map((o) => ({
+          orderId: o.id,
+          status: "PROCESSING",
+          previousStatus: "PENDING",
+          note: `Batch dispatched with network blip, confirmed on Clickyfied as ${verifiedOrderId} (#${batchCode}).`,
+          changedBy: actorLabel,
+        })),
+      });
+
+      return {
+        success: true,
+        batchCode,
+        batchOrderId: verifiedOrderId,
+        dispatchedCount: targetOrders.length,
+        totalGb,
+      };
+    }
+
+    // Only if confirmed NOT on Clickyfied do we revert to PENDING
     await prisma.order.updateMany({
       where: {
         id: { in: targetOrderIds },

@@ -874,12 +874,14 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
       console.log(`[recoverStrandedMtnOrders] Auto-healed ${expIds.length} exported orders back to PROCESSING.`);
     }
 
-    // 2. Query processing MTN orders that were NOT exported via Excel
+    // 2. Query processing MTN orders that were NOT exported via Excel and have been stuck for > 15 minutes
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
     const processingMtnOrders = await prisma.order.findMany({
       where: {
         status: "PROCESSING",
         network: { equals: "MTN", mode: "insensitive" },
         exportBatchId: null,
+        updatedAt: { lte: fifteenMinutesAgo },
       },
       select: {
         id: true,
@@ -888,29 +890,65 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
         providerReference: true,
         externalReference: true,
         exportBatchId: true,
+        updatedAt: true,
       },
     });
 
-    const stranded = processingMtnOrders.filter((o) => {
-      if (o.exportBatchId) return false;
-      if (!o.providerReference) return true;
-      const ref = o.providerReference.trim();
-      if (ref === "") return true;
-      if (ref.startsWith("CLICKYFIED_CLAIMED")) return true;
-      if (ref.includes("CF-BATCH-")) return true;
-      // Real Clickyfied dispatch references always contain "order-" (e.g. CLICKYFIED:order-1790032774889)
-      if (!ref.includes("order-")) return true;
-      return false;
-    });
+    // Check if any of these orders actually have a valid batch code on Clickyfied
+    const { ClickyfiedClient } = await import("./clickyfied");
+    const routerConfig = await getProviderRoutingConfig();
+    let clickyfiedClient: any = null;
+    if (routerConfig.clickyfied && routerConfig.clickyfied.apiKey) {
+      clickyfiedClient = new ClickyfiedClient(routerConfig.clickyfied);
+    }
 
-    if (stranded.length === 0) {
+    const actuallyStranded: typeof processingMtnOrders = [];
+
+    for (const o of processingMtnOrders) {
+      if (o.exportBatchId) continue;
+      const ref = (o.providerReference || "").trim();
+      const extRef = (o.externalReference || "").trim();
+
+      // If it already has a canonical Clickyfied order ID, it is NOT stranded
+      if (ref.includes("order-")) continue;
+
+      // If it has a batch code, check if Clickyfied actually received it before reverting
+      const candidateCode = extRef.startsWith("CF-BATCH-")
+        ? extRef
+        : ref.includes("CF-BATCH-")
+        ? ref.replace(/^.*(CF-BATCH-\w+).*$/, "$1")
+        : null;
+
+      if (candidateCode && clickyfiedClient) {
+        try {
+          const canonicalId = await clickyfiedClient.resolveCanonicalOrderId(candidateCode);
+          if (canonicalId && canonicalId.startsWith("order-")) {
+            // It is actually on Clickyfied! Update providerReference instead of reverting to PENDING
+            await prisma.order.update({
+              where: { id: o.id },
+              data: { providerReference: `CLICKYFIED:${canonicalId}` },
+            });
+            continue;
+          }
+        } catch {
+          // If check fails, continue
+        }
+      }
+
+      // If providerReference is empty, null, or temporary claim token older than 15 mins
+      if (!ref || ref === "" || ref.startsWith("CLICKYFIED_CLAIMED") || ref.includes("CF-BATCH-")) {
+        actuallyStranded.push(o);
+      }
+    }
+
+    if (actuallyStranded.length === 0) {
       return { recoveredCount: 0, recoveredGb: 0 };
     }
 
-    const ids = stranded.map((o) => o.id);
-    const totalGb = stranded.reduce((sum, o) => sum + o.gbAmount, 0);
+    const ids = actuallyStranded.map((o) => o.id);
+    const totalGb = actuallyStranded.reduce((sum, o) => sum + o.gbAmount, 0);
 
-    console.warn(`[recoverStrandedMtnOrders] Automatically recovering ${stranded.length} stranded MTN orders (${totalGb} GB).`);
+    console.warn(`[recoverStrandedMtnOrders] Automatically recovering ${actuallyStranded.length} stranded MTN orders (${totalGb} GB).`);
 
     await prisma.order.updateMany({
       where: { id: { in: ids } },
@@ -923,7 +961,7 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
 
     // Create history entries
     await prisma.orderStatusHistory.createMany({
-      data: stranded.map((o) => ({
+      data: actuallyStranded.map((o) => ({
         orderId: o.id,
         status: "PENDING",
         previousStatus: "PROCESSING",
@@ -934,14 +972,14 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
 
     // Recompute parent batch statuses
     const batchIds = Array.from(
-      new Set(stranded.map((o) => o.batchId).filter(Boolean))
+      new Set(actuallyStranded.map((o) => o.batchId).filter(Boolean))
     ) as string[];
     const { recomputeBatchStatus } = await import("../orders");
     for (const bId of batchIds) {
       await recomputeBatchStatus(bId).catch(() => {});
     }
 
-    return { recoveredCount: stranded.length, recoveredGb: totalGb };
+    return { recoveredCount: actuallyStranded.length, recoveredGb: totalGb };
   } catch (err) {
     console.error("[recoverStrandedMtnOrders] Error:", err);
     return { recoveredCount: 0, recoveredGb: 0 };
