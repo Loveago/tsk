@@ -117,6 +117,9 @@ export async function exportOrdersToExcel(
   // 1. Select eligible orders — never mix networks (§27)
   const where: Record<string, unknown> = { network: input.network, isSandbox: false };
   where.status = isReexport ? { in: ["PROCESSING", "FAILED"] } : "PENDING";
+  if (!isReexport) {
+    where.exportBatchId = null;
+  }
   if (input.orderIds?.length) where.id = { in: input.orderIds };
   if (input.batchIds?.length) where.batchId = { in: input.batchIds };
   if (input.userId) where.userId = input.userId;

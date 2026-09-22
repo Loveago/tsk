@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 function isStrandedClickyfiedOrder(order: {
   providerReference: string | null;
   externalReference?: string | null;
+  exportBatchId?: string | null;
 }): boolean {
+  // If order was exported via Excel file, it is handled manually/by vendor and is NOT a stranded Clickyfied order
+  if (order.exportBatchId) return false;
   if (!order.providerReference) return true;
   const ref = order.providerReference.trim();
   if (ref === "") return true;
@@ -37,6 +40,7 @@ export async function GET(request: NextRequest) {
       where: {
         status: "PROCESSING",
         network: { equals: "MTN", mode: "insensitive" },
+        exportBatchId: null,
         ...(batchCode
           ? {
               OR: [
@@ -55,6 +59,7 @@ export async function GET(request: NextRequest) {
         status: true,
         providerReference: true,
         externalReference: true,
+        exportBatchId: true,
         batchId: true,
         createdAt: true,
         updatedAt: true,
@@ -94,6 +99,7 @@ export async function POST(request: NextRequest) {
       where: {
         status: "PROCESSING",
         network: { equals: "MTN", mode: "insensitive" },
+        exportBatchId: null,
         ...(targetBatchCode
           ? {
               OR: [
@@ -112,6 +118,7 @@ export async function POST(request: NextRequest) {
         status: true,
         providerReference: true,
         externalReference: true,
+        exportBatchId: true,
         batchId: true,
       },
     });

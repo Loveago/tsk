@@ -849,10 +849,37 @@ export function mapClickyfiedStatus(
  */
 export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: number; recoveredGb: number }> {
   try {
+    // 1. Auto-heal: restore any orders that belong to an ExportBatch and were mistakenly reverted to PENDING
+    const misclassifiedExported = await prisma.order.findMany({
+      where: {
+        exportBatchId: { not: null },
+        status: "PENDING",
+      },
+      select: { id: true, batchId: true },
+    });
+
+    if (misclassifiedExported.length > 0) {
+      const expIds = misclassifiedExported.map((o) => o.id);
+      await prisma.order.updateMany({
+        where: { id: { in: expIds } },
+        data: { status: "PROCESSING" },
+      });
+      const expBatchIds = Array.from(
+        new Set(misclassifiedExported.map((o) => o.batchId).filter(Boolean))
+      ) as string[];
+      const { recomputeBatchStatus } = await import("../orders");
+      for (const bId of expBatchIds) {
+        await recomputeBatchStatus(bId).catch(() => {});
+      }
+      console.log(`[recoverStrandedMtnOrders] Auto-healed ${expIds.length} exported orders back to PROCESSING.`);
+    }
+
+    // 2. Query processing MTN orders that were NOT exported via Excel
     const processingMtnOrders = await prisma.order.findMany({
       where: {
         status: "PROCESSING",
         network: { equals: "MTN", mode: "insensitive" },
+        exportBatchId: null,
       },
       select: {
         id: true,
@@ -860,10 +887,12 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
         gbAmount: true,
         providerReference: true,
         externalReference: true,
+        exportBatchId: true,
       },
     });
 
     const stranded = processingMtnOrders.filter((o) => {
+      if (o.exportBatchId) return false;
       if (!o.providerReference) return true;
       const ref = o.providerReference.trim();
       if (ref === "") return true;
