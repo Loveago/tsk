@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
-import { syncClickyfiedOrder } from "@/lib/provider-apis/router";
+import { syncClickyfiedOrder, syncBigwindataOrder, syncGhconnectOrder } from "@/lib/provider-apis/router";
 import { handleRouteError } from "@/lib/api-helpers";
 
 export async function POST(request: NextRequest) {
@@ -11,9 +11,13 @@ export async function POST(request: NextRequest) {
     const inFlightOrders = await prisma.order.findMany({
       where: {
         status: { in: ["PENDING", "PROCESSING"] },
-        providerReference: { startsWith: "CLICKYFIED:" },
+        OR: [
+          { providerReference: { startsWith: "CLICKYFIED:" } },
+          { providerReference: { startsWith: "BIGWIN:" } },
+          { providerReference: { startsWith: "GHC:" } },
+        ],
       },
-      take: 50,
+      take: 100,
       orderBy: { updatedAt: "asc" },
     });
 
@@ -23,7 +27,14 @@ export async function POST(request: NextRequest) {
 
     for (const order of inFlightOrders) {
       checked++;
-      const res = await syncClickyfiedOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });
+      let res: { changed: boolean; newStatus?: string; error?: string };
+      if (order.providerReference?.startsWith("GHC:")) {
+        res = await syncGhconnectOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });
+      } else if (order.providerReference?.startsWith("BIGWIN:")) {
+        res = await syncBigwindataOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });
+      } else {
+        res = await syncClickyfiedOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });
+      }
       if (res.changed) updated++;
       results.push({
         orderId: order.id,

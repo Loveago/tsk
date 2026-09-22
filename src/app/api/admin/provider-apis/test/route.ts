@@ -69,13 +69,29 @@ export async function POST(request: NextRequest) {
 
       if (provider === "GHCONNECT") {
         const client = new GhconnectClient(config.ghconnect);
-        const reference = `TEST-GHC-${Date.now()}`;
-        const order = await client.purchaseBundle({
-          network: "atishare",
-          reference,
-          msisdn: recipient,
-          capacity: gbAmount,
-        });
+        const reference = `${Date.now()}`;
+        const net = (network || "").trim().toUpperCase();
+        const isBigTime = net === "AIRTELTIGO_BIGTIME" || net.includes("BIGTIME");
+        const isIshare =
+          !isBigTime &&
+          (net === "AIRTELTIGO_ISHARE" ||
+            net === "AT_ISHARE" ||
+            net.includes("ISHARE") ||
+            net === "AIRTELTIGO" ||
+            net === "AT");
+
+        const order = isIshare
+          ? await client.createIshareBundleOrder({
+              reference,
+              msisdn: recipient,
+              capacityMb: Math.round(gbAmount * 1000),
+            })
+          : await client.purchaseBundle({
+              network: net.includes("TELECEL") ? "telecel" : isBigTime ? "atbigtime" : "mtn",
+              reference,
+              msisdn: recipient,
+              capacity: gbAmount,
+            });
         return NextResponse.json({ success: true, provider: "GHCONNECT", order });
       }
 

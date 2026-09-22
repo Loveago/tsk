@@ -4,7 +4,7 @@ import { sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "../types
 import { recordOrderApiLog } from "../order-api-logs";
 import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_URL } from "./bigwindata";
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
-import { GhconnectClient, DEFAULT_GHCONNECT_BASE_URL } from "./ghconnect";
+import { GhconnectClient, DEFAULT_GHCONNECT_BASE_URL, formatGhconnectPhone } from "./ghconnect";
 import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig, GhconnectConfig } from "./types";
 
 /**
@@ -585,18 +585,81 @@ export async function dispatchOrder(
     const client = new GhconnectClient(config.ghconnect);
     const ghcStartTime = Date.now();
     let purchasePayload: any = null;
-    try {
-      const externalRef = `TSK-${order.id}-${Date.now().toString(36)}`;
-      purchasePayload = {
-        network: "atishare",
-        reference: externalRef,
-        msisdn: order.phoneNumber,
-        capacity: order.gbAmount,
-      };
 
-      const purchaseRes = await client.purchaseBundle(purchasePayload);
+    // Detect if this is an AirtelTigo iShare order or general bundle order (MTN, Telecel, AT Big Time)
+    const net = (order.network || "").trim().toUpperCase();
+    const pkgName = (order.dataPackage?.name || order.dataPackage?.description || "").trim().toUpperCase();
+
+    const isBigTime =
+      net === "AIRTELTIGO_BIGTIME" ||
+      net === "AT_BIGTIME" ||
+      net.includes("BIGTIME") ||
+      pkgName.includes("BIGTIME") ||
+      pkgName.includes("BIG TIME");
+
+    const isIshare =
+      !isBigTime &&
+      (net === "AIRTELTIGO_ISHARE" ||
+        net === "AT_ISHARE" ||
+        net.includes("ISHARE") ||
+        pkgName.includes("ISHARE") ||
+        pkgName.includes("I-SHARE") ||
+        net === "AIRTELTIGO" ||
+        net === "AT");
+
+    // GHConnect references work reliably with clean numeric timestamps + order ID
+    const externalRef = `${Date.now()}${String(order.id).padStart(4, "0")}`;
+    const formattedPhone = formatGhconnectPhone(order.phoneNumber);
+    const endpointUsed = `${config.ghconnect.baseUrl || DEFAULT_GHCONNECT_BASE_URL}${
+      isIshare ? "/v1/createIshareBundleOrder" : "/v1/purchaseBundle"
+    }`;
+    const actionUsed = isIshare ? "SUBMIT_ISHARE_ORDER" : "SUBMIT_ORDER";
+
+    try {
+      let purchaseRes: any;
+
+      if (isIshare) {
+        // AirtelTigo iShare on GHConnect uses purchased gigabyte allocation
+        // via POST /v1/createIshareBundleOrder with capacity in MB
+        const capacityMb = Math.round(order.gbAmount * 1000);
+        purchasePayload = {
+          reference: externalRef,
+          msisdn: formattedPhone,
+          capacity: capacityMb,
+        };
+
+        purchaseRes = await client.createIshareBundleOrder({
+          reference: externalRef,
+          msisdn: formattedPhone,
+          capacityMb,
+        });
+      } else {
+        // General bundles (MTN, Telecel, AT Big Time) use wallet balance
+        // via POST /v1/purchaseBundle with capacity in GB
+        let ghcNetwork = "mtn";
+        if (net.includes("TELECEL") || net.includes("VODAFONE")) {
+          ghcNetwork = "telecel";
+        } else if (isBigTime) {
+          ghcNetwork = "atbigtime";
+        } else if (net.includes("MTN")) {
+          ghcNetwork = "mtn";
+        } else {
+          ghcNetwork = net.toLowerCase();
+        }
+
+        purchasePayload = {
+          network: ghcNetwork,
+          reference: externalRef,
+          msisdn: formattedPhone,
+          capacity: order.gbAmount,
+        };
+
+        purchaseRes = await client.purchaseBundle(purchasePayload);
+      }
+
       const durationMs = Date.now() - ghcStartTime;
-      const providerRef = `GHC:${purchaseRes.reference || externalRef}`;
+      const returnedRef = purchaseRes.reference || externalRef;
+      const providerRef = `GHC:${returnedRef}`;
 
       // Update provider reference
       await prisma.order.update({
@@ -611,8 +674,8 @@ export async function dispatchOrder(
       await recordOrderApiLog({
         orderId: order.id,
         provider: "GHCONNECT",
-        action: "SUBMIT_ORDER",
-        endpoint: `${config.ghconnect.baseUrl || DEFAULT_GHCONNECT_BASE_URL}/v1/purchaseBundle`,
+        action: actionUsed,
+        endpoint: endpointUsed,
         method: "POST",
         requestPayload: purchasePayload,
         responsePayload: purchaseRes.raw,
@@ -627,7 +690,7 @@ export async function dispatchOrder(
         await changeOrderStatus(
           order.id,
           "SUCCESS",
-          `Fulfilled instantly via GHConnect API (ref: ${purchaseRes.reference || externalRef})`,
+          `Fulfilled instantly via GHConnect API (ref: ${returnedRef})`,
           { id: "system", label: "GHConnect API" },
           { force: true }
         );
@@ -635,7 +698,7 @@ export async function dispatchOrder(
         await changeOrderStatus(
           order.id,
           "PROCESSING",
-          `Dispatched via GHConnect API (ref: ${purchaseRes.reference || externalRef})`,
+          `Dispatched via GHConnect API (ref: ${returnedRef})`,
           { id: "system", label: "GHConnect API" },
           { force: true }
         );
@@ -660,8 +723,8 @@ export async function dispatchOrder(
       await recordOrderApiLog({
         orderId: order.id,
         provider: "GHCONNECT",
-        action: "SUBMIT_ORDER",
-        endpoint: `${config.ghconnect?.baseUrl || DEFAULT_GHCONNECT_BASE_URL}/v1/purchaseBundle`,
+        action: actionUsed,
+        endpoint: endpointUsed,
         method: "POST",
         requestPayload: purchasePayload,
         responsePayload: err?.rawResponse || err?.rawText || { error: errMsg },

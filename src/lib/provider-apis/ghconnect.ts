@@ -23,6 +23,38 @@ export interface GhconnectOrderResponse {
   raw?: any;
 }
 
+export interface GhconnectPurchaseBundleInput {
+  network: string; // "mtn" | "telecel" | "atbigtime" | "atishare"
+  reference: string;
+  msisdn: string;
+  capacity?: number;
+  capacityGb?: number;
+}
+
+export interface GhconnectIshareOrderInput {
+  reference: string;
+  msisdn: string;
+  capacity?: number;
+  capacityMb?: number;
+  capacityGb?: number;
+}
+
+/**
+ * Normalizes a Ghanaian phone number to 10 digits starting with '0' (e.g. 0276895857)
+ * matching the GHConnect API documentation requirements.
+ */
+export function formatGhconnectPhone(phone: string | null | undefined): string {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("233") && digits.length === 12) {
+    return `0${digits.slice(3)}`;
+  }
+  if (digits.length === 9) {
+    return `0${digits}`;
+  }
+  return digits;
+}
+
 export class GhconnectClient {
   private apiKey: string;
   private baseUrl: string;
@@ -96,7 +128,7 @@ export class GhconnectClient {
   }
 
   /**
-   * Check GHConnect wallet balance
+   * Check GHConnect wallet balance via GET /v1/getWalletBalance
    */
   async getBalance(): Promise<{ balance: string; rawBalance: number; currency: string }> {
     const res = await this.request<{
@@ -113,21 +145,57 @@ export class GhconnectClient {
   }
 
   /**
-   * Place bundle order via POST /v1/purchaseBundle
-   * Networks accepted: atishare, atbigtime, telecel, mtn
+   * Get all networks and bundles via GET /v1/getAllNetworks
    */
-  async purchaseBundle(input: {
-    network: string; // "atishare" | "atbigtime" | "telecel" | "mtn"
-    reference: string;
-    msisdn: string;
-    capacityGb?: number;
-    capacity?: number;
-  }): Promise<GhconnectOrderResponse> {
+  async getAllNetworks(): Promise<any> {
+    return this.request<any>("/v1/getAllNetworks");
+  }
+
+  /**
+   * Dedicated iShare endpoint via POST /v1/createIshareBundleOrder (capacity in MB).
+   * For AirtelTigo iShare, GHConnect uses purchased gigabyte allocation rather than
+   * the GHS wallet balance.
+   */
+  async createIshareBundleOrder(input: GhconnectIshareOrderInput): Promise<GhconnectOrderResponse> {
+    let capacityMb = 1000;
+    if (typeof input.capacityMb === "number" && input.capacityMb > 0) {
+      capacityMb = Math.round(input.capacityMb);
+    } else if (typeof input.capacityGb === "number" && input.capacityGb > 0) {
+      capacityMb = Math.round(input.capacityGb * 1000);
+    } else if (typeof input.capacity === "number" && input.capacity > 0) {
+      capacityMb = input.capacity >= 100 ? Math.round(input.capacity) : Math.round(input.capacity * 1000);
+    }
+
+    const payload = {
+      reference: String(input.reference).trim(),
+      msisdn: formatGhconnectPhone(input.msisdn),
+      capacity: capacityMb,
+    };
+
+    const res = await this.request<any>("/v1/createIshareBundleOrder", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    return {
+      ...res,
+      reference: res?.data?.reference || res?.reference || input.reference,
+      status: res?.data?.status || res?.status || (res?.success ? "pending" : "failed"),
+      raw: res,
+    };
+  }
+
+  /**
+   * Place bundle order via POST /v1/purchaseBundle (capacity in GB).
+   * Networks accepted: mtn, telecel, atishare, atbigtime
+   * Deducts from GHS wallet balance.
+   */
+  async purchaseBundle(input: GhconnectPurchaseBundleInput): Promise<GhconnectOrderResponse> {
     const cap = input.capacityGb ?? input.capacity ?? 1;
     const payload = {
       network: input.network.toLowerCase().trim(),
-      reference: input.reference,
-      msisdn: input.msisdn.trim(),
+      reference: String(input.reference).trim(),
+      msisdn: formatGhconnectPhone(input.msisdn),
       capacity: cap,
     };
 
@@ -138,37 +206,8 @@ export class GhconnectClient {
 
     return {
       ...res,
-      reference: res?.data?.reference || input.reference,
-      status: res?.data?.status || (res?.success ? "completed" : "failed"),
-      raw: res,
-    };
-  }
-
-  /**
-   * Dedicated iShare endpoint via POST /v1/createIshareBundleOrder (capacity in MB)
-   */
-  async createIshareBundleOrder(input: {
-    reference: string;
-    msisdn: string;
-    capacityGb?: number;
-    capacity?: number;
-  }): Promise<GhconnectOrderResponse> {
-    const capGb = input.capacityGb ?? input.capacity ?? 1;
-    const payload = {
-      reference: input.reference,
-      msisdn: input.msisdn.trim(),
-      capacity: Math.round(capGb * 1000), // MB
-    };
-
-    const res = await this.request<any>("/v1/createIshareBundleOrder", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    return {
-      ...res,
-      reference: res?.data?.reference || input.reference,
-      status: res?.data?.status || (res?.success ? "completed" : "failed"),
+      reference: res?.data?.reference || res?.reference || input.reference,
+      status: res?.data?.status || res?.status || (res?.success ? "pending" : "failed"),
       raw: res,
     };
   }
@@ -184,8 +223,8 @@ export class GhconnectClient {
 
     return {
       ...res,
-      reference: res?.data?.reference || cleanRef,
-      status: res?.data?.status || (res?.success ? "completed" : "pending"),
+      reference: res?.data?.reference || res?.reference || cleanRef,
+      status: res?.data?.status || res?.status || (res?.success ? "pending" : "failed"),
       raw: res,
     };
   }
