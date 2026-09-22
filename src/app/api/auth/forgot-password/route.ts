@@ -5,9 +5,24 @@ import { forgotPasswordSchema } from "@/lib/validation";
 import { getClientIp } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { rateLimit } from "@/lib/rate-limit";
-import { handleRouteError, getRequestOrigin } from "@/lib/api-helpers";
+import { handleRouteError } from "@/lib/api-helpers";
 import { getSetting } from "@/lib/orders";
 import { sendPasswordResetEmail } from "@/lib/email";
+
+const MAIN_DOMAIN = (process.env.MAIN_DOMAIN || "tsk05.net").toLowerCase();
+
+function getCanonicalResetOrigin(request: NextRequest): string {
+  if (process.env.APP_URL) {
+    return process.env.APP_URL.replace(/\/$/, "");
+  }
+  const rawHost = request.headers.get("host") || "";
+  const isLocal = rawHost.startsWith("localhost") || rawHost.startsWith("127.0.0.1");
+  if (isLocal && process.env.NODE_ENV !== "production") {
+    const proto = request.headers.get("x-forwarded-proto") || "http";
+    return `${proto}://${rawHost}`;
+  }
+  return `https://${MAIN_DOMAIN}`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +54,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const origin = getRequestOrigin(request);
+    const origin = getCanonicalResetOrigin(request);
     const resetUrl = `${origin}/reset-password?token=${token}`;
 
     await sendPasswordResetEmail(
