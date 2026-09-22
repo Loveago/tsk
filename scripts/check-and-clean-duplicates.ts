@@ -117,15 +117,17 @@ async function main() {
   }
 
   // ---------------------------------------------------------------------------
-  // 2. INSPECT RECENT DISPATCHES & DETECT DOUBLE-DISPATCHED ORDERS
+  // 2. INSPECT RECENT CLICKYFIED DISPATCHES & DETECT DOUBLE-DISPATCHED RECIPIENTS
   // ---------------------------------------------------------------------------
-  console.log("[Phase 2] Inspecting recent PROCESSING / DISPATCHED orders from today...");
+  console.log("[Phase 2] Inspecting recent Clickyfied API dispatches from today (ignoring Excel exports)...");
   const since = new Date(Date.now() - 12 * 60 * 60 * 1000); // Last 12 hours
   const recentOrders = await prisma.order.findMany({
     where: {
       network: "MTN",
       updatedAt: { gte: since },
       status: { in: ["PROCESSING", "SUCCESS"] },
+      exportBatchId: null, // Exclude Excel manual exports which have Ref: none
+      providerReference: { not: null },
     },
     select: {
       id: true,
@@ -141,38 +143,103 @@ async function main() {
     orderBy: { createdAt: "desc" },
   });
 
-  console.log(`Recent MTN orders in last 12h: ${recentOrders.length}`);
+  console.log(`Recent Clickyfied MTN orders in last 12h: ${recentOrders.length}`);
 
-  // Check for numbers that appear more than once in processing orders
-  const procByPhone = new Map<string, typeof recentOrders>();
+  // Check for numbers dispatched multiple times within a tight window (e.g. <= 45 minutes)
+  const clickyfiedByPhone = new Map<string, typeof recentOrders>();
   for (const o of recentOrders) {
     const last9 = normalizePhoneLast9(o.phoneNumber);
-    if (!procByPhone.has(last9)) procByPhone.set(last9, []);
-    procByPhone.get(last9)!.push(o);
+    if (!clickyfiedByPhone.has(last9)) clickyfiedByPhone.set(last9, []);
+    clickyfiedByPhone.get(last9)!.push(o);
   }
 
-  const multiDispatched = Array.from(procByPhone.entries()).filter(([_, list]) => list.length > 1);
+  // A true duplicate dispatch is when the same recipient was sent twice within 45 minutes
+  const trueDuplicates: Array<{
+    phone: string;
+    orders: typeof recentOrders;
+    intervalMins: number;
+  }> = [];
 
-  if (multiDispatched.length === 0) {
-    console.log("  -> No duplicate recipient dispatches found in recent orders.");
-  } else {
-    console.log(`  -> Found ${multiDispatched.length} phone number(s) that have multiple recent orders:`);
-    for (const [phone, list] of multiDispatched.slice(0, 10)) {
-      console.log(`     • ${phone} (${list.length} orders, total ${list.reduce((s, o) => s + o.gbAmount, 0)} GB):`);
-      for (const o of list) {
-        console.log(`         Order #${o.id} (${o.gbAmount} GB, ${o.status}) | Ref: ${o.providerReference || "none"} | ExtRef: ${o.externalReference || "none"} | At: ${o.createdAt.toISOString()}`);
+  const repeatCustomers: Array<{
+    phone: string;
+    orders: typeof recentOrders;
+  }> = [];
+
+  for (const [phone, list] of clickyfiedByPhone.entries()) {
+    if (list.length > 1) {
+      // Sort ascending by creation time
+      list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      
+      let isNearDuplicate = false;
+      let minInterval = Infinity;
+      for (let i = 0; i < list.length - 1; i++) {
+        const diffMins = Math.abs(list[i + 1].createdAt.getTime() - list[i].createdAt.getTime()) / (1000 * 60);
+        if (diffMins < minInterval) minInterval = diffMins;
+        if (diffMins <= 45) {
+          isNearDuplicate = true;
+        }
+      }
+
+      if (isNearDuplicate) {
+        trueDuplicates.push({ phone, orders: list, intervalMins: Math.round(minInterval) });
+      } else {
+        repeatCustomers.push({ phone, orders: list });
       }
     }
-    if (multiDispatched.length > 10) {
-      console.log(`     ... and ${multiDispatched.length - 10} more.`);
+  }
+
+  console.log(`  • True Duplicate Dispatches (sent <= 45 mins apart) : ${trueDuplicates.length}`);
+  console.log(`  • Normal Repeat Orders (placed hours apart)         : ${repeatCustomers.length}\n`);
+
+  if (trueDuplicates.length > 0) {
+    console.warn(`[True Duplicate Dispatches Found: ${trueDuplicates.length} recipients]`);
+    for (const d of trueDuplicates.slice(0, 15)) {
+      console.log(`  • Phone: ${d.phone} (Interval between orders: ~${d.intervalMins} mins):`);
+      for (const o of d.orders) {
+        console.log(`      Order #${o.id} (${o.gbAmount} GB, ${o.status}) | ProvRef: ${o.providerReference} | ExtRef: ${o.externalReference} | At: ${o.createdAt.toISOString()}`);
+      }
     }
+    if (trueDuplicates.length > 15) {
+      console.log(`      ... and ${trueDuplicates.length - 15} more.`);
+    }
+    console.log("");
+  } else {
+    console.log("  -> SUCCESS: No rapid duplicate dispatches found on Clickyfied in the last 12 hours!\n");
   }
 
   // ---------------------------------------------------------------------------
-  // 3. LIVE CLICKYFIED API CROSS-CHECK (If requested)
+  // 3. TARGETED 2:15 PM (13:30 - 15:00 UTC) BATCH ANALYSIS
+  // ---------------------------------------------------------------------------
+  console.log("[Phase 3] Investigating orders around 2:15 PM (13:30 UTC - 15:00 UTC)...");
+  const windowStart = new Date("2026-09-22T13:30:00.000Z");
+  const windowEnd = new Date("2026-09-22T15:00:00.000Z");
+
+  const afternoonOrders = await prisma.order.findMany({
+    where: {
+      network: "MTN",
+      createdAt: { gte: windowStart, lte: windowEnd },
+    },
+    select: {
+      id: true,
+      phoneNumber: true,
+      gbAmount: true,
+      status: true,
+      providerReference: true,
+      externalReference: true,
+      createdAt: true,
+    },
+    orderBy: { id: "asc" },
+  });
+
+  const batchesInWindow = new Set(afternoonOrders.map((o) => o.externalReference).filter(Boolean));
+  console.log(`Total MTN orders created in 2:15 PM window: ${afternoonOrders.length}`);
+  console.log(`Batch codes referenced in this window: ${Array.from(batchesInWindow).join(", ") || "None"}\n`);
+
+  // ---------------------------------------------------------------------------
+  // 4. LIVE CLICKYFIED API CROSS-CHECK (If requested)
   // ---------------------------------------------------------------------------
   if (checkClickyfied) {
-    console.log("\n[Phase 3] Querying Clickyfied live API for recent order batches...");
+    console.log("[Phase 4] Querying Clickyfied live API for recent order batches...");
     try {
       const config = await getProviderRoutingConfig();
       if (config.clickyfied && config.clickyfied.apiKey) {
@@ -195,7 +262,8 @@ async function main() {
   console.log("================================================================================");
   console.log(`1. Pending Queue Duplicate Orders  : ${totalDuplicatePendingCount}`);
   console.log(`2. Excess GB in Pending Queue      : ${totalDuplicatePendingGb} GB`);
-  console.log(`3. Multi-Dispatched Recipient Count: ${multiDispatched.length}`);
+  console.log(`3. True Duplicate Dispatches (<=45m): ${trueDuplicates.length}`);
+  console.log(`4. Legitimate Repeat Orders (hours): ${repeatCustomers.length}`);
   console.log("================================================================================\n");
 
   await prisma.$disconnect();
