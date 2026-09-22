@@ -48,6 +48,20 @@ export default async function StorefrontWalletPage() {
       <WithdrawalForm
         available={wallet.balance}
         pending={!!pending}
+        pendingDetails={
+          pending
+            ? {
+                amountGHS: fromPesewas(pending.amount),
+                feeGHS: fromPesewas(pending.fee ?? 100),
+                netAmountGHS: fromPesewas(pending.netAmount ?? pending.amount - (pending.fee ?? 100)),
+                network: pending.network,
+                momoNumber: pending.momoNumber,
+                accountName: pending.accountName,
+                reference: pending.reference ?? `CF-WD-${String(pending.seq).padStart(5, "0")}`,
+                requestedAt: pending.requestedAt.toISOString(),
+              }
+            : null
+        }
         disabled={storefront.status !== "ENABLED"}
       />
 

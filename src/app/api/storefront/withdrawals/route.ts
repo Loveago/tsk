@@ -14,8 +14,11 @@ import {
   rejectWithdrawal,
 } from "@/lib/storefront";
 
+const activeWithdrawalUsers = new Set<string>();
+
 /** Owner: request a MoMo withdrawal (min GHS 50, from available balance only). */
 export async function POST(request: NextRequest) {
+  let lockUserId: string | null = null;
   try {
     const user = await requireUser();
     const storefront = await requireStorefront(user.id);
@@ -27,6 +30,24 @@ export async function POST(request: NextRequest) {
     });
     if (withdrawalsEnabled?.value === "false") {
       return apiError(400, "Withdrawals are currently disabled by the administrator.");
+    }
+
+    // Check user concurrency lock to prevent double clicks / parallel submissions
+    if (activeWithdrawalUsers.has(user.id)) {
+      return apiError(409, "Withdrawal is already in progress. Please wait a moment.");
+    }
+    activeWithdrawalUsers.add(user.id);
+    lockUserId = user.id;
+
+    // Fast check if user already has a pending withdrawal
+    const existingPending = await prisma.storefrontWithdrawal.findFirst({
+      where: { userId: user.id, status: "PENDING" },
+    });
+    if (existingPending) {
+      return apiError(
+        409,
+        "Withdrawals are locked: you already have a pending withdrawal awaiting review. To prevent double withdrawals, please wait until it is processed."
+      );
     }
 
     const input = storefrontWithdrawalSchema.parse(await request.json());
@@ -73,28 +94,40 @@ export async function POST(request: NextRequest) {
     if (wallet.balance < totalDebitP) {
       return apiError(400, "Amount exceeds your available balance");
     }
-    const pending = await prisma.storefrontWithdrawal.findFirst({
-      where: { userId: user.id, status: "PENDING" },
-    });
-    if (pending) {
-      return apiError(409, "You already have a withdrawal awaiting review");
-    }
 
-    const seq = await prisma.$transaction(async (tx) => nextStorefrontSeq(tx, "storefrontWithdrawal"));
-    const withdrawal = await prisma.storefrontWithdrawal.create({
-      data: {
-        seq,
-        userId: user.id,
-        amount: totalDebitP, // Amount debited from wallet
-        fee: feeP, // 1 GHS fee
-        netAmount: payoutAmountP, // Net payout to user
-        network: input.network,
-        momoNumber: input.momoNumber,
-        accountName: input.accountName,
-        status: "PENDING",
-        note: `Withdrawal request of GHS ${fromPesewas(amount).toFixed(2)} (Fee: GHS ${fromPesewas(feeP).toFixed(2)}, Net Payout: GHS ${fromPesewas(payoutAmountP).toFixed(2)})`,
-        adminNote: `Net payout to send: GHS ${fromPesewas(payoutAmountP).toFixed(2)} (Fee: GHS ${fromPesewas(feeP).toFixed(2)})`,
-      },
+    // Execute atomic creation and lock check inside a database transaction
+    const withdrawal = await prisma.$transaction(async (tx) => {
+      // Double check inside transaction to prevent race conditions
+      const pendingInTx = await tx.storefrontWithdrawal.findFirst({
+        where: { userId: user.id, status: "PENDING" },
+      });
+      if (pendingInTx) {
+        throw new Error("PENDING_WITHDRAWAL_LOCKED");
+      }
+
+      const freshWallet = await tx.storefrontWallet.findUnique({
+        where: { userId: user.id },
+      });
+      if (!freshWallet || freshWallet.balance < totalDebitP) {
+        throw new Error("INSUFFICIENT_BALANCE");
+      }
+
+      const seq = await nextStorefrontSeq(tx, "storefrontWithdrawal");
+      return tx.storefrontWithdrawal.create({
+        data: {
+          seq,
+          userId: user.id,
+          amount: totalDebitP, // Amount debited from wallet
+          fee: feeP, // 1 GHS fee
+          netAmount: payoutAmountP, // Net payout to user
+          network: input.network,
+          momoNumber: input.momoNumber,
+          accountName: input.accountName,
+          status: "PENDING",
+          note: `Withdrawal request of GHS ${fromPesewas(amount).toFixed(2)} (Fee: GHS ${fromPesewas(feeP).toFixed(2)}, Net Payout: GHS ${fromPesewas(payoutAmountP).toFixed(2)})`,
+          adminNote: `Net payout to send: GHS ${fromPesewas(payoutAmountP).toFixed(2)} (Fee: GHS ${fromPesewas(feeP).toFixed(2)})`,
+        },
+      });
     });
 
     const autoApproveSetting = await prisma.systemSetting.findUnique({
@@ -108,7 +141,22 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ withdrawal });
   } catch (err) {
+    if (err instanceof Error) {
+      if (err.message === "PENDING_WITHDRAWAL_LOCKED") {
+        return apiError(
+          409,
+          "Withdrawals are locked: you already have a pending withdrawal awaiting review. To prevent double withdrawals, please wait until it is processed."
+        );
+      }
+      if (err.message === "INSUFFICIENT_BALANCE") {
+        return apiError(400, "Amount exceeds your available balance");
+      }
+    }
     return handleRouteError(err);
+  } finally {
+    if (lockUserId) {
+      activeWithdrawalUsers.delete(lockUserId);
+    }
   }
 }
 
