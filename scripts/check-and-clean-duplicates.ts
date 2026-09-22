@@ -208,16 +208,64 @@ async function main() {
   }
 
   // ---------------------------------------------------------------------------
-  // 3. TARGETED 2:15 PM (13:30 - 15:00 UTC) BATCH ANALYSIS
+  // 3. TARGETED 3:50 PM (15:20 - 16:30 UTC) DUPLICATION INVESTIGATION
   // ---------------------------------------------------------------------------
-  console.log("[Phase 3] Investigating orders around 2:15 PM (13:30 UTC - 15:00 UTC)...");
-  const windowStart = new Date("2026-09-22T13:30:00.000Z");
-  const windowEnd = new Date("2026-09-22T15:00:00.000Z");
+  console.log("[Phase 3] Investigating the 3:50 PM window (15:20 UTC - 16:30 UTC)...");
+  const window350Start = new Date("2026-09-22T15:20:00.000Z");
+  const window350End = new Date("2026-09-22T16:30:00.000Z");
 
-  const afternoonOrders = await prisma.order.findMany({
+  // A. Check OrderBatches created around 3:50 PM
+  const batchesIn350 = await prisma.orderBatch.findMany({
+    where: {
+      createdAt: { gte: window350Start, lte: window350End },
+    },
+    select: {
+      id: true,
+      batchCode: true,
+      network: true,
+      totalRecipients: true,
+      totalGb: true,
+      status: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  console.log(`\n  • OrderBatches created in 3:50 PM window: ${batchesIn350.length}`);
+  for (const b of batchesIn350) {
+    console.log(`      Batch ${b.batchCode} | ${b.network} | ${b.totalRecipients} recipients | ${b.totalGb} GB | Status: ${b.status} | Created: ${b.createdAt.toISOString()}`);
+  }
+
+  // B. Check ExportBatches (Excel files exported) around 3:50 PM
+  const exportBatchesIn350 = await prisma.exportBatch.findMany({
+    where: {
+      createdAt: { gte: window350Start, lte: window350End },
+    },
+    select: {
+      id: true,
+      exportCode: true,
+      network: true,
+      orderCount: true,
+      totalGb: true,
+      status: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  console.log(`  • Excel ExportBatches in 3:50 PM window: ${exportBatchesIn350.length}`);
+  for (const eb of exportBatchesIn350) {
+    console.log(`      Export ${eb.exportCode} | ${eb.network} | ${eb.orderCount} orders | ${eb.totalGb} GB | Created: ${eb.createdAt.toISOString()}`);
+  }
+
+  // C. Check all orders created or updated in this 3:50 PM window
+  const ordersIn350 = await prisma.order.findMany({
     where: {
       network: "MTN",
-      createdAt: { gte: windowStart, lte: windowEnd },
+      OR: [
+        { createdAt: { gte: window350Start, lte: window350End } },
+        { updatedAt: { gte: window350Start, lte: window350End } },
+      ],
     },
     select: {
       id: true,
@@ -226,14 +274,40 @@ async function main() {
       status: true,
       providerReference: true,
       externalReference: true,
+      batchId: true,
+      exportBatchId: true,
       createdAt: true,
+      updatedAt: true,
     },
     orderBy: { id: "asc" },
   });
 
-  const batchesInWindow = new Set(afternoonOrders.map((o) => o.externalReference).filter(Boolean));
-  console.log(`Total MTN orders created in 2:15 PM window: ${afternoonOrders.length}`);
-  console.log(`Batch codes referenced in this window: ${Array.from(batchesInWindow).join(", ") || "None"}\n`);
+  console.log(`  • Total MTN orders active/created in 3:50 PM window: ${ordersIn350.length}`);
+
+  // Find any recipient numbers that had more than one order in this 3:50 PM window
+  const phoneMap350 = new Map<string, typeof ordersIn350>();
+  for (const o of ordersIn350) {
+    const last9 = normalizePhoneLast9(o.phoneNumber);
+    if (!phoneMap350.has(last9)) phoneMap350.set(last9, []);
+    phoneMap350.get(last9)!.push(o);
+  }
+
+  const dupRecipients350 = Array.from(phoneMap350.entries()).filter(([_, list]) => list.length > 1);
+
+  if (dupRecipients350.length === 0) {
+    console.log("  -> No recipient received multiple orders within the 3:50 PM window.\n");
+  } else {
+    console.warn(`\n  -> [DUPLICATION DETECTED AT 3:50 PM] Found ${dupRecipients350.length} recipient(s) ordered/dispatched multiple times:`);
+    let dupGb350 = 0;
+    for (const [phone, list] of dupRecipients350) {
+      console.log(`     • Recipient: ${phone} (${list.length} orders):`);
+      for (const o of list) {
+        console.log(`         Order #${o.id} (${o.gbAmount} GB, ${o.status}) | ProvRef: ${o.providerReference || "none"} | ExtRef: ${o.externalReference || "none"} | BatchId: ${o.batchId || "none"} | At: ${o.createdAt.toISOString()}`);
+      }
+      dupGb350 += list.slice(1).reduce((s, o) => s + o.gbAmount, 0);
+    }
+    console.log(`     Total duplicated excess in 3:50 PM window: ${dupGb350} GB across ${dupRecipients350.length} recipients.\n`);
+  }
 
   // ---------------------------------------------------------------------------
   // 4. LIVE CLICKYFIED API CROSS-CHECK (If requested)
