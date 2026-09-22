@@ -12,7 +12,18 @@ import { IncomingMomoTable } from "@/components/admin/incoming-momo-table";
 import { ClaimsTable } from "@/components/admin/claims-table";
 import { MomoSettingsCard } from "@/components/admin/momo-settings-card";
 import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
-import { Wallet, Check, X, Smartphone, Receipt, Settings, PlusCircle, RefreshCw } from "lucide-react";
+import {
+  Wallet,
+  Check,
+  X,
+  Smartphone,
+  Receipt,
+  Settings,
+  PlusCircle,
+  RefreshCw,
+  ArrowLeftRight,
+  Search,
+} from "lucide-react";
 
 interface Tx {
   id: string;
@@ -40,10 +51,21 @@ export default function AdminBillingPage() {
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
-  // Manual Credit dialog state
+  // Manual Credit / Debit dialog state
   const [manualCreditOpen, setManualCreditOpen] = React.useState(false);
-  const [usersList, setUsersList] = React.useState<{ id: string; name: string; email: string; balance: number }[]>([]);
-  const [selectedUserForCredit, setSelectedUserForCredit] = React.useState<{ id: string; name: string; email: string; balance: number } | null>(null);
+  const [selectedUserForCredit, setSelectedUserForCredit] = React.useState<{
+    id: string;
+    name: string;
+    email: string;
+    balance: number;
+  } | null>(null);
+
+  const openAdjustWallet = (
+    targetUser?: { id: string; name: string; email: string; balance: number } | null
+  ) => {
+    setSelectedUserForCredit(targetUser ?? null);
+    setManualCreditOpen(true);
+  };
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -72,19 +94,6 @@ export default function AdminBillingPage() {
     else if (tabParam === "claims") setTab("claims");
     else if (tabParam === "settings") setTab("settings");
   }, []);
-
-  const openManualCredit = async () => {
-    try {
-      const res = await fetch("/api/admin/users?pageSize=100");
-      const json = await res.json();
-      const list = json.data ?? [];
-      setUsersList(list);
-      if (list.length > 0) setSelectedUserForCredit(list[0]);
-      setManualCreditOpen(true);
-    } catch {
-      toast("Could not load users list", "error");
-    }
-  };
 
   const decide = async (id: string, decision: "APPROVED" | "REJECTED") => {
     const note =
@@ -141,8 +150,11 @@ export default function AdminBillingPage() {
         description="Monitor wallet transactions, incoming Mobile Money SMS, user claims, and top-up settings"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={openManualCredit} variant="outline">
-              <PlusCircle className="h-4 w-4" /> Manual Credit
+            <Button
+              onClick={() => openAdjustWallet(null)}
+              className="bg-brand-600 hover:bg-brand-700 text-white shadow-xs cursor-pointer"
+            >
+              <ArrowLeftRight className="h-4 w-4" /> Credit / Debit Wallet
             </Button>
             {tab === "transactions" && (
               <ExportButtons type="transactions" params={status ? `status=${status}` : ""} />
@@ -202,6 +214,31 @@ export default function AdminBillingPage() {
       {/* Tab 1: Ledger Transactions */}
       {tab === "transactions" && (
         <div className="space-y-4">
+          {/* Quick User Wallet Action Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-brand-100 bg-gradient-to-r from-brand-50/70 via-white to-emerald-50/50 p-4 dark:border-brand-500/20 dark:from-brand-950/30 dark:via-slate-900 dark:to-emerald-950/20">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-brand-600/10 p-2.5 text-brand-600 dark:bg-brand-400/10 dark:text-brand-400 shrink-0">
+                <Wallet className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  User Wallet Management
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Search any user by name or email to inspect balance, credit deposits, or deduct funds.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              onClick={() => openAdjustWallet(null)}
+              className="bg-brand-600 hover:bg-brand-700 text-white shrink-0 text-xs h-9 shadow-xs cursor-pointer"
+            >
+              <Search className="h-3.5 w-3.5 mr-1.5" />
+              Search &amp; Adjust User Wallet
+            </Button>
+          </div>
+
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-44 space-y-1.5">
               <Label>Filter by status</Label>
@@ -258,9 +295,22 @@ export default function AdminBillingPage() {
                         </span>
                         <StatusBadge status={tx.status} />
                       </div>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {tx.user.name} · {tx.user.email} · balance {formatGHS(tx.user.balance)}
-                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span className="truncate">
+                          {tx.user.name} · {tx.user.email} · balance{" "}
+                          <span className="font-semibold text-slate-700 dark:text-slate-200">
+                            {formatGHS(tx.user.balance)}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openAdjustWallet(tx.user)}
+                          className="inline-flex items-center gap-1 rounded bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-400 dark:hover:bg-brand-500/20 cursor-pointer transition"
+                          title={`Credit or debit ${tx.user.name}'s wallet`}
+                        >
+                          <ArrowLeftRight className="h-3 w-3" /> Adjust wallet
+                        </button>
+                      </div>
                       {tx.reference && (
                         <p className="text-xs text-slate-400">Ref: {tx.reference}</p>
                       )}
@@ -335,18 +385,18 @@ export default function AdminBillingPage() {
         <MomoSettingsCard />
       )}
 
-      {/* Manual Credit Dialog */}
+      {/* Manual Credit / Debit Dialog */}
       {manualCreditOpen && (
-        <div className="space-y-4">
-          <ManualCreditDialog
-            open={manualCreditOpen}
-            onClose={() => setManualCreditOpen(false)}
-            user={selectedUserForCredit}
-            onCredited={() => {
-              load();
-            }}
-          />
-        </div>
+        <ManualCreditDialog
+          open={manualCreditOpen}
+          onClose={() => {
+            setManualCreditOpen(false);
+            setSelectedUserForCredit(null);
+          }}
+          user={selectedUserForCredit}
+          onCredited={load}
+          onAdjusted={load}
+        />
       )}
     </div>
   );
