@@ -106,6 +106,8 @@ export default async function NetworkPage({
           </p>
           <NetworkBuyForm
             slug={slug}
+            network={network}
+            storeName={storefront.name}
             products={products.map((p) => ({
               packageId: p.packageId,
               gbAmount: p.dataPackage.gbAmount,
