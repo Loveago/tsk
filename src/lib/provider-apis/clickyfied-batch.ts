@@ -883,6 +883,10 @@ export async function dispatchClickyfiedMtnBatch(
     for (let i = 0; i < group1Chunks.length; i++) {
       const chunk = group1Chunks[i];
       if (chunk.orders.length === 0) continue;
+      // When onlyFullBatches is requested (threshold trigger), hold back remainder chunks that have not reached threshold or 100 entries
+      if (options.onlyFullBatches && chunk.totalGb < batchConfig.gbThreshold && chunk.orders.length < 100) {
+        continue;
+      }
       if (i > 0) {
         await sleep(1500);
       }
@@ -913,6 +917,10 @@ export async function dispatchClickyfiedMtnBatch(
     for (let i = 0; i < group2Chunks.length; i++) {
       const chunk = group2Chunks[i];
       if (chunk.orders.length === 0) continue;
+      // When onlyFullBatches is requested (threshold trigger), hold back remainder chunks that have not reached threshold or 100 entries
+      if (options.onlyFullBatches && chunk.totalGb < batchConfig.gbThreshold && chunk.orders.length < 100) {
+        continue;
+      }
       if (dispatchedBatches.length > 0 || i > 0) {
         await sleep(1500);
       }
@@ -978,13 +986,13 @@ export async function dispatchClickyfiedMtnBatch(
  * 
  * - THRESHOLD: Dispatches batches that have accumulated >= 100 GB (or 100 entries).
  *   If a massive order arrives (e.g. 250 GB), it dispatches Chunk 1 (~100 GB), Chunk 2 (~100 GB),
- *   leaving the remainder (< 100 GB) in queue to accumulate or wait for timer.
+ *   leaving any remainder (< 100 GB) in queue to accumulate or wait for timer.
  * 
- * - TIMER: When timer expires (hits 0), dispatches all remaining queued orders regardless
- *   of whether they reached 100 GB.
+ * - TIMER: Dispatches all remaining queued orders ONLY when the countdown timer window has actually
+ *   expired (hit 0, default 15 minutes after oldest order).
  */
 export async function checkAndTriggerMtnBatch(
-  trigger: "THRESHOLD" | "TIMER"
+  trigger?: "THRESHOLD" | "TIMER" | string
 ): Promise<{ triggered: boolean; reason?: string }> {
   try {
     const config = await getProviderRoutingConfig();
@@ -996,8 +1004,8 @@ export async function checkAndTriggerMtnBatch(
     const status = await getClickyfiedBatchStatus();
     if (status.pendingCount === 0) return { triggered: false };
 
-    // 1. Volume threshold trigger: loop and dispatch all chunks that have reached threshold
-    if (trigger === "THRESHOLD" || status.thresholdMet) {
+    // 1. Volume threshold trigger: dispatch only full batches (chunks that reached 100 GB or 100 entries)
+    if (status.thresholdMet) {
       let dispatchTotalGb = 0;
       let dispatchCount = 0;
       let iterations = 0;
@@ -1024,8 +1032,8 @@ export async function checkAndTriggerMtnBatch(
       }
     }
 
-    // 2. Timer expiration trigger: timer hit 0, dispatch all remaining queued orders
-    if ((trigger === "TIMER" || status.timerExpired) && status.pendingCount > 0) {
+    // 2. Timer expiration trigger: ONLY when countdown timer has ACTUALLY reached 0 (expired)
+    if (status.timerExpired && status.pendingCount > 0) {
       // Immediately reset timer timestamp so no subsequent ticks or other threads see expired timer
       await prisma.systemSetting.upsert({
         where: { key: "clickyfied_batch_last_dispatched_at" },
