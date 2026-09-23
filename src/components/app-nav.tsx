@@ -31,6 +31,7 @@ import {
   Loader2,
   MessageSquare,
   Banknote,
+  Wallet,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,7 @@ const extraIconRegistry = {
   user: User,
   package: Package,
   receipt: Receipt,
+  wallet: Wallet,
 } satisfies Record<string, React.ComponentType<{ className?: string }>>;
 
 export type NavIconName = keyof typeof extraIconRegistry;
@@ -96,6 +98,7 @@ export const adminNav: NavItem[] = [
   { href: "/admin/exports", label: "Exports", icon: FileSpreadsheet },
   { href: "/admin/delivery-reports", label: "Not Received", icon: FileWarning, badge: true },
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/wallets", label: "User Wallets", icon: Wallet },
   { href: "/admin/chat", label: "Support Chat", icon: MessageSquare },
   { href: "/admin/users/signup-codes", label: "Signup Codes", icon: Ticket },
   { href: "/admin/storefronts", label: "Storefronts", icon: Store, badge: true },

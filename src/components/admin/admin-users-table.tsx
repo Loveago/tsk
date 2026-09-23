@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { EmptyState, Spinner } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { formatGHS, formatDateTime } from "@/lib/types";
@@ -17,6 +18,7 @@ import {
   Clock,
   Copy,
   Check,
+  Wallet,
 } from "lucide-react";
 
 function CopyRefButton({ text }: { text: string }) {
@@ -213,7 +215,14 @@ export function AdminUsersTable({
                       )}
                     </td>
                     <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatGHS(u.balance)}
+                      <Link
+                        href={`/admin/wallets?userId=${u.id}`}
+                        className="inline-flex items-center gap-1.5 hover:underline group"
+                        title="Inspect user wallet balance and activity ledger"
+                      >
+                        <Wallet className="h-3.5 w-3.5 text-emerald-500 opacity-70 group-hover:opacity-100 transition-opacity" />
+                        <span>{formatGHS(u.balance)}</span>
+                      </Link>
                     </td>
                     <td className="hidden px-4 py-3 md:table-cell text-xs">
                       {u.signupCodeUsage?.signupCode?.code ? (

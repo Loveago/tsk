@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { PageHeader, EmptyState, Spinner } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -229,14 +230,23 @@ export default function AdminBillingPage() {
                 </p>
               </div>
             </div>
-            <Button
-              type="button"
-              onClick={() => openAdjustWallet(null)}
-              className="bg-brand-600 hover:bg-brand-700 text-white shrink-0 text-xs h-9 shadow-xs cursor-pointer"
-            >
-              <Search className="h-3.5 w-3.5 mr-1.5" />
-              Search &amp; Adjust User Wallet
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/admin/wallets"
+                className="inline-flex items-center rounded-xl border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 shadow-xs hover:bg-brand-50 dark:border-brand-500/30 dark:bg-slate-800 dark:text-brand-300 dark:hover:bg-slate-700 transition"
+              >
+                <Wallet className="h-3.5 w-3.5 mr-1.5 text-brand-600 dark:text-brand-400" />
+                Open User Wallets Hub
+              </Link>
+              <Button
+                type="button"
+                onClick={() => openAdjustWallet(null)}
+                className="bg-brand-600 hover:bg-brand-700 text-white shrink-0 text-xs h-9 shadow-xs cursor-pointer"
+              >
+                <Search className="h-3.5 w-3.5 mr-1.5" />
+                Adjust Balance
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-end gap-3">

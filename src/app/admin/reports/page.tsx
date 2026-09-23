@@ -27,7 +27,11 @@ export default function AdminReportsPage() {
     setLoading(true);
     setError(null);
     const from = new Date();
-    from.setDate(from.getDate() - Number(range));
+    if (range === "1") {
+      from.setHours(0, 0, 0, 0);
+    } else {
+      from.setDate(from.getDate() - Number(range));
+    }
     fetch(`/api/admin/reports?from=${from.toISOString()}`)
       .then(async (r) => {
         const json = await r.json();
@@ -95,6 +99,7 @@ export default function AdminReportsPage() {
             onChange={(e) => setRange(e.target.value)}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [&>option]:bg-white dark:[&>option]:bg-slate-800"
           >
+            <option value="1">Daily</option>
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>
@@ -115,7 +120,9 @@ export default function AdminReportsPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-100 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-        <h3 className="mb-4 text-sm font-semibold">Daily orders & revenue</h3>
+        <h3 className="mb-4 text-sm font-semibold">
+          {range === "1" ? "Hourly orders & revenue (Today)" : "Daily orders & revenue"}
+        </h3>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={daily}>

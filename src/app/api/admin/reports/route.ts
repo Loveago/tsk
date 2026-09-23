@@ -79,9 +79,12 @@ export async function GET(request: NextRequest) {
     const counts: Record<string, number> = {};
     for (const s of statusCounts) counts[s.status] = s._count._all;
 
+    const isSingleDay = (toDate.getTime() - fromDate.getTime()) <= 26 * 60 * 60 * 1000;
     const dailyMap = new Map<string, { count: number; amount: number }>();
     for (const o of dailyOrders) {
-      const day = o.createdAt.toISOString().slice(0, 10);
+      const day = isSingleDay
+        ? `${o.createdAt.toISOString().slice(11, 13)}:00`
+        : o.createdAt.toISOString().slice(0, 10);
       const entry = dailyMap.get(day) ?? { count: 0, amount: 0 };
       entry.count += 1;
       entry.amount += o.amount;
