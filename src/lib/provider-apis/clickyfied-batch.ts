@@ -15,6 +15,7 @@ export interface ClickyfiedBatchConfig {
   gbThreshold: number;
   timerMinutes: number;
   lastDispatchedAt: Date | null;
+  maxEntries?: number;
 }
 
 export interface PendingMtnBatchStats {
@@ -103,18 +104,13 @@ async function releaseBatchDispatchLock(): Promise<void> {
 }
 
 /**
- * Partitions orders sequentially into batches respecting both the GB threshold window (100–120 GB)
- * and Clickyfied's maximum 100 entries per order submission.
- * 
- * Orders accumulate until reaching targetGb (e.g. 100 GB). If adding an order brings the total between
- * targetGb and maxChunkGb (e.g. 100–120 GB), it is included in the current batch. If adding it would
- * exceed maxChunkGb (120 GB) or exceed 100 entries, the current batch is sealed and the order rolls over
- * into the next batch.
+ * Partitions orders sequentially into batches respecting the GB threshold window (e.g. 100–120 GB).
+ * Recipient entries per batch are no longer artificially capped at 100, allowing higher recipient counts.
  */
 export function partitionIntoBatches<T extends { gbAmount: number }>(
   orders: T[],
   limitGb = 100,
-  maxEntries = 100,
+  maxEntries?: number,
   maxChunkGb = 120
 ): Array<{ orders: T[]; totalGb: number }> {
   const batches: Array<{ orders: T[]; totalGb: number }> = [];
@@ -126,7 +122,7 @@ export function partitionIntoBatches<T extends { gbAmount: number }>(
 
   for (const order of orders) {
     const reachedTarget = currentGb >= targetLimit;
-    const reachedMaxEntries = currentBatch.length >= maxEntries;
+    const reachedMaxEntries = maxEntries !== undefined && maxEntries > 0 ? currentBatch.length >= maxEntries : false;
     const wouldExceedMax = currentGb + order.gbAmount > upperCap;
 
     if (currentBatch.length > 0 && (reachedTarget || reachedMaxEntries || wouldExceedMax)) {
@@ -159,6 +155,7 @@ export async function getClickyfiedBatchConfig(): Promise<ClickyfiedBatchConfig>
           "clickyfied_batch_gb_threshold",
           "clickyfied_batch_timer_minutes",
           "clickyfied_batch_last_dispatched_at",
+          "clickyfied_batch_max_entries",
         ],
       },
     },
@@ -172,12 +169,15 @@ export async function getClickyfiedBatchConfig(): Promise<ClickyfiedBatchConfig>
   const timerMinutes = Math.max(1, Number(map.get("clickyfied_batch_timer_minutes") ?? 15));
   const lastDispStr = map.get("clickyfied_batch_last_dispatched_at");
   const lastDispatchedAt = lastDispStr ? new Date(lastDispStr) : null;
+  const maxEntriesStr = map.get("clickyfied_batch_max_entries");
+  const maxEntries = maxEntriesStr && !isNaN(Number(maxEntriesStr)) && Number(maxEntriesStr) > 0 ? Number(maxEntriesStr) : undefined;
 
   return {
     enabled,
     gbThreshold,
     timerMinutes,
     lastDispatchedAt,
+    maxEntries,
   };
 }
 
@@ -292,7 +292,7 @@ export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> 
 
   // Partition queue to understand current batch vs roll-over next batch
   const upperCap = Math.max(batchConfig.gbThreshold, batchConfig.gbThreshold + 20);
-  const batches = partitionIntoBatches(orders, batchConfig.gbThreshold, 100, upperCap);
+  const batches = partitionIntoBatches(orders, batchConfig.gbThreshold, batchConfig.maxEntries, upperCap);
   const currentBatch = batches[0] ?? { orders: [], totalGb: 0 };
   const currentBatchGb = currentBatch.totalGb;
   const currentBatchCount = currentBatch.orders.length;
@@ -310,7 +310,7 @@ export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> 
   const thresholdMet =
     currentBatchGb >= batchConfig.gbThreshold ||
     totalGb >= batchConfig.gbThreshold ||
-    currentBatchCount >= 100 ||
+    (batchConfig.maxEntries ? currentBatchCount >= batchConfig.maxEntries : false) ||
     group1Gb >= batchConfig.gbThreshold ||
     group2Gb >= batchConfig.gbThreshold;
 
@@ -894,9 +894,8 @@ async function submitSingleBatchChunk(
  * 1. Group 1: 1 GB to 5 GB orders (small bundles)
  * 2. Group 2: 6 GB and above orders (large bundles)
  * 
- * Each group is sent as its own separate batch to Clickyfied with its own sequential batch code.
- * If either group exceeds Clickyfied's single-submission limit of 100 entries, it is automatically
- * chunked into 100-entry sub-batches.
+ * Each group is sent as its own separate batch to Clickyfied with its own sequential batch code,
+ * sized by the configured GB threshold window without artificial recipient caps.
  */
 export async function dispatchClickyfiedMtnBatch(
   actorLabel = "Batch System",
@@ -983,11 +982,11 @@ export async function dispatchClickyfiedMtnBatch(
     const group2Gb = group2Orders.reduce((sum, o) => sum + o.gbAmount, 0);
 
     // If options.onlyFullBatches is set (volume threshold trigger):
-    // Only dispatch if total queue meets threshold OR either group meets threshold/100 entries
+    // Only dispatch if total queue meets threshold OR either group meets threshold
     if (options.onlyFullBatches) {
       const thresholdMet =
         totalGb >= batchConfig.gbThreshold ||
-        count >= 100 ||
+        (batchConfig.maxEntries ? count >= batchConfig.maxEntries : false) ||
         group1Gb >= batchConfig.gbThreshold ||
         group2Gb >= batchConfig.gbThreshold;
 
@@ -1003,8 +1002,8 @@ export async function dispatchClickyfiedMtnBatch(
     }
 
     const upperCap = Math.max(batchConfig.gbThreshold, batchConfig.gbThreshold + 20);
-    const group1Chunks = partitionIntoBatches(group1Orders, batchConfig.gbThreshold, 100, upperCap);
-    const group2Chunks = partitionIntoBatches(group2Orders, batchConfig.gbThreshold, 100, upperCap);
+    const group1Chunks = partitionIntoBatches(group1Orders, batchConfig.gbThreshold, batchConfig.maxEntries, upperCap);
+    const group2Chunks = partitionIntoBatches(group2Orders, batchConfig.gbThreshold, batchConfig.maxEntries, upperCap);
 
     const client = new ClickyfiedClient(config.clickyfied);
 
@@ -1037,8 +1036,8 @@ export async function dispatchClickyfiedMtnBatch(
     for (let i = 0; i < group1Chunks.length; i++) {
       const chunk = group1Chunks[i];
       if (chunk.orders.length === 0) continue;
-      // When onlyFullBatches is requested (threshold trigger), hold back remainder chunks that have not reached threshold or 100 entries
-      if (options.onlyFullBatches && chunk.totalGb < batchConfig.gbThreshold && chunk.orders.length < 100) {
+      // When onlyFullBatches is requested (threshold trigger), hold back remainder chunks that have not reached threshold
+      if (options.onlyFullBatches && chunk.totalGb < batchConfig.gbThreshold && (!batchConfig.maxEntries || chunk.orders.length < batchConfig.maxEntries)) {
         continue;
       }
       if (i > 0) {
@@ -1071,8 +1070,8 @@ export async function dispatchClickyfiedMtnBatch(
     for (let i = 0; i < group2Chunks.length; i++) {
       const chunk = group2Chunks[i];
       if (chunk.orders.length === 0) continue;
-      // When onlyFullBatches is requested (threshold trigger), hold back remainder chunks that have not reached threshold or 100 entries
-      if (options.onlyFullBatches && chunk.totalGb < batchConfig.gbThreshold && chunk.orders.length < 100) {
+      // When onlyFullBatches is requested (threshold trigger), hold back remainder chunks that have not reached threshold
+      if (options.onlyFullBatches && chunk.totalGb < batchConfig.gbThreshold && (!batchConfig.maxEntries || chunk.orders.length < batchConfig.maxEntries)) {
         continue;
       }
       if (dispatchedBatches.length > 0 || i > 0) {
@@ -1138,9 +1137,9 @@ export async function dispatchClickyfiedMtnBatch(
 /**
  * Checks triggers (volume threshold or timer expiration) and executes batch dispatch if warranted.
  * 
- * - THRESHOLD: Dispatches batches that have accumulated >= 100 GB (or 100 entries).
+ * - THRESHOLD: Dispatches batches that have accumulated >= configured GB threshold.
  *   If a massive order arrives (e.g. 250 GB), it dispatches Chunk 1 (~100 GB), Chunk 2 (~100 GB),
- *   leaving any remainder (< 100 GB) in queue to accumulate or wait for timer.
+ *   leaving any remainder (< threshold) in queue to accumulate or wait for timer.
  * 
  * - TIMER: Dispatches all remaining queued orders ONLY when the countdown timer window has actually
  *   expired (hit 0, default 15 minutes after oldest order).
@@ -1158,7 +1157,7 @@ export async function checkAndTriggerMtnBatch(
     const status = await getClickyfiedBatchStatus();
     if (status.pendingCount === 0) return { triggered: false };
 
-    // 1. Volume threshold trigger: dispatch only full batches (chunks that reached 100 GB or 100 entries)
+    // 1. Volume threshold trigger: dispatch only full batches (chunks that reached configured GB threshold)
     if (status.thresholdMet) {
       let dispatchTotalGb = 0;
       let dispatchCount = 0;
