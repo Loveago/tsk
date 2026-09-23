@@ -167,41 +167,38 @@ export function NetworkBuyForm({ slug, products, network, storeName }: NetworkBu
         </span>
       </div>
 
-      {/* Modern Bundle Cards Grid */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {/* Compact Modern Bundle Cards Grid */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
         {products.map((p) => {
           return (
             <button
               type="button"
               key={p.packageId}
               onClick={() => openCheckout(p)}
-              className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-4 text-center transition-all duration-200 hover:-translate-y-1 hover:border-yellow-400 hover:shadow-xl hover:shadow-yellow-400/15 active:scale-[0.98] dark:border-white/10 dark:bg-white/5 dark:hover:border-yellow-400/70 dark:hover:bg-white/10 cursor-pointer"
+              className="group relative flex flex-col justify-between overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200/90 bg-white p-2.5 sm:p-3 text-center transition-all duration-150 hover:-translate-y-0.5 hover:border-yellow-400 hover:shadow-md hover:shadow-yellow-400/10 active:scale-[0.98] dark:border-white/10 dark:bg-white/5 dark:hover:border-yellow-400/70 dark:hover:bg-white/10 cursor-pointer"
             >
               {/* Subtle top indicator */}
               <div className="flex items-center justify-between text-[10px] font-medium text-slate-400 dark:text-slate-500">
-                <span>Non-Expiry</span>
+                <span className="text-[10px]">Non-Expiry</span>
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               </div>
 
               {/* Data Size Display */}
-              <div className="my-2.5">
-                <span className="block text-2xl font-black tracking-tight text-slate-900 transition-colors group-hover:text-yellow-600 sm:text-3xl dark:text-white dark:group-hover:text-yellow-400">
+              <div className="my-1 sm:my-1.5">
+                <span className="block text-xl font-black tracking-tight text-slate-900 transition-colors group-hover:text-yellow-600 sm:text-2xl dark:text-white dark:group-hover:text-yellow-400">
                   {p.gbAmount}
-                  <span className="text-sm font-bold tracking-normal ml-0.5">GB</span>
-                </span>
-                <span className="mt-0.5 block truncate text-[11px] text-slate-500 dark:text-slate-400">
-                  {p.name || `${p.gbAmount}GB Data Bundle`}
+                  <span className="text-xs font-bold tracking-normal ml-0.5">GB</span>
                 </span>
               </div>
 
               {/* Price & Action Button */}
-              <div className="mt-1 pt-2 border-t border-slate-100 dark:border-white/5">
+              <div className="pt-1.5 border-t border-slate-100 dark:border-white/5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
                     ₵{p.price.toFixed(2)}
                   </span>
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-yellow-300 text-slate-900 shadow-xs transition-transform duration-200 group-hover:scale-110 group-hover:bg-yellow-400">
-                    <ArrowRight className="h-3.5 w-3.5" />
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-yellow-300 text-slate-900 shadow-2xs transition-transform duration-150 group-hover:scale-110 group-hover:bg-yellow-400">
+                    <ArrowRight className="h-3 w-3" />
                   </span>
                 </div>
               </div>
