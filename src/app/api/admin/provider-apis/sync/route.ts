@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
-import { syncClickyfiedOrder, syncBigwindataOrder, syncGhconnectOrder } from "@/lib/provider-apis/router";
+import { syncClickyfiedOrder, syncBigwindataOrder, syncGhconnectOrder, syncBigwinTelecelOrder } from "@/lib/provider-apis/router";
 import { handleRouteError } from "@/lib/api-helpers";
 
 export async function POST(request: NextRequest) {
@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
           { providerReference: { startsWith: "CLICKYFIED:" } },
           { providerReference: { startsWith: "BIGWIN:" } },
           { providerReference: { startsWith: "GHC:" } },
+          { providerReference: { startsWith: "BWTEL:" } },
         ],
       },
       take: 100,
@@ -28,7 +29,9 @@ export async function POST(request: NextRequest) {
     for (const order of inFlightOrders) {
       checked++;
       let res: { changed: boolean; newStatus?: string; error?: string };
-      if (order.providerReference?.startsWith("GHC:")) {
+      if (order.providerReference?.startsWith("BWTEL:")) {
+        res = await syncBigwinTelecelOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });
+      } else if (order.providerReference?.startsWith("GHC:")) {
         res = await syncGhconnectOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });
       } else if (order.providerReference?.startsWith("BIGWIN:")) {
         res = await syncBigwindataOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });

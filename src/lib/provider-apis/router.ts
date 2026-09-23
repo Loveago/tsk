@@ -5,7 +5,8 @@ import { recordOrderApiLog } from "../order-api-logs";
 import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_URL } from "./bigwindata";
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
 import { GhconnectClient, DEFAULT_GHCONNECT_BASE_URL, formatGhconnectPhone } from "./ghconnect";
-import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig, GhconnectConfig } from "./types";
+import { BigwinTelecelClient, DEFAULT_BIGWIN_TELECEL_API_KEY, DEFAULT_BIGWIN_TELECEL_BASE_URL } from "./bigwin-telecel";
+import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig, GhconnectConfig, BigwinTelecelConfig } from "./types";
 
 /**
  * Standard Ghanaian network keys supported in routing
@@ -31,14 +32,14 @@ export async function getProviderRoutingConfig(): Promise<ProviderRoutingConfig>
   const networkRoutes: Record<string, ProviderType> = {};
   for (const net of SUPPORTED_ROUTING_NETWORKS) {
     const routeVal = getVal(`provider_route_${net}`, "MANUAL") as ProviderType;
-    networkRoutes[net] = ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT"].includes(routeVal) ? routeVal : "MANUAL";
+    networkRoutes[net] = ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT", "BIGWIN_TELECEL"].includes(routeVal) ? routeVal : "MANUAL";
   }
 
   // Also include any dynamically saved routes for custom categories
   for (const [key, val] of map.entries()) {
     if (key.startsWith("provider_route_")) {
       const net = key.replace("provider_route_", "").toUpperCase();
-      if (!networkRoutes[net] && ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT"].includes(val)) {
+      if (!networkRoutes[net] && ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT", "BIGWIN_TELECEL"].includes(val)) {
         networkRoutes[net] = val as ProviderType;
       }
     }
@@ -68,6 +69,11 @@ export async function getProviderRoutingConfig(): Promise<ProviderRoutingConfig>
       enabled: getVal("ghconnect_enabled", "true") === "true",
       apiKey: getVal("ghconnect_api_key", ""),
       baseUrl: getVal("ghconnect_base_url", DEFAULT_GHCONNECT_BASE_URL),
+    },
+    bigwinTelecel: {
+      enabled: getVal("bigwin_telecel_enabled", "true") === "true",
+      apiKey: getVal("bigwin_telecel_api_key", DEFAULT_BIGWIN_TELECEL_API_KEY),
+      baseUrl: getVal("bigwin_telecel_base_url", DEFAULT_BIGWIN_TELECEL_BASE_URL),
     },
   };
 }
@@ -238,6 +244,8 @@ export async function dispatchOrder(
         ? "CLICKYFIED"
         : order.providerReference.startsWith("GHC:")
         ? "GHCONNECT"
+        : order.providerReference.startsWith("BWTEL:")
+        ? "BIGWIN_TELECEL"
         : "BIGWINDATA",
       status: order.status,
       error: `Order already dispatched to provider (${order.providerReference})`,
@@ -747,6 +755,141 @@ export async function dispatchOrder(
       return {
         success: false,
         provider: "GHCONNECT",
+        error: errMsg,
+      };
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Dispatched to BIGWIN_TELECEL (bigwinportal.com dedicated portal for Telecel)
+  // -------------------------------------------------------------------------
+  if (provider === "BIGWIN_TELECEL") {
+    if (!config.bigwinTelecel?.enabled) {
+      return {
+        success: false,
+        provider: "BIGWIN_TELECEL",
+        error: "Bigwin Telecel integration is disabled in settings.",
+      };
+    }
+    if (!config.bigwinTelecel?.apiKey) {
+      return {
+        success: false,
+        provider: "BIGWIN_TELECEL",
+        error: "Bigwin Telecel API key is not configured.",
+      };
+    }
+
+    const client = new BigwinTelecelClient(config.bigwinTelecel);
+    const bwtelStartTime = Date.now();
+    const orderRef = `TSK-${order.id}`;
+    let sendPayload: any = null;
+
+    try {
+      sendPayload = {
+        phone: order.phoneNumber,
+        dataGB: order.gbAmount,
+        reference: orderRef,
+      };
+
+      const sendRes = await client.sendDataBundle(sendPayload);
+      const durationMs = Date.now() - bwtelStartTime;
+      const txnId = sendRes.transactionId || orderRef;
+      const providerRef = `BWTEL:${txnId}#${orderRef}`;
+
+      // Update order provider reference
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          providerReference: providerRef,
+          failureReason: null,
+        },
+      });
+
+      // Record Order API Log
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "BIGWIN_TELECEL",
+        action: "SUBMIT_ORDER",
+        endpoint: `${config.bigwinTelecel.baseUrl || DEFAULT_BIGWIN_TELECEL_BASE_URL}/api/v1/share/send`,
+        method: "POST",
+        requestPayload: sendPayload,
+        responsePayload: sendRes.raw,
+        statusCode: 200,
+        success: sendRes.success,
+        providerReference: providerRef,
+        durationMs,
+      });
+
+      const resStatus = (sendRes.status || "").toLowerCase();
+      if (resStatus === "success" || resStatus === "completed" || resStatus === "delivered") {
+        await changeOrderStatus(
+          order.id,
+          "SUCCESS",
+          `Fulfilled instantly via Bigwin Telecel API (ref: ${orderRef}, txn: ${txnId})`,
+          { id: "system", label: "Bigwin Telecel API" },
+          { force: true }
+        );
+      } else if (resStatus === "failed" || resStatus === "error") {
+        await changeOrderStatus(
+          order.id,
+          "FAILED",
+          `Failed via Bigwin Telecel API (${sendRes.message || "Failed"})`,
+          { id: "system", label: "Bigwin Telecel API" },
+          { force: true }
+        );
+      } else {
+        await changeOrderStatus(
+          order.id,
+          "PROCESSING",
+          `Dispatched via Bigwin Telecel API (ref: ${orderRef}, txn: ${txnId})`,
+          { id: "system", label: "Bigwin Telecel API" },
+          { force: true }
+        );
+      }
+
+      return {
+        success: sendRes.success,
+        provider: "BIGWIN_TELECEL",
+        providerReference: providerRef,
+        status: resStatus === "success" ? "SUCCESS" : "PROCESSING",
+        raw: sendRes.raw,
+      };
+    } catch (err: any) {
+      const durationMs = Date.now() - bwtelStartTime;
+      const errMsg = err?.message || "Failed to dispatch order to Bigwin Telecel";
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { failureReason: errMsg },
+      });
+
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "BIGWIN_TELECEL",
+        action: "SUBMIT_ORDER",
+        endpoint: `${config.bigwinTelecel.baseUrl || DEFAULT_BIGWIN_TELECEL_BASE_URL}/api/v1/share/send`,
+        method: "POST",
+        requestPayload: sendPayload,
+        responsePayload: err?.rawResponse || err?.rawText || { error: errMsg },
+        statusCode: err?.status || 500,
+        success: false,
+        errorMessage: errMsg,
+        durationMs,
+      });
+
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: order.status,
+          previousStatus: order.status,
+          note: `Bigwin Telecel dispatch failed: ${errMsg}`,
+          changedBy: "Bigwin Telecel API",
+        },
+      });
+
+      return {
+        success: false,
+        provider: "BIGWIN_TELECEL",
         error: errMsg,
       };
     }
@@ -1670,6 +1813,128 @@ export async function syncGhconnectOrder(
     return { changed: false, newStatus: order.status };
   } catch (err: any) {
     return { changed: false, error: err?.message || "GHConnect sync failed" };
+  } finally {
+    syncingOrders.delete(orderId);
+  }
+}
+
+const lastCheckedTelecelOrders = new Map<number, number>();
+const TELECEL_POLL_INTERVAL_MS = 20 * 1000;
+
+/**
+ * Synchronizes an order's status with the Bigwin Telecel provider API (bigwinportal.com).
+ * Updates the database order if the status has changed.
+ */
+export async function syncBigwinTelecelOrder(
+  orderIdOrRecord: number | {
+    id: number;
+    status: string;
+    providerReference: string | null;
+    updatedAt: Date;
+  },
+  actorLabel = "Bigwin Telecel Sync",
+  options: { forceCheck?: boolean } = {}
+): Promise<{ changed: boolean; previousStatus?: string; newStatus?: string; error?: string }> {
+  const orderId = typeof orderIdOrRecord === "number" ? orderIdOrRecord : orderIdOrRecord.id;
+
+  if (syncingOrders.has(orderId)) {
+    return { changed: false };
+  }
+
+  // If partner poller is explicitly disabled in settings, skip background check
+  if (!options.forceCheck) {
+    const pollerSetting = await prisma.systemSetting.findUnique({
+      where: { key: "partner_poller_enabled" },
+    });
+    if (pollerSetting && pollerSetting.value === "false") {
+      return { changed: false };
+    }
+  }
+
+  const now = Date.now();
+  const lastChecked = lastCheckedTelecelOrders.get(orderId) || 0;
+  if (!options.forceCheck && now - lastChecked < TELECEL_POLL_INTERVAL_MS) {
+    return { changed: false };
+  }
+
+  syncingOrders.add(orderId);
+  try {
+    const order = typeof orderIdOrRecord === "number"
+      ? await prisma.order.findUnique({ where: { id: orderId } })
+      : orderIdOrRecord;
+
+    if (!order) return { changed: false, error: "Order not found" };
+
+    // Terminal statuses do not need further polling
+    if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(order.status)) {
+      return { changed: false, newStatus: order.status };
+    }
+
+    if (!order.providerReference || !order.providerReference.startsWith("BWTEL:")) {
+      return { changed: false };
+    }
+
+    const rawRef = order.providerReference.replace(/^BWTEL:/i, "").trim();
+    const [txnId, orderRef] = rawRef.split("#");
+    if (!txnId && !orderRef) return { changed: false };
+
+    lastCheckedTelecelOrders.set(orderId, now);
+
+    const config = await getProviderRoutingConfig();
+    if (!config.bigwinTelecel?.enabled) {
+      return { changed: false, error: "Bigwin Telecel integration disabled" };
+    }
+
+    const client = new BigwinTelecelClient(config.bigwinTelecel);
+    const statusRes = await client.getOrderStatus({
+      transactionId: txnId || undefined,
+      reference: orderRef || txnId,
+    });
+
+    const rawStatus = (statusRes.status || "").toLowerCase().trim();
+
+    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | null = null;
+    if (rawStatus === "delivered" || rawStatus === "success" || rawStatus === "completed") {
+      targetStatus = "SUCCESS";
+    } else if (rawStatus === "failed" || rawStatus === "refunded" || rawStatus === "error" || rawStatus === "cancelled") {
+      targetStatus = "FAILED";
+    } else if (rawStatus === "processing" || rawStatus === "placed" || rawStatus === "accepted" || rawStatus === "in_progress" || rawStatus === "pending") {
+      targetStatus = "PROCESSING";
+    }
+
+    if (targetStatus && targetStatus !== order.status) {
+      const endpoint = `${config.bigwinTelecel.baseUrl || DEFAULT_BIGWIN_TELECEL_BASE_URL}/api/v1/share/status`;
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "BIGWIN_TELECEL",
+        action: "SYNC_ORDER",
+        endpoint,
+        method: "GET",
+        statusCode: 200,
+        success: targetStatus === "SUCCESS",
+        errorMessage: targetStatus === "FAILED" ? `Order marked as ${rawStatus} by Bigwin Telecel` : null,
+        responsePayload: statusRes.raw,
+        providerReference: order.providerReference,
+      });
+
+      await changeOrderStatus(
+        order.id,
+        targetStatus,
+        `Delivery status synced from Bigwin Telecel (${rawStatus})`,
+        { id: "system", label: actorLabel },
+        { force: true }
+      );
+
+      return {
+        changed: true,
+        previousStatus: order.status,
+        newStatus: targetStatus,
+      };
+    }
+
+    return { changed: false, newStatus: order.status };
+  } catch (err: any) {
+    return { changed: false, error: err?.message || "Bigwin Telecel sync failed" };
   } finally {
     syncingOrders.delete(orderId);
   }

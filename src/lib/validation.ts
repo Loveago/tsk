@@ -355,6 +355,11 @@ export const settingsSchema = z.object({
   ghconnect_api_key: z.string().max(255).optional(),
   ghconnect_base_url: z.string().max(255).optional(),
 
+  // Bigwin Telecel Settings
+  bigwin_telecel_enabled: z.enum(["true", "false"]).optional(),
+  bigwin_telecel_api_key: z.string().max(255).optional(),
+  bigwin_telecel_base_url: z.string().max(255).optional(),
+
   // Dedicated Telecel & AT Status Poller (Bigwin & GHConnect)
   partner_poller_enabled: z.enum(["true", "false"]).optional(),
   partner_poller_interval_seconds: z.string().max(10).optional(),

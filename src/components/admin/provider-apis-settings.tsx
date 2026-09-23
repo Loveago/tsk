@@ -33,6 +33,10 @@ import {
   DEFAULT_BIGWINDATA_BASE_URL,
 } from "@/lib/provider-apis/bigwindata";
 import {
+  DEFAULT_BIGWIN_TELECEL_API_KEY,
+  DEFAULT_BIGWIN_TELECEL_BASE_URL,
+} from "@/lib/provider-apis/bigwin-telecel";
+import {
   DEFAULT_CLICKYFIED_API_KEY,
   DEFAULT_CLICKYFIED_CLIENT_ID,
   DEFAULT_CLICKYFIED_SANDBOX_URL,
@@ -52,11 +56,13 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
   const { toast } = useToast();
 
   const [showBigwinKey, setShowBigwinKey] = React.useState(false);
+  const [showBigwinTelecelKey, setShowBigwinTelecelKey] = React.useState(false);
   const [showClickyfiedKey, setShowClickyfiedKey] = React.useState(false);
   const [showGhcKey, setShowGhcKey] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
   const [syncingPartner, setSyncingPartner] = React.useState(false);
   const [testingBigwin, setTestingBigwin] = React.useState(false);
+  const [testingBigwinTelecel, setTestingBigwinTelecel] = React.useState(false);
   const [testingClickyfied, setTestingClickyfied] = React.useState(false);
   const [testingGhc, setTestingGhc] = React.useState(false);
   const [batchStatus, setBatchStatus] = React.useState<{
@@ -297,6 +303,50 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
       toast(`Bigwindata error: ${err.message}`, "error");
     } finally {
       setTestingBigwin(false);
+    }
+  };
+
+  const testBigwinTelecel = async () => {
+    setTestingBigwinTelecel(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/admin/provider-apis/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test_bigwin_telecel_packages" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Bigwin Telecel check failed");
+      const pkgs = Array.isArray(json.packages)
+        ? json.packages
+        : Array.isArray(json.packages?.packages)
+        ? json.packages.packages
+        : Array.isArray(json.packages?.data)
+        ? json.packages.data
+        : [];
+      const summary =
+        pkgs.length > 0
+          ? `${pkgs.length} packages available (${pkgs
+              .slice(0, 3)
+              .map((p: any) => `${p.dataGB || p.capacity || p.name || p.bundleSize || p.size || ""}GB`)
+              .filter(Boolean)
+              .join(", ")}...)`
+          : "Connected successfully!";
+      setTestResult({
+        provider: "Bigwin Telecel",
+        success: true,
+        message: `Connected to Bigwin Telecel Portal! ${summary}`,
+      });
+      toast("Bigwin Telecel connection verified!", "success");
+    } catch (err: any) {
+      setTestResult({
+        provider: "Bigwin Telecel",
+        success: false,
+        message: err.message,
+      });
+      toast(`Bigwin Telecel error: ${err.message}`, "error");
+    } finally {
+      setTestingBigwinTelecel(false);
     }
   };
 
@@ -648,7 +698,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
           )}
         </div>
 
-        {/* Dedicated Telecel & AT (Bigwin & GHConnect) Status Poller Setting */}
+        {/* Dedicated Telecel & AT (Bigwin, Bigwin Telecel & GHConnect) Status Poller Setting */}
         <div className="mt-3 p-3.5 rounded-xl border border-amber-100 dark:border-amber-900/30 bg-amber-50/40 dark:bg-amber-950/10 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
@@ -660,7 +710,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       : "text-slate-400"
                   }`}
                 />
-                Telecel & AT Status Poller (Bigwin & GHConnect)
+                Telecel & AT Status Poller (Bigwin, Bigwin Telecel & GHConnect)
                 <span
                   className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
                     settings.partner_poller_enabled !== "false"
@@ -674,7 +724,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xl leading-relaxed">
-                Automatically queries <strong>Bigwindata</strong> and <strong>GHConnect</strong> APIs every {parseInt(settings.partner_poller_interval_seconds || "60", 10) || 60} seconds for in-flight Telecel, AT Big Time, and AT iShare orders. Operates completely separately from Clickyfied so your Telecel & AT orders are continuously updated even when Clickyfied poller is OFF.
+                Automatically queries <strong>Bigwindata</strong>, <strong>Bigwin Telecel</strong>, and <strong>GHConnect</strong> APIs every {parseInt(settings.partner_poller_interval_seconds || "60", 10) || 60} seconds for in-flight Telecel, AT Big Time, and AT iShare orders. Operates completely separately from Clickyfied so your Telecel & AT orders are continuously updated even when Clickyfied poller is OFF.
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0">
@@ -836,6 +886,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 <th className="py-2.5 px-3 font-medium">Network / Bundle Type</th>
                 <th className="py-2.5 px-3 font-medium text-center">Manual File Export</th>
                 <th className="py-2.5 px-3 font-medium text-center">Bigwindata API</th>
+                <th className="py-2.5 px-3 font-medium text-center">Bigwin Telecel</th>
                 <th className="py-2.5 px-3 font-medium text-center">Clickyfied API</th>
                 <th className="py-2.5 px-3 font-medium text-center">GHConnect API</th>
                 <th className="py-2.5 px-3 font-medium text-right">Active Mode</th>
@@ -892,6 +943,24 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                         <input
                           type="radio"
                           name={settingKey}
+                          value="BIGWIN_TELECEL"
+                          checked={currentVal === "BIGWIN_TELECEL"}
+                          onChange={() =>
+                            setSettings((s) => ({ ...s, [settingKey]: "BIGWIN_TELECEL" }))
+                          }
+                          className="text-rose-600 focus:ring-rose-500"
+                        />
+                        <span className="text-rose-700 dark:text-rose-400 font-medium text-xs">
+                          Bigwin Telecel
+                        </span>
+                      </label>
+                    </td>
+
+                    <td className="py-3 px-3 text-center">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={settingKey}
                           value="CLICKYFIED"
                           checked={currentVal === "CLICKYFIED"}
                           onChange={() =>
@@ -931,6 +1000,10 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       ) : currentVal === "BIGWINDATA" ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                           ⚡ Bigwindata
+                        </span>
+                      ) : currentVal === "BIGWIN_TELECEL" ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                          🔴 Bigwin Telecel
                         </span>
                       ) : currentVal === "CLICKYFIED" ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300">
@@ -1683,6 +1756,114 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
             <p className="font-semibold">Automatic Status Poller Active</p>
             <p className="text-[11px] text-emerald-800/90 dark:text-emerald-300/90">
               In-flight orders dispatched to GHConnect are automatically polled every 120 seconds via <code className="px-1 bg-white/60 dark:bg-black/20 rounded">GET /v1/checkOrderStatus/:reference</code>. When GHConnect returns completed, the order is updated to Completed. If failed, it is automatically marked Failed and the customer is refunded.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 5. Bigwin Telecel API Configuration (Dedicated Telecel Portal) */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-rose-50 dark:bg-rose-950/60 flex items-center justify-center text-rose-600 font-bold text-xs">
+              TEL
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                Bigwin Telecel API Configuration (Dedicated Telecel Portal)
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Dedicated portal (bigwinportal.com) for Telecel bundles with automated background status poller.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={testBigwinTelecel}
+              disabled={testingBigwinTelecel}
+              className="text-xs h-8 border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${testingBigwinTelecel ? "animate-spin" : ""}`} />
+              Test Connection
+            </Button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.bigwin_telecel_enabled !== "false"}
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  bigwin_telecel_enabled: s.bigwin_telecel_enabled === "false" ? "true" : "false",
+                }))
+              }
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                settings.bigwin_telecel_enabled !== "false"
+                  ? "bg-rose-600"
+                  : "bg-slate-300 dark:bg-slate-700"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                  settings.bigwin_telecel_enabled !== "false" ? "left-[22px]" : "left-0.5"
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <div className="space-y-1.5">
+            <Label>API Key (x-api-key)</Label>
+            <div className="relative">
+              <Input
+                type={showBigwinTelecelKey ? "text" : "password"}
+                placeholder={DEFAULT_BIGWIN_TELECEL_API_KEY}
+                value={settings.bigwin_telecel_api_key ?? DEFAULT_BIGWIN_TELECEL_API_KEY}
+                onChange={(e) =>
+                  setSettings((s) => ({ ...s, bigwin_telecel_api_key: e.target.value }))
+                }
+                className="pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowBigwinTelecelKey(!showBigwinTelecelKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                {showBigwinTelecelKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              API key provided by the Bigwin Telecel portal administrator.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>API Base URL</Label>
+            <Input
+              type="text"
+              placeholder={DEFAULT_BIGWIN_TELECEL_BASE_URL}
+              value={settings.bigwin_telecel_base_url ?? DEFAULT_BIGWIN_TELECEL_BASE_URL}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, bigwin_telecel_base_url: e.target.value }))
+              }
+              className="font-mono text-xs"
+            />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Default is <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded">{DEFAULT_BIGWIN_TELECEL_BASE_URL}</code>.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-rose-200/80 bg-rose-50/60 p-3.5 text-xs text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300 flex items-start gap-2.5">
+          <CheckCircle2 className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold">Automatic Telecel Poller Active</p>
+            <p className="text-[11px] text-rose-800/90 dark:text-rose-300/90">
+              When Telecel orders are routed to Bigwin Telecel, orders are sent to <code className="px-1 bg-white/60 dark:bg-black/20 rounded">POST /api/v1/share/send</code> and tracked with reference prefix <code className="px-1 bg-white/60 dark:bg-black/20 rounded font-mono">BWTEL:</code>. The automated partner poller checks status via <code className="px-1 bg-white/60 dark:bg-black/20 rounded">GET /api/v1/share/status</code> and updates the order to Completed or Failed (with automatic refund).
             </p>
           </div>
         </div>

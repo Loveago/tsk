@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
-import { syncBigwindataOrder, syncGhconnectOrder } from "@/lib/provider-apis/router";
+import { syncBigwindataOrder, syncGhconnectOrder, syncBigwinTelecelOrder } from "@/lib/provider-apis/router";
 import { handleRouteError } from "@/lib/api-helpers";
 
 export async function POST(request: NextRequest) {
   try {
     const actor = await requireStaff();
 
-    // Query in-flight Bigwindata and GHConnect orders (Telecel, AT orders)
+    // Query in-flight Bigwindata, GHConnect, and Bigwin Telecel orders (Telecel, AT orders)
     const inFlightOrders = await prisma.order.findMany({
       where: {
         status: { in: ["PENDING", "PROCESSING"] },
         OR: [
           { providerReference: { startsWith: "BIGWIN:" } },
           { providerReference: { startsWith: "GHC:" } },
+          { providerReference: { startsWith: "BWTEL:" } },
         ],
       },
       take: 100,
@@ -37,6 +38,9 @@ export async function POST(request: NextRequest) {
       } else if (ref.startsWith("GHC:")) {
         providerName = "GHCONNECT";
         res = await syncGhconnectOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });
+      } else if (ref.startsWith("BWTEL:")) {
+        providerName = "BIGWIN_TELECEL";
+        res = await syncBigwinTelecelOrder(order, `Manual sync by ${actor.email}`, { forceCheck: true });
       } else {
         continue;
       }

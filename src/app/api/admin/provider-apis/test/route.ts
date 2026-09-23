@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { BigwindataClient } from "@/lib/provider-apis/bigwindata";
 import { ClickyfiedClient, generateClickyfiedReference } from "@/lib/provider-apis/clickyfied";
 import { GhconnectClient } from "@/lib/provider-apis/ghconnect";
+import { BigwinTelecelClient } from "@/lib/provider-apis/bigwin-telecel";
 import { getProviderRoutingConfig } from "@/lib/provider-apis/router";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
@@ -13,6 +14,18 @@ export async function POST(request: NextRequest) {
     const { action, provider, network = "MTN", recipient = "0257467983", gbAmount = 1 } = body;
 
     const config = await getProviderRoutingConfig();
+
+    if (action === "test_bigwin_telecel_packages") {
+      const client = new BigwinTelecelClient(config.bigwinTelecel);
+      const packages = await client.getPackages();
+      return NextResponse.json({ success: true, packages });
+    }
+
+    if (action === "test_bigwin_telecel_transactions") {
+      const client = new BigwinTelecelClient(config.bigwinTelecel);
+      const transactions = await client.getTransactions();
+      return NextResponse.json({ success: true, transactions });
+    }
 
     if (action === "test_bigwindata_balance") {
       const client = new BigwindataClient(config.bigwindata);
@@ -93,6 +106,17 @@ export async function POST(request: NextRequest) {
               capacity: gbAmount,
             });
         return NextResponse.json({ success: true, provider: "GHCONNECT", order });
+      }
+
+      if (provider === "BIGWIN_TELECEL") {
+        const client = new BigwinTelecelClient(config.bigwinTelecel);
+        const reference = `TEST-TEL-${Date.now()}`;
+        const order = await client.sendDataBundle({
+          phone: recipient,
+          dataGB: gbAmount,
+          reference,
+        });
+        return NextResponse.json({ success: true, provider: "BIGWIN_TELECEL", order });
       }
 
       return apiError(400, "Unsupported provider for test order");

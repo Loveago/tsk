@@ -1,5 +1,5 @@
 import { prisma } from "../prisma";
-import { syncBigwindataOrder, syncGhconnectOrder } from "./router";
+import { syncBigwindataOrder, syncGhconnectOrder, syncBigwinTelecelOrder } from "./router";
 
 let isPolling = false;
 
@@ -24,7 +24,7 @@ export async function getPartnerPollerIntervalSeconds(): Promise<number> {
 }
 
 /**
- * Dedicated background status poller for Bigwindata and GHConnect partner orders
+ * Dedicated background status poller for Bigwindata, GHConnect, and Bigwin Telecel partner orders
  * (specifically handles Telecel and AT orders).
  * 
  * Runs independently from the Clickyfied poller so Telecel & AT orders are continuously
@@ -46,7 +46,7 @@ export function startPartnerOrderPoller() {
   }
   g.__partnerOrderPollerStarted = true;
 
-  console.log("[PartnerOrderPoller] Automated background status poller for Bigwin & GHConnect initialized (60s default interval).");
+  console.log("[PartnerOrderPoller] Automated background status poller for Bigwin, GHConnect & Bigwin Telecel initialized (60s default interval).");
 
   const poll = async () => {
     if (isPolling) return;
@@ -62,7 +62,10 @@ export function startPartnerOrderPoller() {
 
       const { getProviderRoutingConfig } = await import("./router");
       const config = await getProviderRoutingConfig();
-      if (!config.enabled || (!config.bigwindata.enabled && !config.ghconnect?.enabled)) {
+      if (
+        !config.enabled ||
+        (!config.bigwindata.enabled && !config.ghconnect?.enabled && !config.bigwinTelecel?.enabled)
+      ) {
         return;
       }
 
@@ -151,7 +154,36 @@ export function startPartnerOrderPoller() {
         }
       }
 
-      // 4. Auto-reconcile pending Paystack wallet top-ups (ensures wallet top-ups auto-complete even if Clickyfied poller is OFF)
+      // 4. Poll in-flight Bigwin Telecel orders (dedicated Telecel portal)
+      if (config.bigwinTelecel?.enabled && config.bigwinTelecel?.apiKey) {
+        try {
+          const inFlightTelecelOrders = await prisma.order.findMany({
+            where: {
+              status: { in: ["PENDING", "PROCESSING"] },
+              providerReference: { startsWith: "BWTEL:" },
+              updatedAt: { lte: cutoffTime },
+            },
+            take: 100,
+            orderBy: { updatedAt: "asc" },
+          });
+
+          if (inFlightTelecelOrders.length > 0) {
+            console.log(`[PartnerOrderPoller] Polling ${inFlightTelecelOrders.length} in-flight Bigwin Telecel order(s)...`);
+          }
+
+          for (const telOrder of inFlightTelecelOrders) {
+            try {
+              await syncBigwinTelecelOrder(telOrder, "Automatic Partner Poller");
+            } catch (err: any) {
+              console.error(`[PartnerOrderPoller] Error syncing Bigwin Telecel order #${telOrder.id}:`, err?.message || err);
+            }
+          }
+        } catch (err: any) {
+          console.error("[PartnerOrderPoller] Error fetching in-flight Bigwin Telecel orders:", err?.message || err);
+        }
+      }
+
+      // 5. Auto-reconcile pending Paystack wallet top-ups (ensures wallet top-ups auto-complete even if Clickyfied poller is OFF)
       try {
         const { reconcilePendingPaystackTopups } = await import("@/lib/paystack");
         await reconcilePendingPaystackTopups(10);
@@ -159,7 +191,7 @@ export function startPartnerOrderPoller() {
         // Ignore background transient errors
       }
 
-      // 5. Auto-reconcile unsettled / undispatched Paystack storefront orders (fallback if webhook/callback dropped)
+      // 6. Auto-reconcile unsettled / undispatched Paystack storefront orders (fallback if webhook/callback dropped)
       try {
         const { reconcileUnsettledStorefrontOrders } = await import("@/lib/storefront");
         await reconcileUnsettledStorefrontOrders(24);
