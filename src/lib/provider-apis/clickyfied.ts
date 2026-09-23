@@ -1,5 +1,20 @@
-import type { ClickyfiedConfig, NumberVerificationResult } from "./types";
+import type { ClickyfiedConfig, NumberVerificationResult, ClickyfiedFilteredOutEntry } from "./types";
 import { normalizeGhanaPhoneNumber } from "@/lib/phone-utils";
+
+export type { ClickyfiedFilteredOutEntry };
+
+export interface ClickyfiedSubmitOrderResult {
+  orderId?: string | number;
+  externalReference?: string;
+  status?: string;
+  entries?: Array<any>;
+  filteredOutEntries?: ClickyfiedFilteredOutEntry[];
+  message?: string;
+  cost?: number;
+  estimatedCost?: number;
+  reused?: boolean;
+  raw: unknown;
+}
 
 export const DEFAULT_CLICKYFIED_SANDBOX_URL = "https://sandbox.clickyfied4u.com";
 export const DEFAULT_CLICKYFIED_PROD_URL = "https://www.clickyfied4u.com";
@@ -96,12 +111,26 @@ export class ClickyfiedClient {
           rawText?: string;
           endpoint?: string;
           url?: string;
+          filteredOutEntries?: ClickyfiedFilteredOutEntry[];
+          isAllBlocked?: boolean;
         };
         err.status = res.status;
         err.rawResponse = json;
         err.rawText = text;
         err.endpoint = apiPath;
         err.url = url;
+
+        const isBlockedMsg =
+          typeof errorMsg === "string" &&
+          (errorMsg.toLowerCase().includes("blocked and were filtered out") ||
+            errorMsg.toLowerCase().includes("entries are blocked") ||
+            errorMsg.toLowerCase().includes("number is blocked"));
+
+        if (json?.filteredOutEntries || isBlockedMsg) {
+          err.filteredOutEntries = json?.filteredOutEntries || [];
+          err.isAllBlocked = true;
+        }
+
         throw err;
       }
 
@@ -135,14 +164,7 @@ export class ClickyfiedClient {
     callbackUrl?: string;
     callbackSigningSecret?: string;
     idempotencyKey?: string;
-  }): Promise<{
-    orderId?: string | number;
-    externalReference?: string;
-    status?: string;
-    entries?: Array<any>;
-    reused?: boolean;
-    raw: unknown;
-  }> {
+  }): Promise<ClickyfiedSubmitOrderResult> {
     const idemKey = params.idempotencyKey || params.externalReference;
     const body: Record<string, unknown> = {
       externalReference: params.externalReference,
@@ -185,13 +207,25 @@ export class ClickyfiedClient {
       res?.entries ||
       res?.data?.entries ||
       [];
+    const filteredOutEntries: ClickyfiedFilteredOutEntry[] =
+      res?.filteredOutEntries ||
+      res?.order?.filteredOutEntries ||
+      res?.data?.filteredOutEntries ||
+      [];
     const status = res?.status || res?.data?.status || res?.order?.status || "accepted";
+    const message = res?.message || res?.order?.message || res?.data?.message;
+    const cost = res?.cost ?? res?.order?.cost ?? res?.data?.cost;
+    const estimatedCost = res?.estimatedCost ?? res?.order?.estimatedCost ?? res?.data?.estimatedCost;
 
     return {
       orderId,
       externalReference: params.externalReference,
       status,
       entries,
+      filteredOutEntries,
+      message,
+      cost,
+      estimatedCost,
       reused: !!res?.reused,
       raw: res,
     };

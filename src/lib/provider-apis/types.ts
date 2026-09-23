@@ -51,6 +51,13 @@ export interface BigwindataBundle {
   rawPrice: number;
 }
 
+export interface ClickyfiedFilteredOutEntry {
+  number: string;
+  allocationGB: number;
+  reason?: string;
+  type?: "blocked" | string;
+}
+
 export interface ProviderDispatchResult {
   success: boolean;
   provider: ProviderType;
@@ -58,6 +65,7 @@ export interface ProviderDispatchResult {
   status?: string;
   price?: number | string;
   error?: string;
+  filteredOutEntries?: ClickyfiedFilteredOutEntry[];
   raw?: unknown;
 }
 

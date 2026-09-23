@@ -5,7 +5,8 @@ import {
   mapClickyfiedStatus,
   normalizePhoneLast9,
 } from "./router";
-import { ClickyfiedClient, generateClickyfiedReference } from "./clickyfied";
+import { ClickyfiedClient, generateClickyfiedReference, type ClickyfiedFilteredOutEntry } from "./clickyfied";
+import { normalizeGhanaPhoneNumber } from "@/lib/phone-utils";
 import { recordAudit } from "../audit";
 
 export interface ClickyfiedBatchConfig {
@@ -494,6 +495,36 @@ async function submitSingleBatchChunk(
     let returnedEntries: Array<any> =
       rawAny?.order?.entries || rawAny?.entries || submitRes.entries || [];
 
+    // Parse blocked / filtered out entries from Clickyfied
+    const rawFiltered =
+      (submitRes as any)?.filteredOutEntries ||
+      rawAny?.filteredOutEntries ||
+      rawAny?.order?.filteredOutEntries ||
+      [];
+
+    const parsedFilteredOut: Array<{
+      number: string;
+      normPhone: string;
+      allocationGb?: number;
+      reason: string;
+      type: string;
+    }> = [];
+
+    for (const fo of rawFiltered) {
+      const num = fo.number || fo.phone || fo.phoneNumber || "";
+      const norm = normalizePhoneLast9(String(num));
+      const alloc = typeof fo.allocationGB === "number" ? fo.allocationGB : typeof fo.allocationGb === "number" ? fo.allocationGb : undefined;
+      if (norm) {
+        parsedFilteredOut.push({
+          number: String(num),
+          normPhone: norm,
+          allocationGb: alloc,
+          reason: fo.reason || "Number is blocked by provider",
+          type: fo.type || "blocked",
+        });
+      }
+    }
+
     const parsedEntries: Array<{
       id?: string | number;
       number?: string;
@@ -548,9 +579,67 @@ async function submitSingleBatchChunk(
     }
 
     const claimedEntryIndices = new Set<number>();
+    const claimedFilteredIndices = new Set<number>();
 
     for (const order of targetOrders) {
       const phoneNorm = normalizePhoneLast9(order.phoneNumber);
+
+      // 1. Check if this order was filtered out (blocked) by Clickyfied
+      let matchedFilteredIdx = parsedFilteredOut.findIndex(
+        (fo, idx) =>
+          !claimedFilteredIndices.has(idx) &&
+          fo.normPhone === phoneNorm &&
+          fo.allocationGb !== undefined &&
+          Math.abs(fo.allocationGb - order.gbAmount) <= 0.1
+      );
+      if (matchedFilteredIdx === -1) {
+        matchedFilteredIdx = parsedFilteredOut.findIndex(
+          (fo, idx) => !claimedFilteredIndices.has(idx) && fo.normPhone === phoneNorm
+        );
+      }
+
+      if (matchedFilteredIdx !== -1) {
+        claimedFilteredIndices.add(matchedFilteredIdx);
+        const filteredItem = parsedFilteredOut[matchedFilteredIdx];
+        const blockReason = filteredItem.reason || "Number is blocked by Clickyfied";
+        const failureReason = `Blocked by provider: ${blockReason}`;
+
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: "FAILED",
+            providerReference: `CLICKYFIED:${batchOrderId}:BLOCKED`,
+            externalReference: batchCode,
+            failureReason,
+          },
+        });
+
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: "FAILED",
+            previousStatus: "PENDING",
+            note: `Excluded from batch #${batchCode}: ${failureReason}`,
+            changedBy: actorLabel,
+          },
+        });
+
+        // Record number as rejected in our verification system so future attempts are blocked
+        try {
+          const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
+          await recordUnverifiedMtnNumber({ number: order.phoneNumber });
+          const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
+          await prisma.blockedMtnNumber.updateMany({
+            where: { normalizedNumber: canonical },
+            data: { status: "REJECTED" },
+          });
+          await prisma.acceptedMtnNumber.deleteMany({
+            where: { normalizedNumber: canonical },
+          });
+        } catch {}
+
+        continue;
+      }
 
       let matchedIdx = parsedEntries.findIndex(
         (pe, idx) =>
@@ -648,6 +737,62 @@ async function submitSingleBatchChunk(
     };
   } catch (batchErr: any) {
     console.error(`[ClickyfiedBatch] Dispatch of ${groupLabel} (${batchCode}) encountered an error/timeout:`, batchErr);
+
+    // If ALL submitted entries were blocked and filtered out by Clickyfied (HTTP 400)
+    const isAllBlocked =
+      batchErr?.isAllBlocked ||
+      (typeof batchErr?.message === "string" &&
+        (batchErr.message.toLowerCase().includes("all submitted entries are blocked") ||
+          batchErr.message.toLowerCase().includes("entries are blocked and were filtered out")));
+
+    if (isAllBlocked) {
+      console.warn(`[ClickyfiedBatch] All orders in ${groupLabel} (${batchCode}) were blocked by Clickyfied:`, batchErr.message);
+      const failReason = `Blocked by provider: ${batchErr.message || "All entries were blocked by provider"}`;
+
+      await prisma.order.updateMany({
+        where: { id: { in: targetOrderIds } },
+        data: {
+          status: "FAILED",
+          providerReference: `CLICKYFIED:BLOCKED`,
+          externalReference: batchCode,
+          failureReason: failReason,
+        },
+      });
+
+      await prisma.orderStatusHistory.createMany({
+        data: targetOrders.map((o) => ({
+          orderId: o.id,
+          status: "FAILED",
+          previousStatus: "PENDING",
+          note: failReason,
+          changedBy: actorLabel,
+        })),
+      });
+
+      for (const o of targetOrders) {
+        try {
+          const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
+          await recordUnverifiedMtnNumber({ number: o.phoneNumber });
+          const canonical = normalizeGhanaPhoneNumber(o.phoneNumber);
+          await prisma.blockedMtnNumber.updateMany({
+            where: { normalizedNumber: canonical },
+            data: { status: "REJECTED" },
+          });
+          await prisma.acceptedMtnNumber.deleteMany({
+            where: { normalizedNumber: canonical },
+          });
+        } catch {}
+      }
+
+      return {
+        success: false,
+        batchCode,
+        batchOrderId: "",
+        dispatchedCount: 0,
+        totalGb: 0,
+        error: failReason,
+      };
+    }
 
     // CRITICAL: Before blindly resetting orders to PENDING, verify if Clickyfied actually received this batch!
     // Timeouts and network blips often happen AFTER Clickyfied has accepted and started processing the batch.

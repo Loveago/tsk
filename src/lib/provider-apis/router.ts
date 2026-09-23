@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { changeOrderStatus } from "../orders";
 import { sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "../types";
+import { normalizeGhanaPhoneNumber } from "@/lib/phone-utils";
 import { recordOrderApiLog } from "../order-api-logs";
 import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_URL } from "./bigwindata";
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
@@ -463,19 +464,47 @@ export async function dispatchOrder(
       const rawStatus = rawAny?.order?.status || submitRes.status || rawAny?.status;
       const mappedStatus = mapClickyfiedStatus(rawStatus, summary);
 
-      // Check if Clickyfied accepted it with errors or rejected
-      const hasErrors = mappedStatus === "FAILED" || (summary?.error ?? 0) > 0;
-      const errorDetail = hasErrors
+      // Check if Clickyfied filtered out entries due to blocked numbers
+      const filteredOutList =
+        submitRes.filteredOutEntries ||
+        rawAny?.order?.filteredOutEntries ||
+        rawAny?.filteredOutEntries ||
+        [];
+      const isFilteredOut = filteredOutList.length > 0;
+      const filteredReason = isFilteredOut
+        ? filteredOutList[0]?.reason || "Number is blocked by provider"
+        : null;
+
+      // Check if Clickyfied accepted it with errors, rejected, or filtered out as blocked
+      const hasErrors = mappedStatus === "FAILED" || (summary?.error ?? 0) > 0 || isFilteredOut;
+      const errorDetail = isFilteredOut
+        ? `Blocked by provider: ${filteredReason}`
+        : hasErrors
         ? rawAny?.message ||
           rawAny?.error ||
           (rawAny?.errors && JSON.stringify(rawAny.errors)) ||
           `Clickyfied rejected order (${rawStatus || "failed"})`
         : null;
 
+      if (isFilteredOut) {
+        try {
+          const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
+          await recordUnverifiedMtnNumber({ number: order.phoneNumber });
+          const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
+          await prisma.blockedMtnNumber.updateMany({
+            where: { normalizedNumber: canonical },
+            data: { status: "REJECTED" },
+          });
+          await prisma.acceptedMtnNumber.deleteMany({
+            where: { normalizedNumber: canonical },
+          });
+        } catch {}
+      }
+
       await prisma.order.update({
         where: { id: order.id },
         data: {
-          providerReference: providerRef,
+          providerReference: isFilteredOut ? `CLICKYFIED:${orderId}:BLOCKED` : providerRef,
           externalReference: order.externalReference || externalReference,
           failureReason: errorDetail,
         },
@@ -497,15 +526,21 @@ export async function dispatchOrder(
         durationMs,
       });
 
-      // Dispatched to Clickyfied: advance to PROCESSING (or terminal status if immediately resolved)
+      // Dispatched to Clickyfied: advance to PROCESSING (or FAILED if filtered out/immediately resolved)
       const targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" =
-        ["SUCCESS", "FAILED", "CANCELLED"].includes(mappedStatus) ? mappedStatus : "PROCESSING";
+        isFilteredOut
+          ? "FAILED"
+          : ["SUCCESS", "FAILED", "CANCELLED"].includes(mappedStatus)
+          ? mappedStatus
+          : "PROCESSING";
 
       if (targetStatus !== order.status) {
         await changeOrderStatus(
           order.id,
           targetStatus,
-          `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || targetStatus})`,
+          isFilteredOut
+            ? `Order blocked by provider: ${filteredReason}`
+            : `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || targetStatus})`,
           { id: "system", label: "Automated System" },
           { force: true }
         );
@@ -515,7 +550,9 @@ export async function dispatchOrder(
             orderId: order.id,
             status: order.status,
             previousStatus: order.status,
-            note: `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || targetStatus})`,
+            note: isFilteredOut
+              ? `Order blocked by provider: ${filteredReason}`
+              : `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || targetStatus})`,
             changedBy: "Automated System",
           },
         });
@@ -526,18 +563,46 @@ export async function dispatchOrder(
         provider: "CLICKYFIED",
         providerReference: providerRef,
         status: targetStatus,
+        filteredOutEntries: filteredOutList,
         raw: submitRes,
         error: errorDetail || undefined,
       };
     } catch (err: any) {
       const durationMs = Date.now() - clickyfiedStartTime;
       const rawErrMsg = err?.message || "Failed to dispatch order";
-      const errMsg = sanitizeCustomerFacingText(rawErrMsg) || "Delivery processing failed";
+      const isBlocked =
+        err?.isAllBlocked ||
+        (typeof rawErrMsg === "string" &&
+          (rawErrMsg.toLowerCase().includes("all submitted entries are blocked") ||
+            rawErrMsg.toLowerCase().includes("number is blocked") ||
+            rawErrMsg.toLowerCase().includes("entries are blocked and were filtered out")));
+
+      const errMsg = isBlocked
+        ? `Blocked by provider: ${rawErrMsg}`
+        : sanitizeCustomerFacingText(rawErrMsg) || "Delivery processing failed";
 
       await prisma.order.update({
         where: { id: order.id },
-        data: { failureReason: errMsg },
+        data: {
+          failureReason: errMsg,
+          ...(isBlocked ? { status: "FAILED" } : {}),
+        },
       });
+
+      if (isBlocked) {
+        try {
+          const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
+          await recordUnverifiedMtnNumber({ number: order.phoneNumber });
+          const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
+          await prisma.blockedMtnNumber.updateMany({
+            where: { normalizedNumber: canonical },
+            data: { status: "REJECTED" },
+          });
+          await prisma.acceptedMtnNumber.deleteMany({
+            where: { normalizedNumber: canonical },
+          });
+        } catch {}
+      }
 
       await recordOrderApiLog({
         orderId: order.id,
@@ -557,9 +622,9 @@ export async function dispatchOrder(
       await prisma.orderStatusHistory.create({
         data: {
           orderId: order.id,
-          status: order.status,
+          status: isBlocked ? "FAILED" : order.status,
           previousStatus: order.status,
-          note: `Dispatch failed: ${errMsg}`,
+          note: isBlocked ? `Dispatch rejected: ${errMsg}` : `Dispatch failed: ${errMsg}`,
           changedBy: "Automated System",
         },
       });
