@@ -34,12 +34,12 @@ export async function GET(
     authContext = await validateApiAuth(request, { requiredScope: "orders:read" });
     requestId = authContext.requestId;
 
-    // Parse order ID: e.g. "CLK-839201" or "839201"
-    const cleanId = id.toUpperCase().replace(/^CLK-/, "").trim();
+    // Parse order ID: e.g. "API-839201", "CLK-839201" or "839201"
+    const cleanId = id.toUpperCase().replace(/^(API|CLK)-/, "").trim();
     const numericId = parseInt(cleanId, 10);
 
     if (isNaN(numericId) || numericId <= 0) {
-      throw new ApiError("INVALID_REQUEST", "Invalid order ID format. Example: CLK-12345 or 12345", 400);
+      throw new ApiError("INVALID_REQUEST", "Invalid order ID format. Example: API-12345 or 12345", 400);
     }
 
     const order = await prisma.order.findFirst({
@@ -90,7 +90,7 @@ export async function GET(
       : (order.status === "SUCCESS" ? "COMPLETED" : order.status);
 
     const orderData = {
-      orderId: `CLK-${order.id}`,
+      orderId: `API-${order.id}`,
       id: order.id,
       reference: order.externalReference || null,
       network: order.network,

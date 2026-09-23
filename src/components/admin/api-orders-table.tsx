@@ -4,31 +4,10 @@ import * as React from "react";
 import { EmptyState, Spinner } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDateTime, formatGHS } from "@/lib/types";
-import { orderCode } from "@/lib/utils";
-import { ClipboardList, Store } from "lucide-react";
+import { Code2, Key, Terminal } from "lucide-react";
+import type { AdminOrderRow } from "./single-orders-table";
 
-export interface AdminOrderRow {
-  id: number;
-  phoneNumber: string;
-  network: string;
-  gbAmount: number;
-  amount: number;
-  status: string;
-  source?: string;
-  externalReference?: string | null;
-  providerReference?: string | null;
-  createdAt: string;
-  batch?: { batchCode: string } | null;
-  user?: { name: string; email: string } | null;
-  apiCredential?: { name: string; keyPrefix: string } | null;
-  storefrontOrder?: {
-    seq: number;
-    paymentReference: string;
-    storefront: { name: string; slug: string };
-  } | null;
-}
-
-export function SingleOrdersTable({
+export function ApiOrdersTable({
   orders,
   loading,
   selectedIds,
@@ -57,9 +36,9 @@ export function SingleOrdersTable({
     <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
       {orders.length === 0 ? (
         <EmptyState
-          icon={ClipboardList}
-          title="No individual orders found"
-          description="Try searching with a different phone number or adjust your status filters."
+          icon={Code2}
+          title="No API orders found"
+          description="Orders submitted by developers via API keys will appear here with API- references."
         />
       ) : (
         <div className="overflow-x-auto">
@@ -76,14 +55,14 @@ export function SingleOrdersTable({
                     />
                   </th>
                 )}
-                <th className="px-4 py-3 font-medium">Order</th>
+                <th className="px-4 py-3 font-medium">API Order</th>
+                <th className="px-4 py-3 font-medium">Client Reference</th>
+                <th className="px-4 py-3 font-medium">API Key / App</th>
                 <th className="px-4 py-3 font-medium">Phone Number</th>
                 <th className="px-4 py-3 font-medium">Network</th>
                 <th className="px-4 py-3 font-medium">Bundle</th>
                 <th className="px-4 py-3 font-medium">Amount</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Storefront</th>
-                <th className="px-4 py-3 font-medium">Batch</th>
                 <th className="px-4 py-3 font-medium">User</th>
                 {onChangeStatus && <th className="px-4 py-3 font-medium">Quick Status</th>}
               </tr>
@@ -102,10 +81,38 @@ export function SingleOrdersTable({
                     </td>
                   )}
                   <td className="px-4 py-3">
-                    <p className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
-                      {orderCode(o.id)}
+                    <p className="font-mono text-xs font-bold text-violet-600 dark:text-violet-400">
+                      {`API-${o.id}`}
                     </p>
                     <p className="text-[11px] text-slate-400">{formatDateTime(o.createdAt)}</p>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">
+                    {o.externalReference ? (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium dark:bg-slate-800">
+                        {o.externalReference}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 dark:text-slate-600">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {o.apiCredential ? (
+                      <div className="flex items-center gap-1.5">
+                        <Key className="h-3 w-3 text-violet-500 shrink-0" />
+                        <div>
+                          <p className="font-semibold text-slate-800 dark:text-slate-200">
+                            {o.apiCredential.name}
+                          </p>
+                          <p className="font-mono text-[10px] text-slate-400">
+                            {o.apiCredential.keyPrefix}••••
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                        <Terminal className="h-3 w-3" /> API
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 font-mono font-bold text-slate-900 dark:text-white">
                     {o.phoneNumber}
@@ -128,33 +135,12 @@ export function SingleOrdersTable({
                   <td className="px-4 py-3">
                     <StatusBadge status={o.status} />
                   </td>
-                  {/* Storefront column */}
-                  <td className="px-4 py-3">
-                    {o.storefrontOrder ? (
-                      <div className="flex items-start gap-1.5">
-                        <Store className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
-                        <div className="min-w-0">
-                          <p className="truncate max-w-[120px] text-xs font-semibold text-slate-800 dark:text-slate-200">
-                            {o.storefrontOrder.storefront.name}
-                          </p>
-                          <p className="font-mono text-[10px] text-slate-400">
-                            {o.storefrontOrder.paymentReference}
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-slate-300 dark:text-slate-600">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                    {o.batch?.batchCode ?? "—"}
-                  </td>
                   <td className="px-4 py-3 text-xs">
                     {o.user ? (
-                      <>
-                        <p className="font-medium">{o.user.name}</p>
-                        <p className="text-slate-400 truncate max-w-[120px]">{o.user.email}</p>
-                      </>
+                      <div>
+                        <p className="font-medium text-slate-800 dark:text-slate-200">{o.user.name}</p>
+                        <p className="text-slate-400">{o.user.email}</p>
+                      </div>
                     ) : (
                       "—"
                     )}
@@ -162,20 +148,15 @@ export function SingleOrdersTable({
                   {onChangeStatus && (
                     <td className="px-4 py-3">
                       <select
-                        defaultValue=""
-                        onChange={(ev) => {
-                          if (ev.target.value) {
-                            onChangeStatus(o.id, ev.target.value);
-                            ev.target.value = "";
-                          }
-                        }}
-                        className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-800 outline-none transition hover:border-brand-500 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-[#0d1526] dark:[&>option]:text-slate-100 cursor-pointer"
+                        value={o.status}
+                        onChange={(e) => onChangeStatus(o.id, e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-200"
                       >
-                        <option value="" disabled>Change Status ▾</option>
-                        <option value="Pending">Pending</option>
-                        <option value="Processing">Processing</option>
-                        <option value="Processed">Processed</option>
-                        <option value="Refund">Refund</option>
+                        <option value="PENDING">PENDING</option>
+                        <option value="PROCESSING">PROCESSING</option>
+                        <option value="SUCCESS">SUCCESS</option>
+                        <option value="FAILED">FAILED</option>
+                        <option value="CANCELLED">CANCELLED</option>
                       </select>
                     </td>
                   )}

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { prisma } from "../prisma";
 import {
   getProviderRoutingConfig,
@@ -57,7 +58,7 @@ let isDispatchingBatch = false;
  * Uses atomic PostgreSQL test-and-set query to guarantee that only ONE worker dispatches at a time,
  * even across multi-process PM2 clusters or parallel invocations.
  */
-async function acquireBatchDispatchLock(leaseSeconds = 90): Promise<boolean> {
+async function acquireBatchDispatchLock(leaseSeconds = 180): Promise<boolean> {
   const lockKey = "clickyfied_batch_dispatch_lock";
   const now = Date.now();
   const leaseMs = leaseSeconds * 1000;
@@ -87,7 +88,7 @@ async function acquireBatchDispatchLock(leaseSeconds = 90): Promise<boolean> {
     return updatedCount > 0;
   } catch (err) {
     console.error("[acquireBatchDispatchLock] Error acquiring lock:", err);
-    return true; // fallback
+    return false; // Safely deny lock on error to prevent race conditions
   }
 }
 
@@ -302,7 +303,7 @@ export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> 
   const group1Count = group1Orders.length;
   const group1Gb = group1Orders.reduce((sum, o) => sum + o.gbAmount, 0);
 
-  const group2Orders = orders.filter((o) => o.gbAmount >= 6);
+  const group2Orders = orders.filter((o) => o.gbAmount > 5);
   const group2Count = group2Orders.length;
   const group2Gb = group2Orders.reduce((sum, o) => sum + o.gbAmount, 0);
 
@@ -412,17 +413,24 @@ async function submitSingleBatchChunk(
   const totalGb = targetOrders.reduce((sum, o) => sum + o.gbAmount, 0);
   const claimToken = `CLICKYFIED_CLAIMED:${batchCode}`;
 
-  // Atomic DB claiming to prevent race conditions across PM2 workers
+  // Deterministic idempotency key: hash of sorted order IDs
+  // If Clickyfied ever receives a retry for this chunk, the idempotency key is identical,
+  // preventing duplicate execution on Clickyfied!
+  const sortedIdsStr = [...targetOrderIds].sort((a, b) => a - b).join(",");
+  const chunkHash = crypto.createHash("sha256").update(sortedIdsStr).digest("hex").slice(0, 16);
+  const idempotencyKey = `CF-B2-${chunkHash}`;
+
+  // Atomic DB claiming to prevent race conditions across PM2 workers.
+  // Transition immediately from PENDING to PROCESSING so no other worker, runner tick,
+  // or query can select these orders while in flight!
   const claimResult = await prisma.order.updateMany({
     where: {
       id: { in: targetOrderIds },
       status: "PENDING",
-      OR: [
-        { providerReference: null },
-        { providerReference: { startsWith: "CLICKYFIED_CLAIMED" } },
-      ],
+      providerReference: null,
     },
     data: {
+      status: "PROCESSING",
       providerReference: claimToken,
       externalReference: batchCode,
     },
@@ -437,6 +445,7 @@ async function submitSingleBatchChunk(
           providerReference: claimToken,
         },
         data: {
+          status: "PENDING",
           providerReference: null,
           externalReference: null,
         },
@@ -448,7 +457,7 @@ async function submitSingleBatchChunk(
       batchOrderId: "",
       dispatchedCount: 0,
       totalGb: 0,
-      error: `Orders in ${groupLabel} were already claimed by another dispatch cycle.`,
+      error: `Orders in ${groupLabel} were already claimed or processed by another dispatch cycle.`,
     };
   }
 
@@ -471,7 +480,7 @@ async function submitSingleBatchChunk(
       entries,
       callbackUrl,
       callbackSigningSecret: signingSecret || undefined,
-      idempotencyKey: batchCode,
+      idempotencyKey,
     });
 
     let batchOrderId = String(submitRes.orderId || "");
@@ -842,29 +851,29 @@ async function submitSingleBatchChunk(
       };
     }
 
-    // Only if confirmed NOT on Clickyfied do we revert to PENDING
+    // CRITICAL: If Clickyfied encountered a network timeout or blip, the orders were ALREADY submitted or are in flight!
+    // Reverting to PENDING immediately is the #1 cause of duplicate dispatch (the next runner cycle will re-dispatch them).
+    // Instead, leave orders in PROCESSING with their claimToken/batchCode.
+    // The background poller will resolve them safely from Clickyfied (by externalReference batchCode or order list).
+    console.warn(`[ClickyfiedBatch] Batch delivery attempt for ${groupLabel} (${batchCode}) timed out or errored. Leaving orders in PROCESSING to prevent duplicate dispatch:`, batchErr?.message);
+
     await prisma.order.updateMany({
       where: {
         id: { in: targetOrderIds },
-        OR: [
-          { providerReference: claimToken },
-          { providerReference: null },
-          { providerReference: { startsWith: "CLICKYFIED_CLAIMED" } },
-        ],
+        providerReference: claimToken,
       },
       data: {
-        status: "PENDING",
-        providerReference: null,
-        externalReference: null,
-        failureReason: batchErr?.message ? `Dispatch failed: ${String(batchErr.message).slice(0, 200)}` : "Batch dispatch failed",
+        status: "PROCESSING",
+        failureReason: batchErr?.message ? `In flight: ${String(batchErr.message).slice(0, 200)}` : "Batch dispatch in flight",
       },
     }).catch(() => {});
 
     await prisma.orderStatusHistory.createMany({
       data: targetOrders.map((o) => ({
         orderId: o.id,
-        status: "PENDING",
-        note: `Batch delivery attempt for ${groupLabel} (${batchCode}) failed: ${batchErr?.message || "Network error"}`,
+        status: "PROCESSING",
+        previousStatus: "PENDING",
+        note: `Batch delivery in flight for ${groupLabel} (#${batchCode}). Awaiting provider confirmation (${batchErr?.message || "network blip"}).`,
         changedBy: actorLabel,
       })),
     });
@@ -875,7 +884,7 @@ async function submitSingleBatchChunk(
       batchOrderId: "",
       dispatchedCount: 0,
       totalGb: 0,
-      error: batchErr?.message || "Batch submission failed",
+      error: batchErr?.message || "Batch submission in flight",
     };
   }
 }
@@ -920,7 +929,7 @@ export async function dispatchClickyfiedMtnBatch(
   }
 
   // Acquire distributed lock so other PM2 cluster workers do not dispatch concurrently
-  const lockAcquired = await acquireBatchDispatchLock(60);
+  const lockAcquired = await acquireBatchDispatchLock(180);
   if (!lockAcquired) {
     return {
       success: false,
@@ -968,7 +977,7 @@ export async function dispatchClickyfiedMtnBatch(
 
     // Partition orders into Group 1 (1–5 GB) and Group 2 (6+ GB)
     const group1Orders = orders.filter((o) => o.gbAmount <= 5);
-    const group2Orders = orders.filter((o) => o.gbAmount >= 6);
+    const group2Orders = orders.filter((o) => o.gbAmount > 5);
 
     const group1Gb = group1Orders.reduce((sum, o) => sum + o.gbAmount, 0);
     const group2Gb = group2Orders.reduce((sum, o) => sum + o.gbAmount, 0);

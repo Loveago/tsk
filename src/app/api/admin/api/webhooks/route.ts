@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       webhooks,
       deliveries: deliveries.map((d) => ({
         ...d,
-        orderCode: d.orderId ? `CLK-${d.orderId}` : null,
+        orderCode: d.orderId ? `API-${d.orderId}` : null,
       })),
     });
   } catch (err) {

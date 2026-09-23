@@ -368,17 +368,24 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const network = searchParams.get("network");
     const q = searchParams.get("q");
+    const source = searchParams.get("source");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
     const where: Record<string, unknown> = { userId: user.id };
     if (status) where.status = normalizeOrderStatus(status);
     if (network) where.network = network;
+    if (source === "API") {
+      where.source = "API";
+    } else if (source === "WEB" || source === "SINGLE") {
+      where.source = { not: "API" };
+    }
     if (q) {
       const trimmed = q.trim();
-      const idMatch = trimmed.match(/^(?:ORD-)?0*(\d+)$/i);
+      const idMatch = trimmed.match(/^(?:ORD-|API-)?0*(\d+)$/i);
       const orConditions: any[] = [
         { phoneNumber: { contains: trimmed } },
+        { externalReference: { contains: trimmed } },
         { batch: { is: { batchCode: { contains: trimmed } } } },
       ];
       if (idMatch && Number(idMatch[1]) < 2147483647) {
@@ -399,6 +406,12 @@ export async function GET(request: NextRequest) {
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
+          dataPackage: {
+            select: { name: true },
+          },
+          apiCredential: {
+            select: { name: true, keyPrefix: true },
+          },
           batch: {
             select: {
               id: true,

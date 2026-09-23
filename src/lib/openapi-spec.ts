@@ -85,7 +85,7 @@ export const openApiSpec = {
       Order: {
         type: "object",
         properties: {
-          orderId: { type: "string", example: "CLK-839201" },
+          orderId: { type: "string", example: "API-839201" },
           reference: { type: "string", example: "SHOP-ORD-10001" },
           network: { type: "string", example: "MTN" },
           package: { type: "string", example: "1GB" },
@@ -107,7 +107,7 @@ export const openApiSpec = {
           orderIds: {
             type: "array",
             items: { type: "string" },
-            example: ["CLK-839201", "CLK-839202"],
+            example: ["API-839201", "API-839202"],
           },
         },
       },
@@ -458,7 +458,7 @@ export const openApiSpec = {
             in: "path",
             required: true,
             schema: { type: "string" },
-            description: "The Tskconnect order ID, e.g. CLK-839201 or 839201",
+            description: "The Tskconnect order ID, e.g. API-839201 or 839201",
           },
         ],
         responses: {

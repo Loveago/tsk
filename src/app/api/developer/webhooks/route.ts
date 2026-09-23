@@ -38,7 +38,7 @@ export async function GET() {
             updatedAt: webhook.updatedAt,
             deliveries: webhook.deliveries.map((d) => ({
               ...d,
-              orderId: d.orderId ? `CLK-${d.orderId}` : null,
+              orderId: d.orderId ? `API-${d.orderId}` : null,
             })),
           }
         : null,

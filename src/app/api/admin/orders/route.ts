@@ -38,11 +38,18 @@ export async function GET(request: NextRequest) {
       where.createdAt = createdAt;
     }
     if (q) {
-      where.OR = [
-        { phoneNumber: { contains: q } },
-        { user: { is: { email: { contains: q } } } },
-        { user: { is: { name: { contains: q } } } },
+      const trimmed = q.trim();
+      const idMatch = trimmed.match(/^(?:ORD-|API-)?0*(\d+)$/i);
+      const orConditions: any[] = [
+        { phoneNumber: { contains: trimmed } },
+        { externalReference: { contains: trimmed } },
+        { user: { is: { email: { contains: trimmed } } } },
+        { user: { is: { name: { contains: trimmed } } } },
       ];
+      if (idMatch && Number(idMatch[1]) < 2147483647) {
+        orConditions.push({ id: Number(idMatch[1]) });
+      }
+      where.OR = orConditions;
     }
 
     const [data, total] = await Promise.all([
@@ -54,6 +61,7 @@ export async function GET(request: NextRequest) {
         include: {
           user: { select: { name: true, email: true } },
           batch: { select: { batchCode: true } },
+          apiCredential: { select: { name: true, keyPrefix: true } },
           storefrontOrder: {
             select: {
               seq: true,

@@ -73,7 +73,7 @@ export async function GET(
       : (order.status === "SUCCESS" ? "COMPLETED" : order.status);
 
     const orderData = {
-      orderId: `CLK-${order.id}`,
+      orderId: `API-${order.id}`,
       id: order.id,
       reference: order.externalReference || null,
       network: order.network,

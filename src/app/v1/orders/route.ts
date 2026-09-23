@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     const formattedOrders = orders.map((o) => ({
-      orderId: `CLK-${o.id}`,
+      orderId: `API-${o.id}`,
       id: o.id,
       reference: o.externalReference || null,
       network: o.network,
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
 
             return formatApiSuccess(
               {
-                orderId: `CLK-${existingOrder.id}`,
+                orderId: `API-${existingOrder.id}`,
                 reference: existingOrder.externalReference || null,
                 network: existingOrder.network,
                 package: existingOrder.dataPackage?.name || `${existingOrder.gbAmount}GB`,
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
                 : (raceOrder.status === "SUCCESS" ? "COMPLETED" : raceOrder.status);
               return formatApiSuccess(
                 {
-                  orderId: `CLK-${raceOrder.id}`,
+                  orderId: `API-${raceOrder.id}`,
                   reference: raceOrder.externalReference || null,
                   network: raceOrder.network,
                   package: raceOrder.dataPackage?.name || `${raceOrder.gbAmount}GB`,
@@ -301,7 +301,7 @@ export async function POST(request: NextRequest) {
           : (existingRef.status === "SUCCESS" ? "COMPLETED" : existingRef.status);
         return formatApiSuccess(
           {
-            orderId: `CLK-${existingRef.id}`,
+            orderId: `API-${existingRef.id}`,
             reference: existingRef.externalReference || null,
             network: existingRef.network,
             package: existingRef.dataPackage?.name || `${existingRef.gbAmount}GB`,
@@ -522,7 +522,7 @@ export async function POST(request: NextRequest) {
               amount: price,
               status: "APPROVED",
               reference: `api_order:${order.id}`,
-              note: `API Order CLK-${order.id} (${pkg!.name})`,
+              note: `API Order API-${order.id} (${pkg!.name})`,
             },
           });
         }
@@ -567,7 +567,7 @@ export async function POST(request: NextRequest) {
       authContext.userId,
       "order.created",
       {
-        orderId: `CLK-${createdOrder.id}`,
+        orderId: `API-${createdOrder.id}`,
         reference: createdOrder.externalReference || null,
         network: createdOrder.network,
         package: pkg.name,
@@ -611,7 +611,7 @@ export async function POST(request: NextRequest) {
 
     return formatApiSuccess(
       {
-        orderId: `CLK-${createdOrder.id}`,
+        orderId: `API-${createdOrder.id}`,
         reference: createdOrder.externalReference || null,
         network: createdOrder.network,
         package: pkg.name,

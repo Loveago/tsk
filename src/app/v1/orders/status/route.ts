@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     for (const raw of rawIds) {
       const s = String(raw).trim().toUpperCase();
-      const clean = s.replace(/^CLK-/, "");
+      const clean = s.replace(/^(API|CLK)-/, "");
       const num = parseInt(clean, 10);
       if (!isNaN(num) && num > 0) {
         numericIds.push(num);
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
 
       if (!order) {
         return {
-          orderId: s.startsWith("CLK-") ? s : `CLK-${s}`,
+          orderId: s.startsWith("API-") ? s : s.startsWith("CLK-") ? s : `API-${s}`,
           found: false,
           status: null,
         };
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
         : (order.status === "SUCCESS" ? "COMPLETED" : order.status);
 
       return {
-        orderId: `CLK-${order.id}`,
+        orderId: `API-${order.id}`,
         found: true,
         reference: order.externalReference || null,
         network: order.network,

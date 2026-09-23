@@ -176,7 +176,7 @@ const PLAYGROUND_ENDPOINTS: PlaygroundEndpoint[] = [
     description: "Check status for multiple orders simultaneously (up to 100 IDs).",
     defaultBody: JSON.stringify(
       {
-        orderIds: ["CLK-1", "CLK-2"],
+        orderIds: ["API-1", "API-2"],
       },
       null,
       2

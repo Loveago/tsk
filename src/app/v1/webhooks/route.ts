@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
           deliveries: webhook.deliveries.map((d) => ({
             id: d.id,
             event: d.event,
-            orderId: d.orderId ? `CLK-${d.orderId}` : null,
+            orderId: d.orderId ? `API-${d.orderId}` : null,
             status: d.status,
             statusCode: d.statusCode,
             attempt: d.attempt,

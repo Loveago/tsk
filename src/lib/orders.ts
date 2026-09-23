@@ -545,7 +545,7 @@ export async function changeOrderStatus(
       order.userId,
       webhookEvent,
       {
-        orderId: `CLK-${order.id}`,
+        orderId: `API-${order.id}`,
         reference: order.externalReference || null,
         network: order.network,
         gbAmount: order.gbAmount,

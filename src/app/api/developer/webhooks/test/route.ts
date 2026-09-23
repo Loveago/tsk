@@ -20,7 +20,7 @@ export async function POST() {
       test: true,
       timestamp: new Date().toISOString(),
       data: {
-        orderId: "CLK-TEST0001",
+        orderId: "API-TEST0001",
         reference: "SHOP-TEST-REF",
         network: "MTN",
         package: "1GB",

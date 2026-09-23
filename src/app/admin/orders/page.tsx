@@ -4,6 +4,7 @@ import * as React from "react";
 import { PageHeader } from "@/components/shared";
 import { BatchesTable, type BatchRow } from "@/components/admin/batches-table";
 import { SingleOrdersTable, type AdminOrderRow } from "@/components/admin/single-orders-table";
+import { ApiOrdersTable } from "@/components/admin/api-orders-table";
 import { StorefrontOrdersTable, type StorefrontOrderRow } from "@/components/admin/storefront-orders-table";
 import { BatchDetailSheet } from "@/components/admin/batch-detail-sheet";
 import { QuickExportPanel } from "@/components/admin/quick-export-panel";
@@ -12,7 +13,7 @@ import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import Link from "next/link";
-import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock } from "lucide-react";
+import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2 } from "lucide-react";
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import { OrderDateFilter, getTodayRange, type DateFilterValue } from "@/components/orders/order-date-filter";
@@ -25,7 +26,7 @@ const STOREFRONT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "AWAITING_PAY
 const selectCls =
   "h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 placeholder:text-slate-400 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400 [&>option]:bg-white dark:[&>option]:bg-[#0d1526]";
 
-type ViewMode = "batches" | "single" | "storefront";
+type ViewMode = "batches" | "single" | "storefront" | "api";
 
 export default function AdminOrdersPage() {
   const { toast } = useToast();
@@ -85,11 +86,28 @@ export default function AdminOrdersPage() {
   const [sfTotal, setSfTotal] = React.useState(0);
   const [sfPages, setSfPages] = React.useState(1);
 
+  // ── api orders state ─────────────────────────────────────────
+  const [apiOrders, setApiOrders] = React.useState<AdminOrderRow[]>([]);
+  const [apiTotal, setApiTotal] = React.useState(0);
+  const [apiPages, setApiPages] = React.useState(1);
+
   // ── data fetcher ─────────────────────────────────────────────
   const load = React.useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      if (viewMode === "storefront") {
+      if (viewMode === "api") {
+        const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), source: "API" });
+        if (network) params.set("network", network);
+        if (status) params.set("status", status);
+        if (q) params.set("q", q);
+        if (dateFilter.from) params.set("from", dateFilter.from);
+        if (dateFilter.to) params.set("to", dateFilter.to);
+        const res = await fetch(`/api/admin/orders?${params}`, { cache: "no-store" });
+        const json = await res.json();
+        setApiOrders(json.data ?? []);
+        setApiTotal(json.total ?? 0);
+        setApiPages(json.pages ?? 1);
+      } else if (viewMode === "storefront") {
         const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
         if (network) params.set("network", network);
         if (status) params.set("status", status);
@@ -162,7 +180,7 @@ export default function AdminOrdersPage() {
     setViewMode(v);
     setPage(1);
     setStatus("");
-    if (v === "single") {
+    if (v === "single" || v === "api") {
       setPageSize(100);
     } else {
       setPageSize(15);
@@ -294,6 +312,8 @@ export default function AdminOrdersPage() {
   const pageTitle =
     viewMode === "storefront"
       ? "Storefront Orders"
+      : viewMode === "api"
+      ? "API Orders"
       : viewMode === "single"
       ? "Order Lookup"
       : "Batch Ops Center";
@@ -301,12 +321,28 @@ export default function AdminOrdersPage() {
   const pageDesc =
     viewMode === "storefront"
       ? `${sfTotal} storefront sale${sfTotal === 1 ? "" : "s"} from all public storefronts`
+      : viewMode === "api"
+      ? `${apiTotal} API order${apiTotal === 1 ? "" : "s"} received via Developer API`
       : viewMode === "single"
       ? `${singleTotal} order${singleTotal === 1 ? "" : "s"}${q ? ` matching "${q}"` : ""}`
       : `${batchTotal} batch${batchTotal === 1 ? "" : "es"} — orders grouped per network`;
 
-  const currentTotal = viewMode === "storefront" ? sfTotal : viewMode === "single" ? singleTotal : batchTotal;
-  const currentPages = viewMode === "storefront" ? sfPages : viewMode === "single" ? singlePages : batchPages;
+  const currentTotal =
+    viewMode === "storefront"
+      ? sfTotal
+      : viewMode === "api"
+      ? apiTotal
+      : viewMode === "single"
+      ? singleTotal
+      : batchTotal;
+  const currentPages =
+    viewMode === "storefront"
+      ? sfPages
+      : viewMode === "api"
+      ? apiPages
+      : viewMode === "single"
+      ? singlePages
+      : batchPages;
 
   const displayTime = lastRefreshed || lastRefreshedAt;
 
@@ -411,6 +447,16 @@ export default function AdminOrdersPage() {
                 }`}
               >
                 <Store className="h-3.5 w-3.5" /> Storefront
+              </button>
+              <button
+                onClick={() => switchView("api")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
+                  viewMode === "api"
+                    ? "bg-violet-600 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                <Code2 className="h-3.5 w-3.5" /> API Orders
               </button>
             </div>
           </div>
@@ -558,20 +604,23 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-      {/* Bulk action bar — Single orders */}
-      {viewMode === "single" && selectedOrderIds.size > 0 && (
+      {/* Bulk action bar — Single orders & API orders */}
+      {(viewMode === "single" || viewMode === "api") && selectedOrderIds.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200">
           <div className="flex items-center gap-2">
             <span>{selectedOrderIds.size} order(s) selected</span>
-            {selectedOrderIds.size < singleOrders.length && (
-              <button
-                type="button"
-                onClick={() => setSelectedOrderIds(new Set(singleOrders.map((o) => o.id)))}
-                className="underline hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer"
-              >
-                (Select all {singleOrders.length} on this page)
-              </button>
-            )}
+            {(() => {
+              const currentList = viewMode === "api" ? apiOrders : singleOrders;
+              return selectedOrderIds.size < currentList.length ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderIds(new Set(currentList.map((o) => o.id)))}
+                  className="underline hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer"
+                >
+                  (Select all {currentList.length} on this page)
+                </button>
+              ) : null;
+            })()}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Pending")}>
@@ -608,6 +657,28 @@ export default function AdminOrdersPage() {
       {/* Tables */}
       {viewMode === "storefront" ? (
         <StorefrontOrdersTable orders={sfOrders} loading={loading} />
+      ) : viewMode === "api" ? (
+        <ApiOrdersTable
+          orders={apiOrders}
+          loading={loading}
+          selectedIds={selectedOrderIds}
+          onToggleSelectRow={(id) => {
+            setSelectedOrderIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            });
+          }}
+          onToggleSelectAll={() => {
+            if (selectedOrderIds.size === apiOrders.length && apiOrders.length > 0) {
+              setSelectedOrderIds(new Set());
+            } else {
+              setSelectedOrderIds(new Set(apiOrders.map((o) => o.id)));
+            }
+          }}
+          onChangeStatus={handleSingleOrderStatusChange}
+        />
       ) : viewMode === "single" ? (
         <SingleOrdersTable
           orders={singleOrders}

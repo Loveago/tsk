@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     const formatted = orders.map((o) => ({
       id: o.id,
-      orderCode: `CLK-${o.id}`,
+      orderCode: `API-${o.id}`,
       source: o.source,
       user: o.user,
       apiCredential: o.apiCredential,

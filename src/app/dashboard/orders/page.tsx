@@ -10,14 +10,14 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS, sanitizeCustomerRefundNote } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { ChevronRight, FileWarning, Layers, Search, Clock, Eye, CheckCircle2, Smartphone } from "lucide-react";
+import { ChevronRight, FileWarning, Layers, Search, Clock, Eye, CheckCircle2, Smartphone, Code2 } from "lucide-react";
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
 import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
 
-type ViewMode = "batches" | "single";
+type ViewMode = "batches" | "single" | "api";
 
 interface BatchRow {
   id: string;
@@ -58,6 +58,9 @@ interface UserOrderRow {
   gbAmount: number;
   amount: number;
   status: string;
+  source?: string;
+  externalReference?: string | null;
+  apiCredential?: { name: string; keyPrefix: string } | null;
   failureReason: string | null;
   createdAt: string;
   updatedAt?: string;
@@ -98,6 +101,10 @@ export default function OrdersPage() {
   const [singleOrders, setSingleOrders] = React.useState<UserOrderRow[]>([]);
   const [singleTotal, setSingleTotal] = React.useState(0);
 
+  // API orders state
+  const [apiOrders, setApiOrders] = React.useState<UserOrderRow[]>([]);
+  const [apiTotal, setApiTotal] = React.useState(0);
+
   // Detail dialog state
   const [detail, setDetail] = React.useState<BatchDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
@@ -105,18 +112,18 @@ export default function OrdersPage() {
   const [submittingReportId, setSubmittingReportId] = React.useState<number | null>(null);
   const [viewReportId, setViewReportId] = React.useState<string | null>(null);
 
-  // Auto-switch to single view when searching for a phone number
+  // Auto-switch to single view when searching for a phone number (unless already in api view)
   React.useEffect(() => {
-    if (/\d{3,}/.test(q.trim())) {
+    if (viewMode !== "api" && /\d{3,}/.test(q.trim())) {
       setViewMode("single");
     }
-  }, [q]);
+  }, [q, viewMode]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({
       page: String(page),
-      pageSize: viewMode === "single" ? "15" : "12",
+      pageSize: viewMode === "batches" ? "12" : "15",
     });
     if (network) params.set("network", network);
     if (status) params.set("status", status);
@@ -125,7 +132,17 @@ export default function OrdersPage() {
     if (dateFilter.to) params.set("to", dateFilter.to);
 
     try {
-      if (viewMode === "single") {
+      if (viewMode === "api") {
+        params.set("source", "API");
+        const res = await fetch(`/api/orders?${params}`);
+        const json = await res.json();
+        if (res.ok) {
+          setApiOrders(json.data ?? []);
+          setApiTotal(json.total ?? 0);
+          setPages(json.pages ?? 1);
+        }
+      } else if (viewMode === "single") {
+        params.set("source", "SINGLE");
         const res = await fetch(`/api/orders?${params}`);
         const json = await res.json();
         if (res.ok) {
@@ -334,6 +351,21 @@ export default function OrdersPage() {
           >
             <Search className="h-3.5 w-3.5" />
             <span>Single Orders</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("api");
+              setPage(1);
+            }}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
+              viewMode === "api"
+                ? "bg-brand-600 text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+            }`}
+          >
+            <Code2 className="h-3.5 w-3.5" />
+            <span>API Orders</span>
           </button>
         </div>
 
@@ -584,6 +616,186 @@ export default function OrdersPage() {
                             </button>
                           ) : (
                             <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex justify-end gap-1.5">{renderReportButton(o)}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )
+      ) : viewMode === "api" ? (
+        /* ── API Orders View ── */
+        apiOrders.length === 0 ? (
+          <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <EmptyState
+              icon={Code2}
+              title={q ? `No API orders found for "${q}"` : "No API orders found"}
+              description={
+                q
+                  ? "Check the phone number, reference, or adjust your date filter."
+                  : "Orders placed via your Developer API keys will appear here with an API- reference."
+              }
+              action={
+                dateFilter.mode !== "all" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDateFilter(getAllTimeRange());
+                      setPage(1);
+                    }}
+                  >
+                    View All Time API Orders
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : (
+          <>
+            {/* Mobile card list */}
+            <div className="flex flex-col gap-3 sm:hidden">
+              {apiOrders.map((o) => (
+                <div
+                  key={o.id}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs dark:border-white/10 dark:bg-[#0d1526]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-bold text-violet-600 dark:text-violet-400">
+                        {`API-${o.id}`}
+                      </p>
+                      {o.externalReference && (
+                        <p className="mt-0.5 font-mono text-[11px] text-slate-500 truncate" title={o.externalReference}>
+                          Ref: {o.externalReference}
+                        </p>
+                      )}
+                      <p className="mt-0.5 text-[11px] text-slate-400">{formatDateTime(o.createdAt)}</p>
+                    </div>
+                    <StatusBadge status={o.status} />
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-400">Phone</span>
+                      <p className="font-mono font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        {o.phoneNumber}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Network</span>
+                      <p>
+                        <span className="inline-flex rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                          {o.network}
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Bundle</span>
+                      <p className="font-medium text-slate-800 dark:text-slate-200">{o.gbAmount} GB</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Amount</span>
+                      <p className="font-bold text-slate-900 dark:text-white">{formatGHS(o.amount)}</p>
+                    </div>
+                  </div>
+
+                  {o.failureReason && (
+                    <p
+                      className="mt-2 truncate text-[11px] text-red-500"
+                      title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
+                    >
+                      {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
+                    </p>
+                  )}
+
+                  {(o.status === "SUCCESS" || o.status === "COMPLETED") && (
+                    <p className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                      Delivered: {formatDateTime(o.completedAt ?? o.updatedAt ?? o.createdAt)}
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex justify-end">{renderReportButton(o)}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d1526] sm:block">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px] text-left text-sm">
+                  <thead className="border-b border-slate-200/80 bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-white/5 dark:text-slate-400">
+                    <tr>
+                      <th className="px-5 py-3.5">API Order</th>
+                      <th className="px-4 py-3.5">Client Reference</th>
+                      <th className="px-4 py-3.5">Phone Number</th>
+                      <th className="px-4 py-3.5">Network</th>
+                      <th className="px-4 py-3.5">Bundle</th>
+                      <th className="px-4 py-3.5">Amount</th>
+                      <th className="px-4 py-3.5">Status</th>
+                      <th className="px-4 py-3.5">Delivered At</th>
+                      <th className="px-5 py-3.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {apiOrders.map((o) => (
+                      <tr key={o.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                        <td className="px-5 py-3.5">
+                          <p className="font-mono text-xs font-bold text-violet-600 dark:text-violet-400">
+                            {`API-${o.id}`}
+                          </p>
+                          <p className="text-[11px] text-slate-400">{formatDateTime(o.createdAt)}</p>
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-300">
+                          {o.externalReference ? (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800">
+                              {o.externalReference}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 dark:text-slate-600">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 font-mono font-bold text-slate-900 dark:text-white">
+                          {o.phoneNumber}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                              o.network === "MTN"
+                                ? "bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300"
+                                : o.network === "TELECEL"
+                                ? "bg-red-100 text-red-800 border border-red-300 dark:bg-red-500/20 dark:text-red-300"
+                                : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300"
+                            }`}
+                          >
+                            {o.network}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 font-semibold text-slate-800 dark:text-slate-200">
+                          {o.gbAmount} GB
+                        </td>
+                        <td className="px-4 py-3.5 font-bold text-slate-900 dark:text-white">
+                          {formatGHS(o.amount)}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <StatusBadge status={o.status} />
+                        </td>
+                        <td className="px-4 py-3.5 text-xs text-slate-500">
+                          {o.status === "SUCCESS" || o.status === "COMPLETED" ? (
+                            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                              {formatDateTime(o.completedAt ?? o.updatedAt ?? o.createdAt)}
+                            </span>
+                          ) : o.status === "FAILED" ? (
+                            <span className="text-[11px] font-medium text-red-500 dark:text-red-400">Failed</span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
                           )}
                         </td>
                         <td className="px-5 py-3.5 text-right">

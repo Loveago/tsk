@@ -147,12 +147,12 @@ export async function GET() {
       recentRequests,
       recentOrders: recentOrders.map((o) => ({
         ...o,
-        orderId: `CLK-${o.id}`,
+        orderId: `API-${o.id}`,
         status: o.isSandbox ? (o.status === "SUCCESS" ? "TEST_COMPLETED" : o.status) : (o.status === "SUCCESS" ? "COMPLETED" : o.status),
       })),
       recentWebhooks: recentWebhooks.map((w) => ({
         ...w,
-        orderId: w.orderId ? `CLK-${w.orderId}` : null,
+        orderId: w.orderId ? `API-${w.orderId}` : null,
       })),
       credentialCount: credentials.length,
     });
