@@ -987,29 +987,37 @@ async function submitSingleBatchChunk(
     const isProviderHaltedOrDown =
       msgLower.includes("halt") ||
       msgLower.includes("pause") ||
+      msgLower.includes("lock") ||
+      msgLower.includes("closed") ||
+      msgLower.includes("disabled") ||
       msgLower.includes("maintenance") ||
       msgLower.includes("unavailable") ||
       msgLower.includes("temporarily") ||
       msgLower.includes("service error") ||
+      msgLower.includes("not accepting") ||
+      msgLower.includes("stopped") ||
       httpStatus === 503 ||
       httpStatus === 502;
 
     if (isProviderHaltedOrDown) {
-      console.warn(`[ClickyfiedBatch] Clickyfied provider is temporarily halted or unavailable (${batchErr?.message}). Keeping orders in PROCESSING for auto-recovery:`, batchCode);
+      console.warn(`[ClickyfiedBatch] Clickyfied provider is temporarily halted/locked (${batchErr?.message}). Releasing orders to PENDING for manual processing:`, batchCode);
       await prisma.order.updateMany({
         where: { id: { in: targetOrderIds } },
         data: {
-          status: "PROCESSING",
-          failureReason: `Provider temporarily halted: ${batchErr?.message || "Unavailable"}`,
+          status: "PENDING",
+          providerReference: null,
+          externalReference: null,
+          clickyfiedBatchId: null,
+          failureReason: `Clickyfied is locked/halted: ${batchErr?.message || "Unavailable"}. Restored to pending for manual processing.`,
         },
       });
 
       await prisma.orderStatusHistory.createMany({
         data: targetOrders.map((o) => ({
           orderId: o.id,
-          status: "PROCESSING",
-          previousStatus: "PENDING",
-          note: `Provider is temporarily halted or unavailable (${batchErr?.message || "Orders paused"}). Orders retained in queue.`,
+          status: "PENDING",
+          previousStatus: "PROCESSING",
+          note: `Clickyfied halted or locked (${batchErr?.message || "Orders paused"}). Restored to PENDING so admin can manually process.`,
           changedBy: actorLabel,
         })),
       });
@@ -1018,8 +1026,10 @@ async function submitSingleBatchChunk(
         await prisma.clickyfiedBatch.update({
           where: { batchCode },
           data: {
-            status: "PROCESSING",
-            errorMessage: `Provider temporarily halted: ${batchErr?.message || "Unavailable"}`,
+            status: "FAILED",
+            failedCount: targetOrders.length,
+            pendingCount: 0,
+            errorMessage: `Provider halted/locked: ${batchErr?.message || "Unavailable"}`,
             lastSyncedAt: new Date(),
           },
         });
@@ -1031,7 +1041,7 @@ async function submitSingleBatchChunk(
         batchOrderId: "",
         dispatchedCount: 0,
         totalGb: 0,
-        error: `Provider temporarily halted: ${batchErr?.message || "Unavailable"}`,
+        error: `Clickyfied is locked/halted: ${batchErr?.message || "Unavailable"}. Orders released to PENDING for manual processing.`,
       };
     }
 
