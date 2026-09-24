@@ -148,6 +148,14 @@ export default function AdminClickyfiedBatchesPage() {
   const [copiedText, setCopiedText] = React.useState<string | null>(null);
   const [showRawJson, setShowRawJson] = React.useState(false);
 
+  // Provider config
+  const [providerConfig, setProviderConfig] = React.useState<{
+    enabled: boolean;
+    baseUrl: string;
+    isSandbox: boolean;
+    clientId?: string;
+  } | null>(null);
+
   // Auto-refresh state
   const [autoRefresh, setAutoRefresh] = React.useState(true);
   const [countdown, setCountdown] = React.useState(15);
@@ -178,6 +186,7 @@ export default function AdminClickyfiedBatchesPage() {
         setTotal(data.total || 0);
         setTotalPages(data.totalPages || 1);
         if (data.metrics) setMetrics(data.metrics);
+        if (data.providerConfig) setProviderConfig(data.providerConfig);
       }
     } catch {
       // ignore transient errors
@@ -300,6 +309,72 @@ export default function AdminClickyfiedBatchesPage() {
     }
   };
 
+  // Reconcile stranded batches (batches stuck in processing that Clickyfied never received)
+  const [reconcilingStranded, setReconcilingStranded] = React.useState(false);
+  const handleReconcileStranded = async () => {
+    setReconcilingStranded(true);
+    try {
+      const res = await fetch("/api/admin/clickyfied-batches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reconcile_stranded" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast(
+          data.message ||
+            `Checked stranded batches. Restored unconfirmed orders back to pending!`,
+          "success"
+        );
+        await loadBatches();
+        await loadQueueStatus();
+        if (inspectId) await loadBatchDetail(inspectId);
+      } else {
+        toast(data.error || "Stranded batch recovery failed", "error");
+      }
+    } catch {
+      toast("Error running stranded batches recovery", "error");
+    } finally {
+      setReconcilingStranded(false);
+    }
+  };
+
+  // Force re-dispatch a batch directly to Clickyfied
+  const [resendingBatchId, setResendingBatchId] = React.useState<string | null>(null);
+  const handleResendBatch = async (batchIdentifier: string) => {
+    if (
+      !confirm(
+        `Are you sure you want to force re-send batch ${batchIdentifier} directly to Clickyfied? A fresh submission will be attempted.`
+      )
+    ) {
+      return;
+    }
+    setResendingBatchId(batchIdentifier);
+    try {
+      const res = await fetch(
+        `/api/admin/clickyfied-batches/${encodeURIComponent(batchIdentifier)}/resend`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast(
+          data.message || `Batch ${batchIdentifier} re-dispatched to Clickyfied!`,
+          "success"
+        );
+        await loadBatches(true);
+        if (inspectId === batchIdentifier || batchDetail?.batchCode === batchIdentifier) {
+          await loadBatchDetail(batchIdentifier);
+        }
+      } else {
+        toast(data.error || "Failed to re-dispatch batch", "error");
+      }
+    } catch (err: any) {
+      toast(err.message || "Error re-dispatching batch", "error");
+    } finally {
+      setResendingBatchId(null);
+    }
+  };
+
   // Backfill historical batches trigger
   const handleBackfill = async () => {
     try {
@@ -415,7 +490,19 @@ export default function AdminClickyfiedBatchesPage() {
               title="Scan recent FAILED orders and recover any that Clickyfied accepted or fulfilled"
             >
               <RotateCcw className={`h-3.5 w-3.5 ${reconcilingFailed ? "animate-spin" : ""}`} />
-              <span>{reconcilingFailed ? "Reconciling..." : "Reconcile Failed Orders"}</span>
+              <span>{reconcilingFailed ? "Reconciling..." : "Reconcile Failed"}</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReconcileStranded}
+              disabled={reconcilingStranded}
+              className="gap-1.5 text-xs text-rose-600 dark:text-rose-400 border-rose-500/30 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+              title="Scan for batches/orders stuck in processing that were never submitted to Clickyfied and return them to pending"
+            >
+              <ShieldAlert className={`h-3.5 w-3.5 ${reconcilingStranded ? "animate-spin" : ""}`} />
+              <span>{reconcilingStranded ? "Recovering..." : "Recover Stranded Batches"}</span>
             </Button>
 
             <ClickyfiedBatchDispatchButton onSuccess={() => void loadBatches()} />
@@ -438,6 +525,45 @@ export default function AdminClickyfiedBatchesPage() {
           </div>
         }
       />
+
+      {/* ── Environment & Config Banner ────────────────────────── */}
+      {providerConfig && (
+        <div
+          className={`rounded-xl border p-3.5 text-xs transition flex flex-wrap items-center justify-between gap-3 ${
+            providerConfig.isSandbox
+              ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
+              : "bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:border-white/10 dark:text-slate-300"
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-bold uppercase tracking-wider text-[11px] ${
+                providerConfig.isSandbox
+                  ? "bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-500/40"
+                  : "bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30"
+              }`}
+            >
+              {providerConfig.isSandbox ? "Sandbox Mode" : "Production Mode"}
+            </span>
+            <span className="text-slate-500 dark:text-slate-400">Target Base URL:</span>
+            <code className="font-mono font-semibold px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-slate-900 dark:text-white">
+              {providerConfig.baseUrl}
+            </code>
+            {providerConfig.isSandbox && (
+              <span className="text-amber-800 dark:text-amber-300 font-medium">
+                (Batches sent to Sandbox do NOT appear on Clickyfied live production portal)
+              </span>
+            )}
+          </div>
+          <Link
+            href="/admin/system-settings"
+            className="inline-flex items-center gap-1 font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 hover:underline"
+          >
+            <span>Change in System Settings</span>
+            <ArrowUpRight className="h-3 w-3" />
+          </Link>
+        </div>
+      )}
 
       {/* ── Metric Cards ──────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -866,6 +992,24 @@ export default function AdminClickyfiedBatchesPage() {
                             />
                           </Button>
 
+                          {(batch.status === "FAILED" ||
+                            (batch.status === "PROCESSING" && !batch.clickyfiedOrderId)) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleResendBatch(batch.batchCode)}
+                              disabled={resendingBatchId === batch.batchCode}
+                              className="h-7 px-2 text-xs font-medium text-sky-600 dark:text-sky-400"
+                              title="Force re-dispatch batch to Clickyfied"
+                            >
+                              <Send
+                                className={`h-3 w-3 ${
+                                  resendingBatchId === batch.batchCode ? "animate-spin" : ""
+                                }`}
+                              />
+                            </Button>
+                          )}
+
                           {batch.failedCount > 0 && (
                             <Button
                               size="sm"
@@ -979,6 +1123,26 @@ export default function AdminClickyfiedBatchesPage() {
                     }`}
                   />
                   <span>Sync Status Now</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleResendBatch(batchDetail.batchCode)}
+                  disabled={resendingBatchId === batchDetail.batchCode}
+                  className="gap-1.5 text-xs text-brand-600 dark:text-brand-400 border-brand-500/30 hover:bg-brand-50 dark:hover:bg-brand-950/20"
+                  title="Force re-dispatch this batch to Clickyfied"
+                >
+                  <Send
+                    className={`h-3.5 w-3.5 ${
+                      resendingBatchId === batchDetail.batchCode ? "animate-spin" : ""
+                    }`}
+                  />
+                  <span>
+                    {resendingBatchId === batchDetail.batchCode
+                      ? "Re-sending..."
+                      : "Force Re-send"}
+                  </span>
                 </Button>
 
                 {batchDetail.failedCount > 0 && (

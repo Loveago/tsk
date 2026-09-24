@@ -9,6 +9,7 @@ import {
 import { ClickyfiedClient, generateClickyfiedReference, type ClickyfiedFilteredOutEntry } from "./clickyfied";
 import { normalizeGhanaPhoneNumber } from "@/lib/phone-utils";
 import { recordAudit } from "../audit";
+import { recordOrderApiLog } from "../order-api-logs";
 
 export interface ClickyfiedBatchConfig {
   enabled: boolean;
@@ -512,14 +513,86 @@ async function submitSingleBatchChunk(
     }
   }
 
+  const startTime = Date.now();
+  let submitRes: any = null;
+  let activeEntries = [...entries];
+  let currentIdempotencyKey = idempotencyKey;
+
   try {
-    const submitRes = await client.submitOrder({
-      externalReference: batchCode,
-      entries,
-      callbackUrl,
-      callbackSigningSecret: signingSecret || undefined,
-      idempotencyKey,
-    });
+    try {
+      submitRes = await client.submitOrder({
+        externalReference: batchCode,
+        entries: activeEntries,
+        callbackUrl,
+        callbackSigningSecret: signingSecret || undefined,
+        idempotencyKey: currentIdempotencyKey,
+      });
+    } catch (initialErr: any) {
+      const msg = (initialErr?.message || "").toLowerCase();
+      if (
+        msg.includes("already have pending or processing orders") ||
+        msg.includes("please wait for those orders to complete")
+      ) {
+        const conflictPhones = (initialErr.message.match(/\b0\d{9}\b/g) || []) as string[];
+        const conflictSet = new Set(conflictPhones.map((p: string) => normalizePhoneLast9(p)));
+
+        if (conflictSet.size > 0) {
+          const conflictingOrders = targetOrders.filter((o) =>
+            conflictSet.has(normalizePhoneLast9(o.phoneNumber))
+          );
+          const nonConflictingOrders = targetOrders.filter(
+            (o) => !conflictSet.has(normalizePhoneLast9(o.phoneNumber))
+          );
+
+          if (conflictingOrders.length > 0 && nonConflictingOrders.length > 0) {
+            console.warn(
+              `[ClickyfiedBatch] Detected ${conflictingOrders.length} conflicting in-flight number(s) in batch #${batchCode}. Isolating and retrying clean remainder.`
+            );
+
+            const conflictIds = conflictingOrders.map((o) => o.id);
+            await prisma.order.updateMany({
+              where: { id: { in: conflictIds } },
+              data: {
+                status: "PENDING",
+                providerReference: null,
+                externalReference: null,
+                clickyfiedBatchId: null,
+                failureReason: "Recipient currently has in-flight order on Clickyfied. Queued for next batch cycle.",
+              },
+            });
+
+            await prisma.orderStatusHistory.createMany({
+              data: conflictIds.map((id) => ({
+                orderId: id,
+                status: "PENDING",
+                previousStatus: "PROCESSING",
+                note: "Held back: Recipient already has an active order on Clickyfied. Queued for next cycle.",
+                changedBy: actorLabel,
+              })),
+            });
+
+            activeEntries = entries.filter((e) => !conflictSet.has(normalizePhoneLast9(e.number)));
+            currentIdempotencyKey = `CF-B2-${chunkHash}-CLEAN-${Date.now().toString().slice(-4)}`;
+
+            submitRes = await client.submitOrder({
+              externalReference: batchCode,
+              entries: activeEntries,
+              callbackUrl,
+              callbackSigningSecret: signingSecret || undefined,
+              idempotencyKey: currentIdempotencyKey,
+            });
+
+            targetOrders = nonConflictingOrders;
+          } else {
+            throw initialErr;
+          }
+        } else {
+          throw initialErr;
+        }
+      } else {
+        throw initialErr;
+      }
+    }
 
     let batchOrderId = String(submitRes.orderId || "");
     if (!batchOrderId) {
@@ -531,6 +604,33 @@ async function submitSingleBatchChunk(
       batchOrderId = batchCode;
     }
     const providerRef = `CLICKYFIED:${batchOrderId}`;
+
+    // Record successful batch chunk in OrderApiLog
+    try {
+      await recordOrderApiLog({
+        orderId: targetOrders[0]?.id,
+        provider: "CLICKYFIED",
+        action: "BATCH_CHUNK",
+        endpoint: "/api/public/v1/orders",
+        method: "POST",
+        requestPayload: {
+          batchCode,
+          groupLabel,
+          entriesCount: activeEntries.length,
+          totalGb,
+          entries: activeEntries,
+          callbackUrl,
+          idempotencyKey: currentIdempotencyKey,
+        },
+        responsePayload: submitRes.raw,
+        statusCode: 200,
+        success: true,
+        providerReference: providerRef,
+        durationMs: Date.now() - startTime,
+      });
+    } catch (logErr) {
+      console.error("[ClickyfiedBatch] Failed to record OrderApiLog:", logErr);
+    }
 
     // Extract Clickyfied reported status
     const rawAny = submitRes.raw as any;
@@ -817,9 +917,40 @@ async function submitSingleBatchChunk(
       totalGb,
     };
   } catch (batchErr: any) {
+    const durationMs = Date.now() - startTime;
     console.error(`[ClickyfiedBatch] Dispatch of ${groupLabel} (${batchCode}) encountered an error/timeout:`, batchErr);
 
     const msgLower = (batchErr?.message || "").toLowerCase();
+    const httpStatus = batchErr?.status || (batchErr?.name === "AbortError" ? 504 : 500);
+
+    // Record failed batch chunk in OrderApiLog for complete admin visibility
+    try {
+      await recordOrderApiLog({
+        orderId: targetOrders[0]?.id,
+        provider: "CLICKYFIED",
+        action: "BATCH_CHUNK",
+        endpoint: batchErr?.endpoint || "/api/public/v1/orders",
+        method: "POST",
+        requestPayload: {
+          batchCode,
+          groupLabel,
+          entriesCount: activeEntries.length,
+          totalGb,
+          entries: activeEntries,
+          callbackUrl,
+          idempotencyKey: currentIdempotencyKey,
+        },
+        responsePayload: batchErr?.rawResponse || { error: batchErr?.message || "Unknown error" },
+        statusCode: httpStatus,
+        success: false,
+        errorMessage: batchErr?.message || "Batch submission failed",
+        providerReference: `CLICKYFIED_CLAIMED:${batchCode}`,
+        durationMs,
+      });
+    } catch (logErr) {
+      console.error("[ClickyfiedBatch] Failed to record OrderApiLog:", logErr);
+    }
+
     const isProviderHaltedOrDown =
       msgLower.includes("halt") ||
       msgLower.includes("pause") ||
@@ -827,9 +958,8 @@ async function submitSingleBatchChunk(
       msgLower.includes("unavailable") ||
       msgLower.includes("temporarily") ||
       msgLower.includes("service error") ||
-      batchErr?.status === 503 ||
-      batchErr?.status === 502 ||
-      batchErr?.status === 504;
+      httpStatus === 503 ||
+      httpStatus === 502;
 
     if (isProviderHaltedOrDown) {
       console.warn(`[ClickyfiedBatch] Clickyfied provider is temporarily halted or unavailable (${batchErr?.message}). Keeping orders in PROCESSING for auto-recovery:`, batchCode);
@@ -943,8 +1073,60 @@ async function submitSingleBatchChunk(
       };
     }
 
-    // CRITICAL: Before blindly resetting orders to PENDING, verify if Clickyfied actually received this batch!
-    // Timeouts and network blips often happen AFTER Clickyfied has accepted and started processing the batch.
+    // 4xx Client Errors (HTTP 400 Bad Request, 401 Invalid Credentials, 403 Forbidden, 422 Unprocessable):
+    // Clickyfied rejected the submission entirely. Clickyfied has NOT created any order.
+    // We MUST mark the batch as FAILED and restore orders back to PENDING so they are not stranded in PROCESSING!
+    const isClientError = httpStatus >= 400 && httpStatus < 500;
+    if (isClientError) {
+      console.warn(`[ClickyfiedBatch] Provider rejected ${groupLabel} (${batchCode}) with HTTP ${httpStatus}: ${batchErr?.message}. Reverting orders to PENDING queue.`);
+      const failReason = `Rejected by provider (${httpStatus}): ${batchErr?.message || "Bad Request"}`;
+
+      await prisma.order.updateMany({
+        where: { id: { in: targetOrderIds } },
+        data: {
+          status: "PENDING",
+          providerReference: null,
+          externalReference: null,
+          clickyfiedBatchId: null,
+          failureReason: failReason,
+        },
+      });
+
+      await prisma.orderStatusHistory.createMany({
+        data: targetOrders.map((o) => ({
+          orderId: o.id,
+          status: "PENDING",
+          previousStatus: "PROCESSING",
+          note: `Batch rejected by provider (${httpStatus}: ${batchErr?.message || "Rejected"}). Returned to pending queue.`,
+          changedBy: actorLabel,
+        })),
+      });
+
+      try {
+        await prisma.clickyfiedBatch.update({
+          where: { batchCode },
+          data: {
+            status: "FAILED",
+            failedCount: targetOrders.length,
+            pendingCount: 0,
+            errorMessage: failReason,
+            lastSyncedAt: new Date(),
+          },
+        });
+      } catch {}
+
+      return {
+        success: false,
+        batchCode,
+        batchOrderId: "",
+        dispatchedCount: 0,
+        totalGb: 0,
+        error: failReason,
+      };
+    }
+
+    // Network timeouts (HTTP 504 / AbortError / Network blips):
+    // Check if Clickyfied actually received and created this batch during the blip
     let verifiedOrderId: string | null = null;
     try {
       const canonical = await client.resolveCanonicalOrderId(batchCode);
@@ -1003,11 +1185,9 @@ async function submitSingleBatchChunk(
       };
     }
 
-    // CRITICAL: If Clickyfied encountered a network timeout or blip, the orders were ALREADY submitted or are in flight!
-    // Reverting to PENDING immediately is the #1 cause of duplicate dispatch (the next runner cycle will re-dispatch them).
-    // Instead, leave orders in PROCESSING with their claimToken/batchCode.
-    // The background poller will resolve them safely from Clickyfied (by externalReference batchCode or order list).
-    console.warn(`[ClickyfiedBatch] Batch delivery attempt for ${groupLabel} (${batchCode}) timed out or errored. Leaving orders in PROCESSING to prevent duplicate dispatch:`, batchErr?.message);
+    // If timeout and unconfirmed on provider, revert to PENDING and mark batch as FAILED so orders don't get stuck forever
+    console.warn(`[ClickyfiedBatch] Batch delivery attempt for ${groupLabel} (${batchCode}) timed out without provider confirmation. Reverting orders to PENDING:`, batchErr?.message);
+    const timeoutMsg = batchErr?.message ? `Timeout / network failure: ${String(batchErr.message).slice(0, 150)}` : "Batch dispatch timed out";
 
     await prisma.order.updateMany({
       where: {
@@ -1015,17 +1195,20 @@ async function submitSingleBatchChunk(
         providerReference: claimToken,
       },
       data: {
-        status: "PROCESSING",
-        failureReason: batchErr?.message ? `In flight: ${String(batchErr.message).slice(0, 200)}` : "Batch dispatch in flight",
+        status: "PENDING",
+        providerReference: null,
+        externalReference: null,
+        clickyfiedBatchId: null,
+        failureReason: timeoutMsg,
       },
     }).catch(() => {});
 
     await prisma.orderStatusHistory.createMany({
       data: targetOrders.map((o) => ({
         orderId: o.id,
-        status: "PROCESSING",
-        previousStatus: "PENDING",
-        note: `Batch delivery in flight for ${groupLabel} (#${batchCode}). Awaiting provider confirmation (${batchErr?.message || "network blip"}).`,
+        status: "PENDING",
+        previousStatus: "PROCESSING",
+        note: `Batch delivery unconfirmed on provider (#${batchCode}). Reverted to pending queue for re-dispatch.`,
         changedBy: actorLabel,
       })),
     });
@@ -1034,8 +1217,8 @@ async function submitSingleBatchChunk(
       await prisma.clickyfiedBatch.update({
         where: { batchCode },
         data: {
-          status: "PROCESSING",
-          errorMessage: batchErr?.message ? String(batchErr.message).slice(0, 500) : "Dispatch timeout / in flight",
+          status: "FAILED",
+          errorMessage: timeoutMsg,
           lastSyncedAt: new Date(),
         },
       });
@@ -1047,7 +1230,7 @@ async function submitSingleBatchChunk(
       batchOrderId: "",
       dispatchedCount: 0,
       totalGb: 0,
-      error: batchErr?.message || "Batch submission in flight",
+      error: timeoutMsg,
     };
   }
 }
@@ -1190,6 +1373,7 @@ export async function dispatchClickyfiedMtnBatch(
     }> = [];
     const batchCodes: string[] = [];
     const batchIds: string[] = [];
+    const chunkErrors: string[] = [];
     let totalDispatchedCount = 0;
     let totalDispatchedGb = 0;
 
@@ -1226,6 +1410,8 @@ export async function dispatchClickyfiedMtnBatch(
           count: res.dispatchedCount,
           totalGb: res.totalGb,
         });
+      } else if (res.error) {
+        chunkErrors.push(`Group 1 (${res.batchCode}): ${res.error}`);
       }
     }
 
@@ -1260,6 +1446,8 @@ export async function dispatchClickyfiedMtnBatch(
           count: res.dispatchedCount,
           totalGb: res.totalGb,
         });
+      } else if (res.error) {
+        chunkErrors.push(`Group 2 (${res.batchCode}): ${res.error}`);
       }
     }
 
@@ -1274,6 +1462,18 @@ export async function dispatchClickyfiedMtnBatch(
 
     const remainingOrdersCount = count - totalDispatchedCount;
     const remainingOrdersGb = Math.max(0, totalGb - totalDispatchedGb);
+
+    if (totalDispatchedCount === 0 && chunkErrors.length > 0) {
+      return {
+        success: false,
+        dispatchedCount: 0,
+        totalGb: 0,
+        batchIds: [],
+        batchCodes: [],
+        error: `Clickyfied dispatch failed: ${chunkErrors.join("; ")}`,
+        message: `Clickyfied dispatch failed: ${chunkErrors.join("; ")}`,
+      };
+    }
 
     const groupSummaryText = dispatchedBatches
       .map((b) => `${b.group} (${b.batchCode}): ${b.count} orders (${b.totalGb} GB)`)
@@ -1747,7 +1947,8 @@ export async function syncClickyfiedBatchStatus(
     throw new Error(`Clickyfied batch not found: ${idOrBatchCode}`);
   }
 
-  const client = new ClickyfiedClient();
+  const config = await getProviderRoutingConfig();
+  const client = new ClickyfiedClient(config.clickyfied);
   const queryTarget = batch.clickyfiedOrderId || batch.batchCode;
 
   let details: any;
@@ -2106,7 +2307,8 @@ export async function reconcileFailedClickyfiedOrders(
     };
   }
 
-  const client = new ClickyfiedClient();
+  const config = await getProviderRoutingConfig();
+  const client = new ClickyfiedClient(config.clickyfied);
   const reconciledOrders: Array<{ id: number; phoneNumber: string; newStatus: string; reason: string }> = [];
 
   // Group failed orders by batch reference if available
@@ -2303,6 +2505,275 @@ export async function reconcileFailedClickyfiedOrders(
     totalChecked: failedOrders.length,
     reconciledOrders,
     message: `Reconciled ${reconciledOrders.length} order(s) out of ${failedOrders.length} checked from Clickyfied.`,
+  };
+}
+
+/**
+ * Force re-dispatches an existing batch directly to Clickyfied.
+ * Used when a batch was never received by Clickyfied, failed with 4xx, or was stranded in processing.
+ */
+export async function resendClickyfiedBatch(
+  idOrBatchCode: string,
+  actorLabel = "Staff Force Re-dispatch"
+): Promise<{
+  success: boolean;
+  batchCode: string;
+  batchOrderId?: string;
+  dispatchedCount: number;
+  totalGb: number;
+  error?: string;
+  message?: string;
+}> {
+  const batch = await prisma.clickyfiedBatch.findFirst({
+    where: {
+      OR: [{ id: idOrBatchCode }, { batchCode: idOrBatchCode }],
+    },
+    include: {
+      orders: true,
+    },
+  });
+
+  if (!batch) {
+    throw new Error(`Clickyfied batch not found: ${idOrBatchCode}`);
+  }
+
+  let targetOrders = batch.orders;
+  if (targetOrders.length === 0 && batch.batchCode) {
+    targetOrders = await prisma.order.findMany({
+      where: { externalReference: batch.batchCode },
+    });
+  }
+
+  // Filter to orders that are not already SUCCESS
+  const eligibleOrders = targetOrders.filter((o) => o.status !== "SUCCESS");
+  if (eligibleOrders.length === 0) {
+    return {
+      success: true,
+      batchCode: batch.batchCode,
+      dispatchedCount: 0,
+      totalGb: 0,
+      message: `All orders in batch #${batch.batchCode} are already successfully fulfilled.`,
+    };
+  }
+
+  const config = await getProviderRoutingConfig();
+  if (!config.clickyfied.enabled) {
+    throw new Error("Clickyfied provider is currently disabled in provider settings.");
+  }
+  const client = new ClickyfiedClient(config.clickyfied);
+
+  // Check if Clickyfied actually already received this under a canonical order ID
+  try {
+    const canonical = await client.resolveCanonicalOrderId(batch.batchCode);
+    if (canonical && canonical !== batch.batchCode && canonical.startsWith("order-")) {
+      await syncClickyfiedBatchStatus(batch.id, actorLabel);
+      return {
+        success: true,
+        batchCode: batch.batchCode,
+        batchOrderId: canonical,
+        dispatchedCount: eligibleOrders.length,
+        totalGb: eligibleOrders.reduce((s, o) => s + o.gbAmount, 0),
+        message: `Batch #${batch.batchCode} was already confirmed on Clickyfied as ${canonical}. Synced status!`,
+      };
+    }
+  } catch {}
+
+  // Re-arm eligible orders to PENDING and clear previous claim tokens so submitSingleBatchChunk can claim them
+  const eligibleIds = eligibleOrders.map((o) => o.id);
+  await prisma.order.updateMany({
+    where: { id: { in: eligibleIds } },
+    data: {
+      status: "PENDING",
+      providerReference: null,
+      externalReference: null,
+    },
+  });
+
+  const settingBaseUrl = await prisma.systemSetting.findUnique({ where: { key: "app_base_url" } });
+  const appBaseUrl = settingBaseUrl?.value
+    ? settingBaseUrl.value.replace(/\/+$/, "")
+    : process.env.NEXTAUTH_URL || process.env.APP_URL || "https://tsk05.net";
+
+  const isPublicUrl = appBaseUrl.startsWith("https://") && !appBaseUrl.includes("localhost");
+  const signingSecret = (config.clickyfied.callbackSigningSecret || process.env.CLICKYFIED_CALLBACK_SECRET || "").trim();
+  const callbackUrl = isPublicUrl
+    ? `${appBaseUrl}/api/webhooks/providers/clickyfied`
+    : undefined;
+
+  const groupLabel = (batch.groupLabel as any) || (Math.max(...eligibleOrders.map((o) => o.gbAmount)) <= 5 ? "Group 1 (1–5 GB)" : "Group 2 (6+ GB)");
+
+  const res = await submitSingleBatchChunk(
+    eligibleOrders,
+    groupLabel,
+    actorLabel,
+    client,
+    callbackUrl,
+    signingSecret
+  );
+
+  return res;
+}
+
+/**
+ * Detects and recovers stranded Clickyfied batches and orders:
+ * 1. Batches marked as PROCESSING that have no canonical provider order ID (e.g. clickyfiedOrderId is null or same as batchCode)
+ *    and were never acknowledged by Clickyfied.
+ * 2. Orders stuck in PROCESSING with CLICKYFIED_CLAIMED tokens without a confirmed provider order.
+ * 
+ * Verifies against Clickyfied:
+ * - If found on Clickyfied, links canonical ID and syncs status.
+ * - If NOT on Clickyfied, marks the batch as FAILED and returns the orders to PENDING queue so they can be dispatched.
+ */
+export async function reconcileStrandedClickyfiedBatches(
+  actorLabel = "Staff Reconcile Stranded"
+): Promise<{
+  success: boolean;
+  strandedBatchesCount: number;
+  unstrandedOrdersCount: number;
+  confirmedOrdersCount: number;
+  message: string;
+}> {
+  const config = await getProviderRoutingConfig();
+  const client = new ClickyfiedClient(config.clickyfied);
+
+  // 1. Batches that are in PROCESSING but lack a confirmed Clickyfied canonical order ID
+  const strandedBatches = await prisma.clickyfiedBatch.findMany({
+    where: {
+      status: "PROCESSING",
+      OR: [
+        { clickyfiedOrderId: null },
+        { clickyfiedOrderId: "" },
+        { clickyfiedOrderId: { startsWith: "CF-BATCH-" } },
+      ],
+    },
+    include: {
+      orders: true,
+    },
+  });
+
+  let unstrandedOrdersCount = 0;
+  let confirmedOrdersCount = 0;
+
+  for (const b of strandedBatches) {
+    let confirmedOrderId: string | null = null;
+    try {
+      const canonical = await client.resolveCanonicalOrderId(b.batchCode);
+      if (canonical && canonical !== b.batchCode && canonical.startsWith("order-")) {
+        confirmedOrderId = canonical;
+      }
+    } catch {}
+
+    if (confirmedOrderId) {
+      try {
+        await syncClickyfiedBatchStatus(b.id, actorLabel);
+        confirmedOrdersCount += b.orders.length;
+      } catch {}
+    } else {
+      const orderIds = b.orders.filter((o) => o.status !== "SUCCESS").map((o) => o.id);
+      if (orderIds.length > 0) {
+        await prisma.order.updateMany({
+          where: { id: { in: orderIds } },
+          data: {
+            status: "PENDING",
+            providerReference: null,
+            externalReference: null,
+            clickyfiedBatchId: null,
+            failureReason: `Reconciled from unconfirmed batch #${b.batchCode}: restored to pending queue.`,
+          },
+        });
+
+        await prisma.orderStatusHistory.createMany({
+          data: orderIds.map((id) => ({
+            orderId: id,
+            status: "PENDING",
+            previousStatus: "PROCESSING",
+            note: `Restored to pending queue by ${actorLabel}. Batch #${b.batchCode} was not received by provider.`,
+            changedBy: actorLabel,
+          })),
+        });
+
+        unstrandedOrdersCount += orderIds.length;
+      }
+
+      await prisma.clickyfiedBatch.update({
+        where: { id: b.id },
+        data: {
+          status: "FAILED",
+          errorMessage: "Batch was never received or confirmed by Clickyfied. Orders restored to pending queue.",
+          failedCount: b.totalOrders,
+          pendingCount: 0,
+          lastSyncedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  // 2. Standalone orders stuck in PROCESSING with claim tokens or lacking confirmed provider ID
+  const strandedOrders = await prisma.order.findMany({
+    where: {
+      status: "PROCESSING",
+      network: { equals: "MTN", mode: "insensitive" },
+      exportBatchId: null,
+      OR: [
+        { providerReference: null },
+        { providerReference: { startsWith: "CLICKYFIED_CLAIMED:" } },
+        { providerReference: { startsWith: "CLICKYFIED:CF-BATCH-" } },
+        { providerReference: "CLICKYFIED:BLOCKED" },
+      ],
+    },
+  });
+
+  const standAloneIdsToReset: number[] = [];
+  for (const ord of strandedOrders) {
+    if (ord.externalReference && ord.externalReference.startsWith("CF-BATCH-")) {
+      const alreadyHandled = strandedBatches.some((b) => b.batchCode === ord.externalReference);
+      if (alreadyHandled) continue;
+    }
+    standAloneIdsToReset.push(ord.id);
+  }
+
+  if (standAloneIdsToReset.length > 0) {
+    await prisma.order.updateMany({
+      where: { id: { in: standAloneIdsToReset } },
+      data: {
+        status: "PENDING",
+        providerReference: null,
+        externalReference: null,
+        clickyfiedBatchId: null,
+        failureReason: "Restored to pending queue: unconfirmed provider claim",
+      },
+    });
+
+    await prisma.orderStatusHistory.createMany({
+      data: standAloneIdsToReset.map((id) => ({
+        orderId: id,
+        status: "PENDING",
+        previousStatus: "PROCESSING",
+        note: `Restored from stranded processing state by ${actorLabel}.`,
+        changedBy: actorLabel,
+      })),
+    });
+
+    unstrandedOrdersCount += standAloneIdsToReset.length;
+  }
+
+  await recordAudit({
+    actorLabel,
+    action: "provider.clickyfied_stranded_batches_reconciled",
+    target: "clickyfied:batches:stranded",
+    newValue: JSON.stringify({
+      strandedBatchesCount: strandedBatches.length,
+      unstrandedOrdersCount,
+      confirmedOrdersCount,
+    }),
+  });
+
+  return {
+    success: true,
+    strandedBatchesCount: strandedBatches.length,
+    unstrandedOrdersCount,
+    confirmedOrdersCount,
+    message: `Reconciliation complete: ${unstrandedOrdersCount} stranded order(s) restored to pending queue; ${confirmedOrdersCount} order(s) confirmed on provider.`,
   };
 }
 

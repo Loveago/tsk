@@ -6,13 +6,15 @@ import {
   dispatchClickyfiedMtnBatch,
   backfillPastClickyfiedBatches,
   reconcileFailedClickyfiedOrders,
+  reconcileStrandedClickyfiedBatches,
 } from "@/lib/provider-apis/clickyfied-batch";
+import { getProviderRoutingConfig, isClickyfiedSandbox } from "@/lib/provider-apis/router";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/admin/clickyfied-batches
- * Returns paginated list of all Clickyfied batch dispatches with aggregates and metrics.
+ * Returns paginated list of all Clickyfied batch dispatches with aggregates, metrics, and providerConfig.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -25,15 +27,26 @@ export async function GET(request: NextRequest) {
     const group = searchParams.get("group") || undefined;
     const search = searchParams.get("search") || searchParams.get("q") || undefined;
 
-    const result = await getClickyfiedBatches({
-      page,
-      pageSize,
-      status,
-      group,
-      search,
-    });
+    const [result, config] = await Promise.all([
+      getClickyfiedBatches({
+        page,
+        pageSize,
+        status,
+        group,
+        search,
+      }),
+      getProviderRoutingConfig(),
+    ]);
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      providerConfig: {
+        enabled: config.clickyfied.enabled,
+        baseUrl: config.clickyfied.baseUrl || "https://sandbox.clickyfied4u.com",
+        isSandbox: isClickyfiedSandbox(config.clickyfied),
+        clientId: config.clickyfied.clientId,
+      },
+    });
   } catch (err) {
     return handleRouteError(err);
   }
@@ -41,7 +54,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/clickyfied-batches
- * Triggers batch actions: "dispatch_now", "backfill", or "reconcile"
+ * Triggers batch actions: "dispatch_now", "backfill", "reconcile", or "reconcile_stranded"
  */
 export async function POST(request: NextRequest) {
   try {
@@ -50,6 +63,11 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const action = body.action || "dispatch_now";
+
+    if (action === "reconcile_stranded") {
+      const result = await reconcileStrandedClickyfiedBatches(actorLabel);
+      return NextResponse.json(result);
+    }
 
     if (action === "reconcile") {
       const result = await reconcileFailedClickyfiedOrders(actorLabel);
