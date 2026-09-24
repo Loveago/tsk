@@ -646,6 +646,12 @@ export async function POST(request: NextRequest) {
             targetStatus = "PROCESSING";
           }
         } else if (hasExplicitBatchStatus) {
+          // SAFEGUARD: If individual entries were provided and this order was NOT matched to any of them,
+          // or if this order was tagged :BLOCKED, it is NOT part of this delivery batch!
+          // NEVER escalate an unmatched or BLOCKED order to SUCCESS based on parent batch status!
+          if ((parsedEntries.length > 0 && !matchedEntry) || ord.providerReference?.includes(":BLOCKED")) {
+            continue;
+          }
           if (["SUCCESS", "FAILED", "CANCELLED"].includes(overallTargetStatus)) {
             targetStatus = overallTargetStatus;
           } else {

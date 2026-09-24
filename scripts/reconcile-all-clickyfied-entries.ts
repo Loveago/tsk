@@ -1,6 +1,6 @@
 import { prisma } from "../src/lib/prisma";
 import { getProviderRoutingConfig } from "../src/lib/provider-apis/router";
-import { ClickyfiedClient, normalizeGhanaPhoneNumber } from "../src/lib/provider-apis/clickyfied";
+import { ClickyfiedClient } from "../src/lib/provider-apis/clickyfied";
 import { normalizePhoneLast9 } from "../src/lib/provider-apis/router";
 
 async function main() {
