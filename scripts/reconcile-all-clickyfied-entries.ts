@@ -11,38 +11,49 @@ async function main() {
   const config = await getProviderRoutingConfig();
   const client = new ClickyfiedClient(config.clickyfied);
 
-  // 1. Fetch recent 100 orders from Clickyfied
-  console.log("Fetching recent orders from Clickyfied account...");
-  const recentOrders = await client.listOrders(100, 0);
-  console.log(`Found ${recentOrders.length} recent batches on Clickyfied.`);
+  // 1. Fetch recent batches from Clickyfied
+  console.log("Fetching recent order list from Clickyfied account...");
+  const recentOrders = await client.listOrders(50, 0);
+  console.log(`Found ${recentOrders.length} batches in Clickyfied order list.`);
 
-  // 2. Build map of all phone numbers delivered on Clickyfied
-  // Map: phoneLast9 -> { orderId, entryId, status, allocationGb }
+  // 2. Build map of all phone numbers delivered on Clickyfied by fetching batch details
   const clickyfiedDeliveries = new Map<string, Array<{ orderId: string; entryId: any; status: string; allocationGb: number }>>();
 
-  for (const bo of recentOrders) {
-    const bOrderId = String(bo.orderId || bo.id);
-    const entries = bo.entries || [];
-    for (const e of entries) {
-      const pNorm = normalizePhoneLast9(String(e.number || e.phoneNumber || e.phone || ""));
-      if (!pNorm) continue;
-      const alloc = typeof e.allocationGB === "number" ? e.allocationGB : e.allocationGb;
-      const eId = e.orderEntryId ?? e.entryId ?? e.id;
-      const st = e.status || bo.status || "UNKNOWN";
+  // Limit to batches from today (first 35 batches covers the entire morning)
+  const batchesToFetch = recentOrders.slice(0, 35);
+  console.log(`Fetching detailed entries for ${batchesToFetch.length} recent batches...`);
 
-      if (!clickyfiedDeliveries.has(pNorm)) {
-        clickyfiedDeliveries.set(pNorm, []);
+  for (let i = 0; i < batchesToFetch.length; i++) {
+    const bo = batchesToFetch[i];
+    const bOrderId = String(bo.orderId || bo.id);
+    try {
+      const details = await client.getOrderStatus(bOrderId);
+      const rawAny = details.raw as any;
+      const entries: any[] = rawAny?.order?.entries || rawAny?.entries || [];
+
+      for (const e of entries) {
+        const pNorm = normalizePhoneLast9(String(e.number || e.phoneNumber || e.phone || ""));
+        if (!pNorm) continue;
+        const alloc = typeof e.allocationGB === "number" ? e.allocationGB : e.allocationGb;
+        const eId = e.orderEntryId ?? e.entryId ?? e.id;
+        const st = e.status || details.status || "UNKNOWN";
+
+        if (!clickyfiedDeliveries.has(pNorm)) {
+          clickyfiedDeliveries.set(pNorm, []);
+        }
+        clickyfiedDeliveries.get(pNorm)!.push({
+          orderId: bOrderId,
+          entryId: eId,
+          status: st,
+          allocationGb: alloc,
+        });
       }
-      clickyfiedDeliveries.get(pNorm)!.push({
-        orderId: bOrderId,
-        entryId: eId,
-        status: st,
-        allocationGb: alloc,
-      });
+      process.stdout.write(`.`);
+    } catch (err: any) {
+      // ignore individual batch errors
     }
   }
-
-  console.log(`Indexed ${clickyfiedDeliveries.size} unique recipient phone numbers from Clickyfied.\n`);
+  console.log(`\nSuccessfully indexed ${clickyfiedDeliveries.size} unique recipient phone numbers from Clickyfied.\n`);
 
   // 3. Now check the 262 suspect orders
   const suspectOrders = await prisma.order.findMany({
