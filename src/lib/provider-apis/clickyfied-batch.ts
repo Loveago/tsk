@@ -819,9 +819,63 @@ async function submitSingleBatchChunk(
   } catch (batchErr: any) {
     console.error(`[ClickyfiedBatch] Dispatch of ${groupLabel} (${batchCode}) encountered an error/timeout:`, batchErr);
 
-    // If ALL submitted entries were blocked and filtered out by Clickyfied (HTTP 400)
+    const msgLower = (batchErr?.message || "").toLowerCase();
+    const isProviderHaltedOrDown =
+      msgLower.includes("halt") ||
+      msgLower.includes("pause") ||
+      msgLower.includes("maintenance") ||
+      msgLower.includes("unavailable") ||
+      msgLower.includes("temporarily") ||
+      msgLower.includes("service error") ||
+      batchErr?.status === 503 ||
+      batchErr?.status === 502 ||
+      batchErr?.status === 504;
+
+    if (isProviderHaltedOrDown) {
+      console.warn(`[ClickyfiedBatch] Clickyfied provider is temporarily halted or unavailable (${batchErr?.message}). Keeping orders in PROCESSING for auto-recovery:`, batchCode);
+      await prisma.order.updateMany({
+        where: { id: { in: targetOrderIds } },
+        data: {
+          status: "PROCESSING",
+          failureReason: `Provider temporarily halted: ${batchErr?.message || "Unavailable"}`,
+        },
+      });
+
+      await prisma.orderStatusHistory.createMany({
+        data: targetOrders.map((o) => ({
+          orderId: o.id,
+          status: "PROCESSING",
+          previousStatus: "PENDING",
+          note: `Provider is temporarily halted or unavailable (${batchErr?.message || "Orders paused"}). Orders retained in queue.`,
+          changedBy: actorLabel,
+        })),
+      });
+
+      try {
+        await prisma.clickyfiedBatch.update({
+          where: { batchCode },
+          data: {
+            status: "PROCESSING",
+            errorMessage: `Provider temporarily halted: ${batchErr?.message || "Unavailable"}`,
+            lastSyncedAt: new Date(),
+          },
+        });
+      } catch {}
+
+      return {
+        success: false,
+        batchCode,
+        batchOrderId: "",
+        dispatchedCount: 0,
+        totalGb: 0,
+        error: `Provider temporarily halted: ${batchErr?.message || "Unavailable"}`,
+      };
+    }
+
+    // If ALL submitted entries were genuinely blocked and filtered out by Clickyfied (HTTP 400 with blocked list)
     const isAllBlocked =
       batchErr?.isAllBlocked ||
+      (Array.isArray(batchErr?.filteredOutEntries) && batchErr.filteredOutEntries.length > 0) ||
       (typeof batchErr?.message === "string" &&
         (batchErr.message.toLowerCase().includes("all submitted entries are blocked") ||
           batchErr.message.toLowerCase().includes("entries are blocked and were filtered out")));
@@ -2001,6 +2055,257 @@ export async function retryClickyfiedBatchFailedOrders(
     message: `Successfully reset ${failedIds.length} failed order(s) back to the pending queue for re-dispatch.`,
   };
 }
+
+/**
+ * Reconciles any MTN orders currently marked as FAILED in our database against Clickyfied.
+ * If Clickyfied accepted, processed, or delivered them (e.g. when provider halted and resumed),
+ * this automatically recovers them to SUCCESS or PROCESSING and restores any wrongly blocked numbers.
+ */
+export async function reconcileFailedClickyfiedOrders(
+  actorLabel = "Staff Failed Reconciliation",
+  options: { lookbackHours?: number } = {}
+): Promise<{
+  success: boolean;
+  reconciledCount: number;
+  totalChecked: number;
+  reconciledOrders: Array<{ id: number; phoneNumber: string; newStatus: string; reason: string }>;
+  message: string;
+}> {
+  const lookbackHours = options.lookbackHours ?? 72; // default 3 days
+  const cutoff = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
+
+  // Find all failed MTN orders from the lookback period
+  const failedOrders = await prisma.order.findMany({
+    where: {
+      network: "MTN",
+      status: "FAILED",
+      createdAt: { gte: cutoff },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      phoneNumber: true,
+      gbAmount: true,
+      status: true,
+      providerReference: true,
+      externalReference: true,
+      failureReason: true,
+      clickyfiedBatchId: true,
+      batchId: true,
+      createdAt: true,
+    },
+  });
+
+  if (failedOrders.length === 0) {
+    return {
+      success: true,
+      reconciledCount: 0,
+      totalChecked: 0,
+      reconciledOrders: [],
+      message: "No failed MTN orders found in the specified window to reconcile.",
+    };
+  }
+
+  const client = new ClickyfiedClient();
+  const reconciledOrders: Array<{ id: number; phoneNumber: string; newStatus: string; reason: string }> = [];
+
+  // Group failed orders by batch reference if available
+  const batchQueryKeys = new Set<string>();
+  for (const o of failedOrders) {
+    if (o.externalReference && o.externalReference.startsWith("CF-BATCH-")) {
+      batchQueryKeys.add(o.externalReference);
+    }
+    if (o.providerReference && o.providerReference.startsWith("CLICKYFIED:")) {
+      const parts = o.providerReference.replace("CLICKYFIED:", "").split(":");
+      const pId = parts[0];
+      if (pId && pId !== "BLOCKED") {
+        batchQueryKeys.add(pId);
+      }
+    }
+  }
+
+  // Pre-fetch Clickyfied batch statuses for all involved batches
+  const batchEntriesMap = new Map<string, { canonicalId: string; entries: any[] }>();
+  for (const queryKey of batchQueryKeys) {
+    try {
+      let canonical = queryKey;
+      if (queryKey.startsWith("CF-BATCH-")) {
+        canonical = await client.resolveCanonicalOrderId(queryKey);
+      }
+      const details = await client.getOrderStatus(canonical);
+      const rawAny = details.raw as any;
+      const entries: any[] = rawAny?.order?.entries || rawAny?.entries || [];
+      const canonicalId = String(rawAny?.order?.orderId || rawAny?.orderId || canonical);
+      batchEntriesMap.set(queryKey, { canonicalId, entries });
+      if (canonical !== queryKey) {
+        batchEntriesMap.set(canonical, { canonicalId, entries });
+      }
+    } catch {
+      // batch query failed or not on provider
+    }
+  }
+
+  const affectedBatchIds = new Set<string>();
+  const affectedClickyfiedBatchIds = new Set<string>();
+
+  for (const ord of failedOrders) {
+    const phoneNorm = normalizePhoneLast9(ord.phoneNumber);
+    let matchedEntry: any = null;
+    let matchedCanonicalId: string | null = null;
+
+    // 1. Try matching from pre-fetched batch data
+    const batchKey = ord.externalReference?.startsWith("CF-BATCH-")
+      ? ord.externalReference
+      : ord.providerReference?.replace("CLICKYFIED:", "").split(":")[0];
+
+    if (batchKey && batchEntriesMap.has(batchKey)) {
+      const { canonicalId, entries } = batchEntriesMap.get(batchKey)!;
+      matchedCanonicalId = canonicalId;
+      // Find matching entry by phone & GB
+      matchedEntry = entries.find((e: any) => {
+        const eNorm = normalizePhoneLast9(String(e.number || e.phoneNumber || e.phone || ""));
+        const eAlloc = typeof e.allocationGB === "number" ? e.allocationGB : e.allocationGb;
+        if (eNorm !== phoneNorm) return false;
+        if (eAlloc !== undefined && Math.abs(eAlloc - ord.gbAmount) > 0.1) return false;
+        return true;
+      });
+      if (!matchedEntry) {
+        matchedEntry = entries.find((e: any) => {
+          const eNorm = normalizePhoneLast9(String(e.number || e.phoneNumber || e.phone || ""));
+          return eNorm === phoneNorm;
+        });
+      }
+    }
+
+    // 2. If not found in batch, search recent orders on Clickyfied
+    if (!matchedEntry) {
+      try {
+        const found = await client.findOrderByPhone(ord.phoneNumber);
+        if (found && found.orderId) {
+          matchedCanonicalId = found.orderId;
+          matchedEntry = {
+            id: found.orderEntryId,
+            status: found.status,
+            allocationGB: found.allocationGb,
+          };
+        }
+      } catch {}
+    }
+
+    // If an entry exists on Clickyfied for this order:
+    if (matchedEntry) {
+      const rawEntryStatus = matchedEntry.status || matchedEntry.currentStatus || matchedEntry.deliveryStatus || "success";
+      const mapped = mapClickyfiedStatus(rawEntryStatus);
+
+      // If Clickyfied fulfilled it or has it in-flight:
+      if (mapped === "SUCCESS" || mapped === "PROCESSING") {
+        const eId = matchedEntry.id ?? matchedEntry.orderEntryId ?? matchedEntry.entryId;
+        const newProviderRef = eId && matchedCanonicalId
+          ? `CLICKYFIED:${matchedCanonicalId}:${eId}`
+          : matchedCanonicalId
+          ? `CLICKYFIED:${matchedCanonicalId}`
+          : ord.providerReference;
+
+        await prisma.order.update({
+          where: { id: ord.id },
+          data: {
+            status: mapped,
+            providerReference: newProviderRef,
+            failureReason: null,
+          },
+        });
+
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: ord.id,
+            status: mapped,
+            previousStatus: "FAILED",
+            note: `Reconciled from Clickyfied: Confirmed on provider as ${String(rawEntryStatus).toUpperCase()} (${newProviderRef}). Restored from previous halt/error.`,
+            changedBy: actorLabel,
+          },
+        });
+
+        // Unblock number from blockedMtnNumber if it was erroneously marked as REJECTED
+        try {
+          const canonical = normalizeGhanaPhoneNumber(ord.phoneNumber);
+          await prisma.blockedMtnNumber.deleteMany({
+            where: { normalizedNumber: canonical, status: "REJECTED" },
+          });
+        } catch {}
+
+        reconciledOrders.push({
+          id: ord.id,
+          phoneNumber: ord.phoneNumber,
+          newStatus: mapped,
+          reason: `Found on Clickyfied (${rawEntryStatus})`,
+        });
+
+        if (ord.batchId) affectedBatchIds.add(ord.batchId);
+        if (ord.clickyfiedBatchId) affectedClickyfiedBatchIds.add(ord.clickyfiedBatchId);
+      }
+    }
+  }
+
+  // Recompute affected batches
+  if (affectedBatchIds.size > 0) {
+    const { recomputeBatchStatus } = await import("../orders");
+    for (const bId of affectedBatchIds) {
+      try {
+        await recomputeBatchStatus(bId);
+      } catch {}
+    }
+  }
+
+  for (const cfBatchId of affectedClickyfiedBatchIds) {
+    try {
+      const orders = await prisma.order.findMany({
+        where: { clickyfiedBatchId: cfBatchId },
+        select: { status: true, gbAmount: true, amount: true },
+      });
+      const processedCount = orders.filter((o) => o.status === "SUCCESS").length;
+      const failedCount = orders.filter((o) => o.status === "FAILED").length;
+      const pendingCount = orders.filter((o) => o.status === "PROCESSING" || o.status === "PENDING").length;
+
+      let st = "PROCESSING";
+      if (pendingCount === 0) {
+        if (failedCount === 0) st = "COMPLETED";
+        else if (processedCount === 0) st = "FAILED";
+        else st = "PARTIALLY_COMPLETED";
+      }
+
+      await prisma.clickyfiedBatch.update({
+        where: { id: cfBatchId },
+        data: {
+          processedCount,
+          failedCount,
+          pendingCount,
+          status: st,
+          lastSyncedAt: new Date(),
+        },
+      });
+    } catch {}
+  }
+
+  await recordAudit({
+    actorLabel,
+    action: "provider.clickyfied_failed_orders_reconciled",
+    target: "clickyfied:orders:failed",
+    newValue: JSON.stringify({
+      totalChecked: failedOrders.length,
+      reconciledCount: reconciledOrders.length,
+      reconciledOrderIds: reconciledOrders.map((o) => o.id),
+    }),
+  });
+
+  return {
+    success: true,
+    reconciledCount: reconciledOrders.length,
+    totalChecked: failedOrders.length,
+    reconciledOrders,
+    message: `Reconciled ${reconciledOrders.length} order(s) out of ${failedOrders.length} checked from Clickyfied.`,
+  };
+}
+
 
 
 

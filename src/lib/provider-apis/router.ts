@@ -1333,18 +1333,23 @@ export async function syncClickyfiedOrder(
 
     if (!order) return { changed: false, error: "Order not found" };
 
-    // Terminal statuses do not need further polling
-    if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(order.status)) {
+    // Terminal statuses do not need further polling unless forceCheck is requested (e.g. recovering from provider halts)
+    if (["SUCCESS", "CANCELLED", "REFUNDED"].includes(order.status)) {
+      return { changed: false, newStatus: order.status };
+    }
+    if (order.status === "FAILED" && !options.forceCheck) {
       return { changed: false, newStatus: order.status };
     }
 
-    if (!order.providerReference || !order.providerReference.startsWith("CLICKYFIED:")) {
-      return { changed: false };
+    let rawRef = (order.providerReference || "").replace("CLICKYFIED:", "").trim();
+    let [providerId, orderEntryId] = rawRef ? rawRef.split(":") : ["", ""];
+    if (!providerId || providerId === "BLOCKED") {
+      if (order.externalReference && order.externalReference.startsWith("CF-BATCH-")) {
+        providerId = order.externalReference;
+      } else {
+        return { changed: false };
+      }
     }
-
-    const rawRef = order.providerReference.replace("CLICKYFIED:", "").trim();
-    const [providerId, orderEntryId] = rawRef.split(":");
-    if (!providerId) return { changed: false };
 
     // In-flight deduplication: If this exact providerId is currently being fetched, join the active promise
     if (inFlightProviderSync.has(providerId)) {
@@ -1580,6 +1585,15 @@ export async function syncClickyfiedOrder(
             { id: "system", label: actorLabel },
             { force: true }
           );
+
+          if (targetStatus === "SUCCESS" || targetStatus === "PROCESSING") {
+            try {
+              const canonical = normalizeGhanaPhoneNumber(ord.phoneNumber);
+              await prisma.blockedMtnNumber.deleteMany({
+                where: { normalizedNumber: canonical, status: "REJECTED" },
+              });
+            } catch {}
+          }
 
           if (ord.id === order.id) {
             thisOrderChanged = true;

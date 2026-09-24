@@ -270,6 +270,36 @@ export default function AdminClickyfiedBatchesPage() {
     }
   };
 
+  // Reconcile failed orders from Clickyfied
+  const [reconcilingFailed, setReconcilingFailed] = React.useState(false);
+  const handleReconcileFailed = async () => {
+    setReconcilingFailed(true);
+    try {
+      const res = await fetch("/api/admin/clickyfied-batches/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookbackHours: 72 }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.reconciledCount > 0) {
+          toast(`Successfully recovered ${data.reconciledCount} order(s) that were fulfilled on Clickyfied!`, "success");
+        } else {
+          toast(data.message || "All checked orders are up to date.", "info");
+        }
+        await loadBatches();
+        await loadQueueStatus();
+        if (inspectId) await loadBatchDetail(inspectId);
+      } else {
+        toast(data.error || "Reconciliation failed", "error");
+      }
+    } catch {
+      toast("Error running failed orders reconciliation", "error");
+    } finally {
+      setReconcilingFailed(false);
+    }
+  };
+
   // Backfill historical batches trigger
   const handleBackfill = async () => {
     try {
@@ -374,6 +404,18 @@ export default function AdminClickyfiedBatchesPage() {
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               <span>Refresh</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReconcileFailed}
+              disabled={reconcilingFailed}
+              className="gap-1.5 text-xs text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+              title="Scan recent FAILED orders and recover any that Clickyfied accepted or fulfilled"
+            >
+              <RotateCcw className={`h-3.5 w-3.5 ${reconcilingFailed ? "animate-spin" : ""}`} />
+              <span>{reconcilingFailed ? "Reconciling..." : "Reconcile Failed Orders"}</span>
             </Button>
 
             <ClickyfiedBatchDispatchButton onSuccess={() => void loadBatches()} />
@@ -940,16 +982,30 @@ export default function AdminClickyfiedBatchesPage() {
                 </Button>
 
                 {batchDetail.failedCount > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleRetryFailed(batchDetail.batchCode)}
-                    disabled={retryingBatchId === batchDetail.batchCode}
-                    className="gap-1.5 text-xs text-amber-600 dark:text-amber-400 border-amber-500/30"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Retry Failed ({batchDetail.failedCount})</span>
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleReconcileFailed}
+                      disabled={reconcilingFailed}
+                      className="gap-1.5 text-xs text-amber-600 dark:text-amber-400 border-amber-500/30"
+                      title="Check if Clickyfied fulfilled these failed orders"
+                    >
+                      <RotateCcw className={`h-3.5 w-3.5 ${reconcilingFailed ? "animate-spin" : ""}`} />
+                      <span>Reconcile Failed</span>
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleRetryFailed(batchDetail.batchCode)}
+                      disabled={retryingBatchId === batchDetail.batchCode}
+                      className="gap-1.5 text-xs text-slate-700 dark:text-slate-200"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Re-queue Failed</span>
+                    </Button>
+                  </>
                 )}
               </div>
             </div>

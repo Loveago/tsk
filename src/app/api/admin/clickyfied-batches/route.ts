@@ -5,6 +5,7 @@ import {
   getClickyfiedBatches,
   dispatchClickyfiedMtnBatch,
   backfillPastClickyfiedBatches,
+  reconcileFailedClickyfiedOrders,
 } from "@/lib/provider-apis/clickyfied-batch";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/clickyfied-batches
- * Triggers batch actions: "dispatch_now" or "backfill"
+ * Triggers batch actions: "dispatch_now", "backfill", or "reconcile"
  */
 export async function POST(request: NextRequest) {
   try {
@@ -49,6 +50,11 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const action = body.action || "dispatch_now";
+
+    if (action === "reconcile") {
+      const result = await reconcileFailedClickyfiedOrders(actorLabel);
+      return NextResponse.json(result);
+    }
 
     if (action === "backfill") {
       const count = await backfillPastClickyfiedBatches();

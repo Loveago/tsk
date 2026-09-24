@@ -159,6 +159,24 @@ export function startProviderSyncPoller() {
         } catch (batchErr) {
           // Ignore background transient errors
         }
+
+        // Auto-heal any FAILED MTN orders that Clickyfied fulfilled when provider resumed
+        try {
+          const hasFailed = await prisma.order.findFirst({
+            where: {
+              network: "MTN",
+              status: "FAILED",
+              createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+            },
+            select: { id: true },
+          });
+          if (hasFailed) {
+            const { reconcileFailedClickyfiedOrders } = await import("./clickyfied-batch");
+            await reconcileFailedClickyfiedOrders("Automatic Background Poller", { lookbackHours: 24 });
+          }
+        } catch {
+          // Ignore background transient errors
+        }
       }
 
 
