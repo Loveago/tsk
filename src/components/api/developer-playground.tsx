@@ -144,6 +144,51 @@ const PLAYGROUND_ENDPOINTS: PlaygroundEndpoint[] = [
     ),
   },
   {
+    id: "post-batch-order",
+    name: "POST /v1/orders (Submit Batch Order)",
+    category: "Orders & Fulfillment",
+    method: "POST",
+    path: "/v1/orders",
+    hasBody: true,
+    scope: "orders:create",
+    description: "Submit a multi-recipient batch order (Clickyfied compatible format). Automatically filters blocked numbers.",
+    defaultBody: JSON.stringify(
+      {
+        externalReference: `BATCH-${Math.floor(100000 + Math.random() * 900000)}`,
+        network: "MTN",
+        entries: [
+          { number: "0535308873", allocationGB: 1 },
+          { number: "0241234567", allocationGB: 2 },
+          { number: "0541234568", allocationGB: 5 },
+        ],
+      },
+      null,
+      2
+    ),
+  },
+  {
+    id: "post-orders-batch-endpoint",
+    name: "POST /v1/orders/batch (Dedicated Batch)",
+    category: "Orders & Fulfillment",
+    method: "POST",
+    path: "/v1/orders/batch",
+    hasBody: true,
+    scope: "orders:create",
+    description: "Direct batch order submission endpoint accepting multiple recipient entries.",
+    defaultBody: JSON.stringify(
+      {
+        externalReference: `BATCH-${Math.floor(100000 + Math.random() * 900000)}`,
+        network: "MTN",
+        entries: [
+          { number: "0535308873", allocationGB: 1 },
+          { number: "0241234567", allocationGB: 2 },
+        ],
+      },
+      null,
+      2
+    ),
+  },
+  {
     id: "get-order",
     name: "GET /v1/orders/:id (Get Order by ID)",
     category: "Orders & Fulfillment",

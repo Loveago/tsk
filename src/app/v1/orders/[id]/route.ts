@@ -8,6 +8,7 @@ import {
   ApiError,
 } from "@/lib/developer-api";
 import { sanitizeCustomerRefundNote } from "@/lib/types";
+import { formatBatchOrderPayload } from "@/lib/api-batch-orders";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -34,12 +35,82 @@ export async function GET(
     authContext = await validateApiAuth(request, { requiredScope: "orders:read" });
     requestId = authContext.requestId;
 
-    // Parse order ID: e.g. "API-839201", "CLK-839201" or "839201"
-    const cleanId = id.toUpperCase().replace(/^(API|CLK)-/, "").trim();
+    const upperId = id.trim().toUpperCase();
+    const candidateBatchCode = upperId.replace(/^API-/, "").trim();
+
+    // 1. Check if ID matches an OrderBatch
+    const batch = await prisma.orderBatch.findFirst({
+      where: {
+        OR: [
+          { batchCode: candidateBatchCode },
+          { id: id.trim() },
+        ],
+        userId: authContext.userId,
+      },
+      include: {
+        orders: {
+          where: { isSandbox: authContext.isSandbox },
+          orderBy: { id: "asc" },
+        },
+      },
+    });
+
+    if (batch && batch.orders.length > 0) {
+      // Sync any in-flight Clickyfied orders in batch
+      const inFlightClickyfied = batch.orders.filter(
+        (o) =>
+          (o.status === "PENDING" || o.status === "PROCESSING") &&
+          o.providerReference?.startsWith("CLICKYFIED:")
+      );
+      if (inFlightClickyfied.length > 0) {
+        try {
+          const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+          await Promise.allSettled(
+            inFlightClickyfied.slice(0, 10).map(async (o) => {
+              const syncRes = await syncClickyfiedOrder(o, "Developer API Batch Query");
+              if (syncRes.changed && syncRes.newStatus) {
+                o.status = syncRes.newStatus;
+              }
+            })
+          );
+        } catch (syncErr) {
+          console.error("Developer API batch sync error:", syncErr);
+        }
+      }
+
+      await logApiRequestEntry({
+        userId: authContext.userId,
+        credentialId: authContext.credentialId,
+        endpoint,
+        method: "GET",
+        status: 200,
+        success: true,
+        ip: authContext.clientIp,
+        userAgent: authContext.userAgent,
+        environment: authContext.environment,
+        responseTimeMs: Date.now() - start,
+        requestId,
+      });
+
+      const payload = formatBatchOrderPayload({
+        batchCode: batch.batchCode,
+        externalReference: batch.orders[0]?.externalReference || batch.batchCode,
+        orders: batch.orders,
+        cost: batch.totalAmount,
+        isSandbox: authContext.isSandbox,
+        createdAt: batch.createdAt,
+        updatedAt: batch.updatedAt,
+      });
+
+      return formatApiSuccess(payload, requestId, 200, authContext.rateLimit);
+    }
+
+    // 2. Parse single order ID: e.g. "API-839201", "CLK-839201" or "839201"
+    const cleanId = upperId.replace(/^(API|CLK)-/, "").trim();
     const numericId = parseInt(cleanId, 10);
 
     if (isNaN(numericId) || numericId <= 0) {
-      throw new ApiError("INVALID_REQUEST", "Invalid order ID format. Example: API-12345 or 12345", 400);
+      throw new ApiError("INVALID_REQUEST", "Invalid order ID format. Example: API-12345 or API-CF-BATCH-000185", 400);
     }
 
     const order = await prisma.order.findFirst({

@@ -8,6 +8,7 @@ import {
   ApiError,
 } from "@/lib/developer-api";
 import { sanitizeCustomerRefundNote } from "@/lib/types";
+import { formatBatchOrderPayload } from "@/lib/api-batch-orders";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -39,6 +40,94 @@ export async function GET(
       throw new ApiError("INVALID_REQUEST", "Reference parameter cannot be empty", 400);
     }
 
+    // 1. Check if reference is a batch code or belongs to a batch order
+    const batchCodeCandidate = cleanRef.toUpperCase().replace(/^API-/, "").trim();
+    const batchByCode = await prisma.orderBatch.findFirst({
+      where: {
+        batchCode: batchCodeCandidate,
+        userId: authContext.userId,
+      },
+      include: {
+        orders: {
+          where: { isSandbox: authContext.isSandbox },
+          orderBy: { id: "asc" },
+        },
+      },
+    });
+
+    const firstRefOrder = await prisma.order.findFirst({
+      where: {
+        externalReference: cleanRef,
+        userId: authContext.userId,
+        isSandbox: authContext.isSandbox,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const targetBatchId = batchByCode?.id || firstRefOrder?.batchId;
+    if (targetBatchId) {
+      const batch = batchByCode || await prisma.orderBatch.findUnique({
+        where: { id: targetBatchId },
+        include: {
+          orders: {
+            where: { isSandbox: authContext.isSandbox },
+            orderBy: { id: "asc" },
+          },
+        },
+      });
+
+      if (batch && batch.orders.length > 0) {
+        // Sync any in-flight Clickyfied orders in batch
+        const inFlightClickyfied = batch.orders.filter(
+          (o) =>
+            (o.status === "PENDING" || o.status === "PROCESSING") &&
+            o.providerReference?.startsWith("CLICKYFIED:")
+        );
+        if (inFlightClickyfied.length > 0) {
+          try {
+            const { syncClickyfiedOrder } = await import("@/lib/provider-apis/router");
+            await Promise.allSettled(
+              inFlightClickyfied.slice(0, 10).map(async (o) => {
+                const syncRes = await syncClickyfiedOrder(o, "Developer API Batch Reference Query");
+                if (syncRes.changed && syncRes.newStatus) {
+                  o.status = syncRes.newStatus;
+                }
+              })
+            );
+          } catch (syncErr) {
+            console.error("Developer API batch reference sync error:", syncErr);
+          }
+        }
+
+        await logApiRequestEntry({
+          userId: authContext.userId,
+          credentialId: authContext.credentialId,
+          endpoint,
+          method: "GET",
+          status: 200,
+          success: true,
+          ip: authContext.clientIp,
+          userAgent: authContext.userAgent,
+          environment: authContext.environment,
+          responseTimeMs: Date.now() - start,
+          requestId,
+        });
+
+        const payload = formatBatchOrderPayload({
+          batchCode: batch.batchCode,
+          externalReference: cleanRef,
+          orders: batch.orders,
+          cost: batch.totalAmount,
+          isSandbox: authContext.isSandbox,
+          createdAt: batch.createdAt,
+          updatedAt: batch.updatedAt,
+        });
+
+        return formatApiSuccess(payload, requestId, 200, authContext.rateLimit);
+      }
+    }
+
+    // 2. Lookup single order by external reference
     const order = await prisma.order.findFirst({
       where: {
         externalReference: cleanRef,

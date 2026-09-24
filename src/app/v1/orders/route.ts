@@ -13,6 +13,7 @@ import { phoneSchema } from "@/lib/validation";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 import { sanitizeCustomerRefundNote } from "@/lib/types";
 import { detectNetworkNameByPrefix } from "@/lib/phone-utils";
+import { handleBatchOrderSubmission } from "@/lib/api-batch-orders";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -191,6 +192,18 @@ export async function POST(request: NextRequest) {
     // Scoped idempotency key to prevent cross-account collisions
     const rawIdemKey = request.headers.get("Idempotency-Key")?.trim() || null;
     idemKey = rawIdemKey ? `${authContext.userId}:${rawIdemKey}` : null;
+
+    // Handle batch order if entries array is provided
+    if (Array.isArray(body.entries)) {
+      return await handleBatchOrderSubmission({
+        authContext,
+        body,
+        requestId,
+        idemKey,
+        start,
+        endpoint,
+      });
+    }
 
     if (idemKey) {
       const existingKey = await prisma.idempotencyKey.findUnique({

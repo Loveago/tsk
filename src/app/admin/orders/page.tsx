@@ -410,6 +410,15 @@ export default function AdminOrdersPage() {
             </Button>
             <ClickyfiedBatchDispatchButton onSuccess={() => void load(false)} />
             <Link
+              href="/admin/clickyfied-batches"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              title="View Clickyfied batch chunks and delivery statuses"
+            >
+              <Layers className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+              <span className="hidden sm:inline">Clickyfied Batches</span>
+              <span className="sm:hidden">Batches</span>
+            </Link>
+            <Link
               href="/admin/order-api-logs"
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
               title="View provider dispatch logs and failures"

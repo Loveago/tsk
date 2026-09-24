@@ -112,6 +112,8 @@ model Order {
   externalReference String?
   apiCredentialId   String?
   apiCredential     ApiCredential? @relation(fields: [apiCredentialId], references: [id], onDelete: SetNull)
+  clickyfiedBatchId String?
+  clickyfiedBatch   ClickyfiedBatch? @relation(fields: [clickyfiedBatchId], references: [id], onDelete: SetNull)
   isSandbox         Boolean        @default(false)
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
@@ -130,6 +132,8 @@ model Order {
   @@index([userId, externalReference])
   @@index([apiCredentialId])
   @@index([isSandbox])
+  @@index([clickyfiedBatchId])
+  @@index([externalReference])
 }
 
 model OrderStatusHistory {
@@ -191,6 +195,36 @@ model ExportBatch {
   @@index([createdAt])
   @@index([status])
 }
+
+model ClickyfiedBatch {
+  id                 String    @id @default(cuid())
+  batchCode          String    @unique // e.g. CF-BATCH-000001
+  clickyfiedOrderId  String?   // Returned from Clickyfied e.g. API-CF-BATCH-000001 or canonical ID
+  groupLabel         String?   // Group 1 (1–5 GB) | Group 2 (6+ GB) | All
+  status             String    @default("PROCESSING") // PENDING | PROCESSING | COMPLETED | FAILED | PARTIALLY_COMPLETED
+  totalOrders        Int       @default(0)
+  totalGb            Float     @default(0)
+  totalAmount        Float     @default(0)
+  processedCount     Int       @default(0)
+  failedCount        Int       @default(0)
+  pendingCount       Int       @default(0)
+  actorLabel         String    @default("system")
+  idempotencyKey     String?
+  errorMessage       String?
+  rawFilteredOut     String?   // JSON string of filteredOutEntries (blocked numbers)
+  rawResponse        String?   // JSON string of Clickyfied response
+  lastSyncedAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  orders             Order[]
+
+  @@index([batchCode])
+  @@index([clickyfiedOrderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
 
 model DeliveryReport {
   id                   String    @id @default(cuid())

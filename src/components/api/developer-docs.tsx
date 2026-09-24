@@ -14,6 +14,7 @@ export function DeveloperDocs({
   const { toast } = useToast();
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [langTab, setLangTab] = React.useState<"curl" | "javascript" | "nodejs" | "python" | "php">("curl");
+  const [batchLangTab, setBatchLangTab] = React.useState<"curl" | "javascript" | "nodejs" | "python" | "php">("curl");
   const [verifyLangTab, setVerifyLangTab] = React.useState<"curl" | "javascript" | "python">("curl");
   const [origin, setOrigin] = React.useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -162,6 +163,116 @@ curl_setopt_array($ch, [
     CURLOPT_HTTPHEADER => [
         "Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
         "Idempotency-Key: SHOP-ORD-10001",
+        "Content-Type: application/json"
+    ]
+]);
+
+$response = curl_exec($ch);
+curl_close($ch);
+echo $response;`;
+
+  const curlBatchExample = `curl -X POST "${ordersEndpoint}" \\
+  -H "Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx" \\
+  -H "Idempotency-Key: invoice-20260903-batch-001" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "externalReference": "invoice-20260903-batch-001",
+    "network": "MTN",
+    "entries": [
+      { "number": "0541234567", "allocationGB": 5 },
+      { "number": "0541234568", "allocationGB": 10 },
+      { "number": "0241234569", "allocationGB": 2 }
+    ]
+  }'`;
+
+  const jsBatchExample = `const response = await fetch("${ordersEndpoint}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+    "Idempotency-Key": "invoice-20260903-batch-001",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    externalReference: "invoice-20260903-batch-001",
+    network: "MTN",
+    entries: [
+      { number: "0541234567", allocationGB: 5 },
+      { number: "0541234568", allocationGB: 10 },
+      { number: "0241234569", allocationGB: 2 }
+    ]
+  })
+});
+
+const data = await response.json();
+console.log(data);`;
+
+  const nodeBatchExample = `const axios = require("axios");
+
+async function placeBatchOrder() {
+  const { data } = await axios.post(
+    "${ordersEndpoint}",
+    {
+      externalReference: "invoice-20260903-batch-001",
+      network: "MTN",
+      entries: [
+        { number: "0541234567", allocationGB: 5 },
+        { number: "0541234568", allocationGB: 10 },
+        { number: "0241234569", allocationGB: 2 }
+      ]
+    },
+    {
+      headers: {
+        Authorization: "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+        "Idempotency-Key": "invoice-20260903-batch-001",
+        "Content-Type": "application/json"
+      }
+    }
+  );
+  console.log("Batch order created:", data);
+}
+
+placeBatchOrder();`;
+
+  const pythonBatchExample = `import requests
+
+url = "${ordersEndpoint}"
+headers = {
+    "Authorization": "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+    "Idempotency-Key": "invoice-20260903-batch-001",
+    "Content-Type": "application/json"
+}
+payload = {
+    "externalReference": "invoice-20260903-batch-001",
+    "network": "MTN",
+    "entries": [
+        {"number": "0541234567", "allocationGB": 5},
+        {"number": "0541234568", "allocationGB": 10},
+        {"number": "0241234569", "allocationGB": 2}
+    ]
+}
+
+response = requests.post(url, json=payload, headers=headers)
+print(response.json())`;
+
+  const phpBatchExample = `<?php
+$ch = curl_init("${ordersEndpoint}");
+$payload = json_encode([
+    "externalReference" => "invoice-20260903-batch-001",
+    "network" => "MTN",
+    "entries" => [
+        ["number" => "0541234567", "allocationGB" => 5],
+        ["number" => "0541234568", "allocationGB" => 10],
+        ["number" => "0241234569", "allocationGB" => 2]
+    ]
+]);
+
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => $payload,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => [
+        "Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+        "Idempotency-Key: invoice-20260903-batch-001",
         "Content-Type: application/json"
     ]
 ]);
@@ -351,6 +462,125 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
         </div>
       </div>
 
+      {/* Batch Orders (Clickyfied Compatible) */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold">Batch Orders (Multiple Recipients)</h3>
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                Clickyfied Compatible
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">POST /v1/orders or POST /v1/orders/batch</p>
+          </div>
+          <div className="w-full sm:w-auto sm:max-w-md">
+            <ScrollableTabs
+              tabs={[
+                { key: "curl", label: "cURL" },
+                { key: "javascript", label: "JavaScript" },
+                { key: "nodejs", label: "Node.js" },
+                { key: "python", label: "Python" },
+                { key: "php", label: "PHP" },
+              ]}
+              activeTab={batchLangTab}
+              onChange={(k) => setBatchLangTab(k as any)}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
+          <p className="font-semibold">💡 Automatic Blocked & Duplicate Number Filtering</p>
+          <p className="mt-1">
+            When submitting batch orders, phone numbers blocked by providers or invalid formats are automatically separated into <code className="rounded bg-blue-100/70 px-1 py-0.5 font-mono dark:bg-blue-900/50">filteredOutEntries</code> with descriptive reasons. As long as at least one valid recipient remains, the batch succeeds with HTTP 201 Created and you are only charged for valid entries.
+          </p>
+        </div>
+
+        <div className="relative mt-4">
+          <pre className="overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+            {batchLangTab === "curl" && curlBatchExample}
+            {batchLangTab === "javascript" && jsBatchExample}
+            {batchLangTab === "nodejs" && nodeBatchExample}
+            {batchLangTab === "python" && pythonBatchExample}
+            {batchLangTab === "php" && phpBatchExample}
+          </pre>
+          <button
+            onClick={() =>
+              copy(
+                "code-batch",
+                batchLangTab === "curl"
+                  ? curlBatchExample
+                  : batchLangTab === "javascript"
+                  ? jsBatchExample
+                  : batchLangTab === "nodejs"
+                  ? nodeBatchExample
+                  : batchLangTab === "python"
+                  ? pythonBatchExample
+                  : phpBatchExample
+              )
+            }
+            className="absolute right-3 top-3 rounded-lg bg-white/10 p-2 text-slate-300 hover:bg-white/20"
+            title="Copy code"
+          >
+            {copiedId === "code-batch" ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-slate-500">Example Batch Response (HTTP 201 Created):</p>
+          <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+{`{
+  "success": true,
+  "data": {
+    "orderId": "API-CF-BATCH-000185",
+    "batchCode": "CF-BATCH-000185",
+    "externalReference": "invoice-20260903-batch-001",
+    "status": "pending",
+    "cost": 55.00,
+    "estimatedCost": 55.00,
+    "totalCount": 2,
+    "processedCount": 0,
+    "reused": false,
+    "message": "Order submitted successfully",
+    "entries": [
+      {
+        "id": 101,
+        "number": "0541234567",
+        "allocationGB": 5,
+        "status": "pending"
+      },
+      {
+        "id": 102,
+        "number": "0541234568",
+        "allocationGB": 10,
+        "status": "pending"
+      }
+    ],
+    "filteredOutEntries": [
+      {
+        "number": "0240000000",
+        "allocationGB": 2,
+        "reason": "Number is blocked by provider",
+        "type": "blocked"
+      }
+    ],
+    "order": {
+      "orderId": "API-CF-BATCH-000185",
+      "externalReference": "invoice-20260903-batch-001",
+      "status": "pending",
+      "totalCount": 2,
+      "processedCount": 0,
+      "createdAt": "2026-09-23T20:30:00.000Z",
+      "updatedAt": "2026-09-23T20:30:00.000Z",
+      "entries": [...]
+    }
+  },
+  "requestId": "req_batch_839201"
+}`}
+          </pre>
+        </div>
+      </div>
+
       {/* Endpoints Table */}
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h3 className="text-base font-bold">API Endpoints Summary</h3>
@@ -387,19 +617,30 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
                 <td className="py-2.5 font-bold text-blue-600">POST</td>
                 <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">/v1/orders</td>
                 <td className="py-2.5 text-slate-500">orders:create</td>
-                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Create a new data order (supports Idempotency-Key)</td>
+                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Create order (single or batch with entries array)</td>
+              </tr>
+              <tr>
+                <td className="py-2.5 font-bold text-blue-600">POST</td>
+                <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span>/v1/orders/batch</span>
+                    <span className="rounded bg-emerald-50 px-1 py-0.5 text-[9px] font-bold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">Clickyfied</span>
+                  </div>
+                </td>
+                <td className="py-2.5 text-slate-500">orders:create</td>
+                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Submit multi-recipient batch order with auto blocked number filter</td>
               </tr>
               <tr>
                 <td className="py-2.5 font-bold text-emerald-600">GET</td>
                 <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">/v1/orders/:id</td>
                 <td className="py-2.5 text-slate-500">orders:read</td>
-                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Get single order details by Tskconnect order ID</td>
+                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Get order or batch details by orderId or batchCode</td>
               </tr>
               <tr>
                 <td className="py-2.5 font-bold text-emerald-600">GET</td>
                 <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">/v1/orders/reference/:ref</td>
                 <td className="py-2.5 text-slate-500">orders:read</td>
-                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Check order by your own external reference</td>
+                <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Check order or batch status by your external reference</td>
               </tr>
               <tr>
                 <td className="py-2.5 font-bold text-blue-600">POST</td>

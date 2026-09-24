@@ -82,6 +82,86 @@ export const openApiSpec = {
           reference: { type: "string", example: "SHOP-ORD-10001" },
         },
       },
+      BatchOrderEntry: {
+        type: "object",
+        required: ["number", "allocationGB"],
+        properties: {
+          number: { type: "string", example: "0541234567", description: "Recipient Ghanaian mobile phone number" },
+          allocationGB: { type: "number", example: 5, description: "Data allocation volume in GB" },
+        },
+      },
+      FilteredOutEntry: {
+        type: "object",
+        properties: {
+          number: { type: "string", example: "0240000000" },
+          allocationGB: { type: "number", example: 5 },
+          reason: { type: "string", example: "Number is blocked by provider" },
+          type: { type: "string", enum: ["blocked", "invalid", "duplicate", "in_flight", "unavailable"], example: "blocked" },
+        },
+      },
+      BatchOrderRequest: {
+        type: "object",
+        required: ["entries"],
+        properties: {
+          externalReference: { type: "string", example: "invoice-20260903-batch-001" },
+          reference: { type: "string", example: "invoice-20260903-batch-001" },
+          network: { type: "string", enum: ["MTN", "TELECEL", "AIRTELTIGO"], example: "MTN" },
+          callbackUrl: { type: "string", example: "https://partner.example.com/webhooks/orders" },
+          callbackSigningSecret: { type: "string", example: "partner-secret-key" },
+          entries: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BatchOrderEntry" },
+            example: [
+              { number: "0541234567", allocationGB: 5 },
+              { number: "0541234568", allocationGB: 10 },
+            ],
+          },
+        },
+      },
+      BatchOrderResponse: {
+        type: "object",
+        properties: {
+          orderId: { type: "string", example: "API-CF-BATCH-000185" },
+          batchCode: { type: "string", example: "CF-BATCH-000185" },
+          externalReference: { type: "string", example: "invoice-20260903-batch-001" },
+          status: { type: "string", enum: ["pending", "processing", "processed", "failed"], example: "pending" },
+          cost: { type: "number", example: 55.0 },
+          estimatedCost: { type: "number", example: 55.0 },
+          totalCount: { type: "integer", example: 2 },
+          processedCount: { type: "integer", example: 0 },
+          reused: { type: "boolean", example: false },
+          message: { type: "string", example: "Order submitted successfully" },
+          entries: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "integer", example: 101 },
+                number: { type: "string", example: "0541234567" },
+                allocationGB: { type: "number", example: 5 },
+                status: { type: "string", example: "pending" },
+              },
+            },
+          },
+          filteredOutEntries: {
+            type: "array",
+            items: { $ref: "#/components/schemas/FilteredOutEntry" },
+          },
+          order: {
+            type: "object",
+            properties: {
+              orderId: { type: "string", example: "API-CF-BATCH-000185" },
+              externalReference: { type: "string", example: "invoice-20260903-batch-001" },
+              status: { type: "string", example: "pending" },
+              totalCount: { type: "integer", example: 2 },
+              processedCount: { type: "integer", example: 0 },
+              createdAt: { type: "string", format: "date-time" },
+              updatedAt: { type: "string", format: "date-time" },
+              entries: { type: "array", items: { type: "object" } },
+            },
+          },
+        },
+      },
       Order: {
         type: "object",
         properties: {
@@ -421,8 +501,9 @@ export const openApiSpec = {
         },
       },
       post: {
-        summary: "Create Data Order",
-        description: "Creates and queues a new mobile data order. Requires Idempotency-Key header for safe retries.",
+        summary: "Create Data Order (Single or Batch)",
+        description:
+          "Creates and queues a new mobile data order. Accepts either a single order payload (`recipient`, `packageId`) or a batch order payload (`entries: [{ number, allocationGB }]`, matching Clickyfied batch format). Automatically filters blocked/invalid numbers. Requires Idempotency-Key header for safe retries.",
         parameters: [
           {
             name: "Idempotency-Key",
@@ -434,11 +515,54 @@ export const openApiSpec = {
         ],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/CreateOrderRequest" } } },
+          content: {
+            "application/json": {
+              schema: {
+                oneOf: [
+                  { $ref: "#/components/schemas/CreateOrderRequest" },
+                  { $ref: "#/components/schemas/BatchOrderRequest" },
+                ],
+              },
+            },
+          },
         },
         responses: {
           "201": {
-            description: "Order accepted",
+            description: "Order accepted (returns single order or batch payload)",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseSuccess" } } },
+          },
+          "400": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "402": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "409": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "503": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+        },
+      },
+    },
+    "/orders/batch": {
+      post: {
+        summary: "Submit Batch Order (Clickyfied Compatible)",
+        description:
+          "Dedicated endpoint to submit batch data orders for multiple recipients. Accepts an array of `entries: [{ number, allocationGB }]`. Blocked or invalid numbers are automatically segregated into `filteredOutEntries`. If at least one valid entry exists, 201 Created is returned.",
+        parameters: [
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            required: false,
+            schema: { type: "string" },
+            description: "Unique key to ensure idempotent submission.",
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BatchOrderRequest" },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Batch order created",
             content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseSuccess" } } },
           },
           "400": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },

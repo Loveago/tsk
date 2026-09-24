@@ -461,6 +461,44 @@ async function submitSingleBatchChunk(
     };
   }
 
+  // Create initial ClickyfiedBatch record and link claimed orders
+  const batchTotalAmount = targetOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+  try {
+    const initialBatch = await prisma.clickyfiedBatch.upsert({
+      where: { batchCode },
+      create: {
+        batchCode,
+        groupLabel,
+        status: "PROCESSING",
+        totalOrders: targetOrders.length,
+        totalGb,
+        totalAmount: batchTotalAmount,
+        pendingCount: targetOrders.length,
+        processedCount: 0,
+        failedCount: 0,
+        actorLabel,
+        idempotencyKey,
+      },
+      update: {
+        groupLabel,
+        status: "PROCESSING",
+        totalOrders: targetOrders.length,
+        totalGb,
+        totalAmount: batchTotalAmount,
+        pendingCount: targetOrders.length,
+      },
+    });
+
+    if (initialBatch?.id) {
+      await prisma.order.updateMany({
+        where: { id: { in: targetOrderIds } },
+        data: { clickyfiedBatchId: initialBatch.id },
+      });
+    }
+  } catch (batchInitErr) {
+    console.error(`[ClickyfiedBatch] Error creating initial ClickyfiedBatch record for ${batchCode}:`, batchInitErr);
+  }
+
   // Deduplicate entries by normalized phone number so Clickyfied never receives duplicates in the same batch
   const seenEntries = new Set<string>();
   const entries: Array<{ number: string; allocationGB: number }> = [];
@@ -724,6 +762,40 @@ async function submitSingleBatchChunk(
       }
     }
 
+    // Persist final ClickyfiedBatch state and metrics
+    try {
+      const finalOrders = await prisma.order.findMany({
+        where: { id: { in: targetOrderIds } },
+        select: { status: true },
+      });
+      const processedCount = finalOrders.filter((o) => o.status === "SUCCESS").length;
+      const failedCount = finalOrders.filter((o) => o.status === "FAILED" || o.status === "CANCELLED").length;
+      const pendingCount = finalOrders.filter((o) => o.status === "PROCESSING" || o.status === "PENDING").length;
+
+      let finalBatchStatus = "PROCESSING";
+      if (pendingCount === 0) {
+        if (failedCount === 0) finalBatchStatus = "COMPLETED";
+        else if (processedCount === 0) finalBatchStatus = "FAILED";
+        else finalBatchStatus = "PARTIALLY_COMPLETED";
+      }
+
+      await prisma.clickyfiedBatch.update({
+        where: { batchCode },
+        data: {
+          clickyfiedOrderId: batchOrderId,
+          status: finalBatchStatus,
+          processedCount,
+          failedCount,
+          pendingCount,
+          rawFilteredOut: parsedFilteredOut.length > 0 ? JSON.stringify(parsedFilteredOut) : null,
+          rawResponse: JSON.stringify(submitRes.raw),
+          lastSyncedAt: new Date(),
+        },
+      });
+    } catch (batchUpdateErr) {
+      console.error(`[ClickyfiedBatch] Failed to update ClickyfiedBatch record for ${batchCode}:`, batchUpdateErr);
+    }
+
     await recordAudit({
       actorLabel,
       action: "provider.clickyfied_mtn_batch_dispatched",
@@ -793,6 +865,20 @@ async function submitSingleBatchChunk(
         } catch {}
       }
 
+      try {
+        await prisma.clickyfiedBatch.update({
+          where: { batchCode },
+          data: {
+            status: "FAILED",
+            failedCount: targetOrders.length,
+            pendingCount: 0,
+            errorMessage: failReason,
+            rawFilteredOut: (batchErr as any)?.filteredOutEntries ? JSON.stringify((batchErr as any).filteredOutEntries) : null,
+            lastSyncedAt: new Date(),
+          },
+        });
+      } catch {}
+
       return {
         success: false,
         batchCode,
@@ -842,6 +928,18 @@ async function submitSingleBatchChunk(
         })),
       });
 
+      try {
+        await prisma.clickyfiedBatch.update({
+          where: { batchCode },
+          data: {
+            clickyfiedOrderId: verifiedOrderId,
+            status: "PROCESSING",
+            errorMessage: `Dispatched with network blip, confirmed on Clickyfied as ${verifiedOrderId}`,
+            lastSyncedAt: new Date(),
+          },
+        });
+      } catch {}
+
       return {
         success: true,
         batchCode,
@@ -877,6 +975,17 @@ async function submitSingleBatchChunk(
         changedBy: actorLabel,
       })),
     });
+
+    try {
+      await prisma.clickyfiedBatch.update({
+        where: { batchCode },
+        data: {
+          status: "PROCESSING",
+          errorMessage: batchErr?.message ? String(batchErr.message).slice(0, 500) : "Dispatch timeout / in flight",
+          lastSyncedAt: new Date(),
+        },
+      });
+    } catch {}
 
     return {
       success: false,
@@ -1284,5 +1393,614 @@ export function startClickyfiedBatchRunner() {
   setTimeout(tick, 3000);
   setInterval(tick, 10_000);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLICKYFIED BATCHES ADMIN & MANAGEMENT FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Backfills any existing Clickyfied batches from Order.externalReference (CF-BATCH-XXXXXX)
+ * into the dedicated ClickyfiedBatch table so all historical batches are visible immediately.
+ */
+export async function backfillPastClickyfiedBatches(): Promise<number> {
+  try {
+    const unlinkedBatches = await prisma.order.groupBy({
+      by: ["externalReference"],
+      where: {
+        externalReference: { startsWith: "CF-BATCH-" },
+        clickyfiedBatchId: null,
+      },
+      _count: { id: true },
+      _sum: { gbAmount: true, amount: true },
+    });
+
+    if (unlinkedBatches.length === 0) return 0;
+
+    let backfilled = 0;
+    for (const b of unlinkedBatches) {
+      const batchCode = b.externalReference;
+      if (!batchCode) continue;
+
+      const orders = await prisma.order.findMany({
+        where: { externalReference: batchCode },
+        select: {
+          id: true,
+          status: true,
+          gbAmount: true,
+          amount: true,
+          providerReference: true,
+          createdAt: true,
+        },
+      });
+
+      if (orders.length === 0) continue;
+
+      // Extract canonical orderId from providerReference
+      let clickyfiedOrderId: string | null = null;
+      for (const o of orders) {
+        if (o.providerReference && o.providerReference.startsWith("CLICKYFIED:")) {
+          const parts = o.providerReference.split(":");
+          if (parts[1] && parts[1] !== "BLOCKED") {
+            clickyfiedOrderId = parts[1];
+            break;
+          }
+        }
+      }
+
+      const totalOrders = orders.length;
+      const totalGb = orders.reduce((sum, o) => sum + o.gbAmount, 0);
+      const totalAmount = orders.reduce((sum, o) => sum + o.amount, 0);
+      const processedCount = orders.filter((o) => o.status === "SUCCESS").length;
+      const failedCount = orders.filter((o) => o.status === "FAILED" || o.status === "CANCELLED").length;
+      const pendingCount = orders.filter((o) => o.status === "PROCESSING" || o.status === "PENDING").length;
+
+      let status = "PROCESSING";
+      if (pendingCount === 0) {
+        if (failedCount === 0) status = "COMPLETED";
+        else if (processedCount === 0) status = "FAILED";
+        else status = "PARTIALLY_COMPLETED";
+      }
+
+      const maxGb = Math.max(...orders.map((o) => o.gbAmount));
+      const groupLabel = maxGb <= 5 ? "Group 1 (1–5 GB)" : "Group 2 (6+ GB)";
+      const minCreatedAt = orders.reduce((min, o) => (o.createdAt < min ? o.createdAt : min), orders[0].createdAt);
+
+      const batch = await prisma.clickyfiedBatch.upsert({
+        where: { batchCode },
+        create: {
+          batchCode,
+          clickyfiedOrderId,
+          groupLabel,
+          status,
+          totalOrders,
+          totalGb,
+          totalAmount,
+          processedCount,
+          failedCount,
+          pendingCount,
+          actorLabel: "System (Historical Backfill)",
+          createdAt: minCreatedAt,
+          updatedAt: new Date(),
+        },
+        update: {
+          clickyfiedOrderId: clickyfiedOrderId || undefined,
+          status,
+          totalOrders,
+          totalGb,
+          totalAmount,
+          processedCount,
+          failedCount,
+          pendingCount,
+        },
+      });
+
+      await prisma.order.updateMany({
+        where: { externalReference: batchCode },
+        data: { clickyfiedBatchId: batch.id },
+      });
+
+      backfilled++;
+    }
+
+    return backfilled;
+  } catch (err) {
+    console.error("[ClickyfiedBatch] Error backfilling past batches:", err);
+    return 0;
+  }
+}
+
+export interface ClickyfiedBatchesFilter {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  group?: string;
+  search?: string;
+}
+
+/**
+ * Returns a paginated list of all batches sent to Clickyfied with status breakdowns and summary metrics.
+ */
+export async function getClickyfiedBatches(params: ClickyfiedBatchesFilter = {}) {
+  // Ensure unlinked historical orders are backfilled
+  try {
+    await backfillPastClickyfiedBatches();
+  } catch {}
+
+  const page = Math.max(1, params.page || 1);
+  const pageSize = Math.min(100, Math.max(1, params.pageSize || 20));
+  const skip = (page - 1) * pageSize;
+
+  const where: any = {};
+  if (params.status && params.status !== "ALL") {
+    where.status = params.status;
+  }
+  if (params.group && params.group !== "ALL") {
+    where.groupLabel = { contains: params.group, mode: "insensitive" };
+  }
+  if (params.search && params.search.trim()) {
+    const q = params.search.trim();
+    where.OR = [
+      { batchCode: { contains: q, mode: "insensitive" } },
+      { clickyfiedOrderId: { contains: q, mode: "insensitive" } },
+      { errorMessage: { contains: q, mode: "insensitive" } },
+      {
+        orders: {
+          some: {
+            phoneNumber: { contains: q },
+          },
+        },
+      },
+    ];
+  }
+
+  try {
+    const [total, batches, metricsAgg, processingBatchesCount] = await Promise.all([
+      prisma.clickyfiedBatch.count({ where }),
+      prisma.clickyfiedBatch.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize,
+        include: {
+          _count: {
+            select: { orders: true },
+          },
+        },
+      }),
+      prisma.clickyfiedBatch.aggregate({
+        _count: { id: true },
+        _sum: {
+          totalGb: true,
+          totalOrders: true,
+          processedCount: true,
+          failedCount: true,
+          pendingCount: true,
+        },
+      }),
+      prisma.clickyfiedBatch.count({
+        where: { status: "PROCESSING" },
+      }),
+    ]);
+
+    return {
+      batches,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize) || 1,
+      metrics: {
+        totalBatches: metricsAgg._count.id || 0,
+        totalGb: metricsAgg._sum.totalGb || 0,
+        totalOrders: metricsAgg._sum.totalOrders || 0,
+        deliveredOrders: metricsAgg._sum.processedCount || 0,
+        failedOrders: metricsAgg._sum.failedCount || 0,
+        inFlightOrders: metricsAgg._sum.pendingCount || 0,
+        processingBatches: processingBatchesCount,
+      },
+    };
+  } catch (dbErr: any) {
+    console.error("[ClickyfiedBatch] Error querying batches:", dbErr?.message || dbErr);
+    return {
+      batches: [],
+      total: 0,
+      page,
+      pageSize,
+      totalPages: 1,
+      metrics: {
+        totalBatches: 0,
+        totalGb: 0,
+        totalOrders: 0,
+        deliveredOrders: 0,
+        failedOrders: 0,
+        inFlightOrders: 0,
+        processingBatches: 0,
+      },
+      error: dbErr?.message || "Failed to load batches from database",
+    };
+  }
+}
+
+/**
+ * Returns comprehensive details for a specific batch, including all linked orders,
+ * Clickyfied canonical order ID, raw response, blocked entries, and status logs.
+ */
+export async function getClickyfiedBatchDetail(idOrBatchCode: string) {
+  const batch = await prisma.clickyfiedBatch.findFirst({
+    where: {
+      OR: [{ id: idOrBatchCode }, { batchCode: idOrBatchCode }],
+    },
+    include: {
+      orders: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+          history: {
+            orderBy: { createdAt: "desc" },
+            take: 5,
+          },
+        },
+        orderBy: { id: "asc" },
+      },
+    },
+  });
+
+  if (!batch) return null;
+
+  let parsedFilteredOut: any[] = [];
+  if (batch.rawFilteredOut) {
+    try {
+      parsedFilteredOut = JSON.parse(batch.rawFilteredOut);
+    } catch {}
+  }
+
+  let parsedRawResponse: any = null;
+  if (batch.rawResponse) {
+    try {
+      parsedRawResponse = JSON.parse(batch.rawResponse);
+    } catch {}
+  }
+
+  return {
+    ...batch,
+    parsedFilteredOut,
+    parsedRawResponse,
+  };
+}
+
+/**
+ * Syncs delivery status for a batch from Clickyfied's API, updating individual orders and batch counters.
+ */
+export async function syncClickyfiedBatchStatus(
+  idOrBatchCode: string,
+  actorLabel = "Staff Manual Sync"
+): Promise<{
+  success: boolean;
+  batch: any;
+  updatedCount: number;
+  message?: string;
+}> {
+  const batch = await prisma.clickyfiedBatch.findFirst({
+    where: {
+      OR: [{ id: idOrBatchCode }, { batchCode: idOrBatchCode }],
+    },
+    include: {
+      orders: true,
+    },
+  });
+
+  if (!batch) {
+    throw new Error(`Clickyfied batch not found: ${idOrBatchCode}`);
+  }
+
+  const client = new ClickyfiedClient();
+  const queryTarget = batch.clickyfiedOrderId || batch.batchCode;
+
+  let details: any;
+  try {
+    details = await client.getOrderStatus(queryTarget);
+  } catch (err: any) {
+    // If order lookup by current ID failed, attempt resolving by batchCode
+    if (batch.batchCode && batch.batchCode !== queryTarget) {
+      try {
+        const canonical = await client.resolveCanonicalOrderId(batch.batchCode);
+        if (canonical && canonical !== batch.batchCode) {
+          details = await client.getOrderStatus(canonical);
+          await prisma.clickyfiedBatch.update({
+            where: { id: batch.id },
+            data: { clickyfiedOrderId: canonical },
+          });
+        } else {
+          throw err;
+        }
+      } catch {
+        throw new Error(`Failed to query Clickyfied API for batch #${batch.batchCode}: ${err?.message || "Unknown error"}`);
+      }
+    } else {
+      throw new Error(`Failed to query Clickyfied API for batch #${batch.batchCode}: ${err?.message || "Unknown error"}`);
+    }
+  }
+
+  const rawAny = details.raw as any;
+  const returnedEntries: any[] = rawAny?.order?.entries || rawAny?.entries || [];
+  const rawFiltered: any[] = rawAny?.order?.filteredOutEntries || rawAny?.filteredOutEntries || [];
+
+  const canonicalId =
+    rawAny?.order?.orderId ||
+    rawAny?.orderId ||
+    batch.clickyfiedOrderId ||
+    batch.batchCode;
+
+  // Build lookup maps for fast matching
+  const parsedEntries: Array<{
+    id?: string | number;
+    number?: string;
+    normPhone: string;
+    allocationGb?: number;
+    status?: string;
+  }> = [];
+
+  for (const re of returnedEntries) {
+    const num = re.number || re.phoneNumber || re.phone || "";
+    const norm = normalizePhoneLast9(String(num));
+    const st = re.status || re.currentStatus || re.deliveryStatus;
+    const eId = re.id ?? re.orderEntryId ?? re.entryId ?? re._id;
+    const alloc = typeof re.allocationGB === "number" ? re.allocationGB : typeof re.allocationGb === "number" ? re.allocationGb : undefined;
+    if (norm) {
+      parsedEntries.push({
+        id: eId !== undefined && eId !== null ? eId : undefined,
+        number: num,
+        normPhone: norm,
+        allocationGb: alloc,
+        status: st,
+      });
+    }
+  }
+
+  const claimedEntryIndices = new Set<number>();
+  let updatedOrdersCount = 0;
+
+  for (const order of batch.orders) {
+    const phoneNorm = normalizePhoneLast9(order.phoneNumber);
+
+    let matchedIdx = parsedEntries.findIndex(
+      (pe, idx) =>
+        !claimedEntryIndices.has(idx) &&
+        pe.normPhone === phoneNorm &&
+        pe.allocationGb !== undefined &&
+        Math.abs(pe.allocationGb - order.gbAmount) <= 0.1
+    );
+    if (matchedIdx === -1) {
+      matchedIdx = parsedEntries.findIndex(
+        (pe, idx) => !claimedEntryIndices.has(idx) && pe.normPhone === phoneNorm
+      );
+    }
+
+    if (matchedIdx !== -1) {
+      claimedEntryIndices.add(matchedIdx);
+      const matched = parsedEntries[matchedIdx];
+      const entryRawStatus = matched.status;
+      const entryId = matched.id;
+
+      let nextStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" = order.status as any;
+      if (entryRawStatus) {
+        const mapped = mapClickyfiedStatus(entryRawStatus);
+        if (["SUCCESS", "FAILED", "CANCELLED", "PROCESSING"].includes(mapped)) {
+          nextStatus = mapped as any;
+        }
+      }
+
+      const nextProviderRef =
+        entryId !== undefined && entryId !== null
+          ? `CLICKYFIED:${canonicalId}:${entryId}`
+          : `CLICKYFIED:${canonicalId}`;
+
+      const statusChanged = order.status !== nextStatus;
+      const refChanged = order.providerReference !== nextProviderRef;
+
+      if (statusChanged || refChanged) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: nextStatus,
+            providerReference: nextProviderRef,
+            failureReason: nextStatus === "FAILED" ? `Reported by provider: ${entryRawStatus}` : null,
+          },
+        });
+
+        if (statusChanged) {
+          await prisma.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              status: nextStatus,
+              previousStatus: order.status,
+              note: `Status synchronized from Clickyfied (${entryRawStatus || nextStatus}) for batch #${batch.batchCode}`,
+              changedBy: actorLabel,
+            },
+          });
+          updatedOrdersCount++;
+        }
+      }
+    }
+  }
+
+  // Recalculate batch statistics
+  const currentOrders = await prisma.order.findMany({
+    where: { externalReference: batch.batchCode },
+    select: { status: true },
+  });
+
+  const processedCount = currentOrders.filter((o) => o.status === "SUCCESS").length;
+  const failedCount = currentOrders.filter((o) => o.status === "FAILED" || o.status === "CANCELLED").length;
+  const pendingCount = currentOrders.filter((o) => o.status === "PROCESSING" || o.status === "PENDING").length;
+
+  let overallBatchStatus = "PROCESSING";
+  if (pendingCount === 0) {
+    if (failedCount === 0) overallBatchStatus = "COMPLETED";
+    else if (processedCount === 0) overallBatchStatus = "FAILED";
+    else overallBatchStatus = "PARTIALLY_COMPLETED";
+  }
+
+  const updatedBatch = await prisma.clickyfiedBatch.update({
+    where: { id: batch.id },
+    data: {
+      clickyfiedOrderId: canonicalId,
+      status: overallBatchStatus,
+      processedCount,
+      failedCount,
+      pendingCount,
+      rawFilteredOut: rawFiltered.length > 0 ? JSON.stringify(rawFiltered) : batch.rawFilteredOut,
+      rawResponse: JSON.stringify(details.raw),
+      lastSyncedAt: new Date(),
+    },
+  });
+
+  // Recompute parent batch statuses if orders changed
+  if (updatedOrdersCount > 0) {
+    const parentBatchIds = Array.from(
+      new Set(batch.orders.map((o) => o.batchId).filter(Boolean) as string[])
+    );
+    const { recomputeBatchStatus } = await import("../orders");
+    for (const bId of parentBatchIds) {
+      try {
+        await recomputeBatchStatus(bId);
+      } catch {}
+    }
+  }
+
+  await recordAudit({
+    actorLabel,
+    action: "provider.clickyfied_batch_synced",
+    target: `clickyfied:batch:${batch.batchCode}`,
+    newValue: JSON.stringify({
+      batchCode: batch.batchCode,
+      updatedOrdersCount,
+      processedCount,
+      failedCount,
+      pendingCount,
+      status: overallBatchStatus,
+    }),
+  });
+
+  return {
+    success: true,
+    batch: updatedBatch,
+    updatedCount: updatedOrdersCount,
+    message: `Batch #${batch.batchCode} synced successfully (${updatedOrdersCount} orders updated).`,
+  };
+}
+
+/**
+ * Resets failed orders in a batch back to PENDING so they can be re-dispatched safely.
+ */
+export async function retryClickyfiedBatchFailedOrders(
+  idOrBatchCode: string,
+  actorLabel = "Staff Retry"
+): Promise<{
+  success: boolean;
+  retriedCount: number;
+  message: string;
+}> {
+  const batch = await prisma.clickyfiedBatch.findFirst({
+    where: {
+      OR: [{ id: idOrBatchCode }, { batchCode: idOrBatchCode }],
+    },
+    include: {
+      orders: {
+        where: { status: "FAILED" },
+      },
+    },
+  });
+
+  if (!batch) {
+    throw new Error(`Clickyfied batch not found: ${idOrBatchCode}`);
+  }
+
+  const failedOrders = batch.orders;
+  if (failedOrders.length === 0) {
+    return {
+      success: true,
+      retriedCount: 0,
+      message: `No failed orders found in batch #${batch.batchCode} to retry.`,
+    };
+  }
+
+  const failedIds = failedOrders.map((o) => o.id);
+
+  // Reset failed orders to PENDING and detach from current batch
+  await prisma.order.updateMany({
+    where: { id: { in: failedIds } },
+    data: {
+      status: "PENDING",
+      providerReference: null,
+      externalReference: null,
+      failureReason: null,
+      clickyfiedBatchId: null,
+    },
+  });
+
+  await prisma.orderStatusHistory.createMany({
+    data: failedIds.map((id) => ({
+      orderId: id,
+      status: "PENDING",
+      previousStatus: "FAILED",
+      note: `Retried failed order from Clickyfied batch #${batch.batchCode} by ${actorLabel}. Returned to pending queue.`,
+      changedBy: actorLabel,
+    })),
+  });
+
+  // Recompute batch counts
+  const remainingOrders = await prisma.order.findMany({
+    where: { clickyfiedBatchId: batch.id },
+    select: { status: true, gbAmount: true, amount: true },
+  });
+
+  const totalOrders = remainingOrders.length;
+  const totalGb = remainingOrders.reduce((sum, o) => sum + o.gbAmount, 0);
+  const totalAmount = remainingOrders.reduce((sum, o) => sum + o.amount, 0);
+  const processedCount = remainingOrders.filter((o) => o.status === "SUCCESS").length;
+  const failedCount = remainingOrders.filter((o) => o.status === "FAILED").length;
+  const pendingCount = remainingOrders.filter((o) => o.status === "PROCESSING" || o.status === "PENDING").length;
+
+  let newBatchStatus = "PROCESSING";
+  if (totalOrders === 0) {
+    newBatchStatus = "FAILED";
+  } else if (pendingCount === 0) {
+    if (failedCount === 0) newBatchStatus = "COMPLETED";
+    else if (processedCount === 0) newBatchStatus = "FAILED";
+    else newBatchStatus = "PARTIALLY_COMPLETED";
+  }
+
+  await prisma.clickyfiedBatch.update({
+    where: { id: batch.id },
+    data: {
+      totalOrders,
+      totalGb,
+      totalAmount,
+      processedCount,
+      failedCount,
+      pendingCount,
+      status: newBatchStatus,
+      updatedAt: new Date(),
+    },
+  });
+
+  await recordAudit({
+    actorLabel,
+    action: "provider.clickyfied_batch_retried",
+    target: `clickyfied:batch:${batch.batchCode}`,
+    newValue: JSON.stringify({
+      batchCode: batch.batchCode,
+      retriedCount: failedIds.length,
+    }),
+  });
+
+  return {
+    success: true,
+    retriedCount: failedIds.length,
+    message: `Successfully reset ${failedIds.length} failed order(s) back to the pending queue for re-dispatch.`,
+  };
+}
+
 
 
