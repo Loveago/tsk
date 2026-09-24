@@ -2096,9 +2096,16 @@ export async function syncClickyfiedBatchStatus(
       let nextStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" = order.status as any;
       if (entryRawStatus) {
         const mapped = mapClickyfiedStatus(entryRawStatus);
-        if (["SUCCESS", "FAILED", "CANCELLED", "PROCESSING"].includes(mapped)) {
+        // Only allow status upgrades to terminal states if the raw status explicitly says so.
+        // Never map to SUCCESS from an empty/ambiguous status.
+        if (["SUCCESS", "FAILED", "CANCELLED"].includes(mapped)) {
           nextStatus = mapped as any;
+        } else if (mapped === "PROCESSING") {
+          // Keep the order in PROCESSING — it's confirmed in-flight on the provider.
+          nextStatus = "PROCESSING";
         }
+        // If mapped === "PENDING", keep existing status — don't downgrade a PROCESSING order back to PENDING
+        // just because Clickyfied reports it as "queued"; that's expected for recently dispatched batches.
       }
 
       const nextProviderRef =
@@ -2511,7 +2518,9 @@ export async function reconcileFailedClickyfiedOrders(
 
     // If an entry exists on Clickyfied for this order:
     if (matchedEntry) {
-      const rawEntryStatus = matchedEntry.status || matchedEntry.currentStatus || matchedEntry.deliveryStatus || "success";
+      // IMPORTANT: Do NOT default to "success" if status is missing — the entry may still be queued.
+      // Defaulting to "pending" maps safely to PROCESSING (in-flight), never to SUCCESS.
+      const rawEntryStatus = matchedEntry.status || matchedEntry.currentStatus || matchedEntry.deliveryStatus || "pending";
       const mapped = mapClickyfiedStatus(rawEntryStatus);
 
       // If Clickyfied fulfilled it or has it in-flight:
