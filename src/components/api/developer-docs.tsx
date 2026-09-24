@@ -462,15 +462,13 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
         </div>
       </div>
 
-      {/* Batch Orders (Clickyfied Compatible) */}
+      {/* Batch Orders (Multiple Recipients) */}
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold">Batch Orders (Multiple Recipients)</h3>
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-                Clickyfied Compatible
-              </span>
+
             </div>
             <p className="text-xs text-slate-500">POST /v1/orders or POST /v1/orders/batch</p>
           </div>
@@ -622,10 +620,7 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
               <tr>
                 <td className="py-2.5 font-bold text-blue-600">POST</td>
                 <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">
-                  <div className="flex items-center gap-2">
-                    <span>/v1/orders/batch</span>
-                    <span className="rounded bg-emerald-50 px-1 py-0.5 text-[9px] font-bold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">Clickyfied</span>
-                  </div>
+                  <span>/v1/orders/batch</span>
                 </td>
                 <td className="py-2.5 text-slate-500">orders:create</td>
                 <td className="py-2.5 font-sans text-slate-600 dark:text-slate-400">Submit multi-recipient batch order with auto blocked number filter</td>

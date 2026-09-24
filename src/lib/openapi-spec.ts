@@ -503,7 +503,7 @@ export const openApiSpec = {
       post: {
         summary: "Create Data Order (Single or Batch)",
         description:
-          "Creates and queues a new mobile data order. Accepts either a single order payload (`recipient`, `packageId`) or a batch order payload (`entries: [{ number, allocationGB }]`, matching Clickyfied batch format). Automatically filters blocked/invalid numbers. Requires Idempotency-Key header for safe retries.",
+          "Creates and queues a new mobile data order. Accepts either a single order payload (`recipient`, `packageId`) or a batch order payload (`entries: [{ number, allocationGB }]`). Automatically filters blocked/invalid numbers. Requires Idempotency-Key header for safe retries.",
         parameters: [
           {
             name: "Idempotency-Key",
@@ -540,7 +540,7 @@ export const openApiSpec = {
     },
     "/orders/batch": {
       post: {
-        summary: "Submit Batch Order (Clickyfied Compatible)",
+        summary: "Submit Batch Order",
         description:
           "Dedicated endpoint to submit batch data orders for multiple recipients. Accepts an array of `entries: [{ number, allocationGB }]`. Blocked or invalid numbers are automatically segregated into `filteredOutEntries`. If at least one valid entry exists, 201 Created is returned.",
         parameters: [

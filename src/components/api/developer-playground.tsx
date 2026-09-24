@@ -151,7 +151,7 @@ const PLAYGROUND_ENDPOINTS: PlaygroundEndpoint[] = [
     path: "/v1/orders",
     hasBody: true,
     scope: "orders:create",
-    description: "Submit a multi-recipient batch order (Clickyfied compatible format). Automatically filters blocked numbers.",
+    description: "Submit a multi-recipient batch order. Automatically filters blocked numbers.",
     defaultBody: JSON.stringify(
       {
         externalReference: `BATCH-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -283,6 +283,12 @@ const PLAYGROUND_ENDPOINTS: PlaygroundEndpoint[] = [
   },
 ];
 
+// Order-creation endpoints that get sandboxed — no real orders created in playground
+const SANDBOXED_ENDPOINT_IDS = ["post-order", "post-batch-order", "post-orders-batch-endpoint"];
+function isSandboxedEndpoint(endpointId: string): boolean {
+  return SANDBOXED_ENDPOINT_IDS.includes(endpointId);
+}
+
 export function DeveloperPlayground({
   credentials,
   initialEndpointId,
@@ -362,46 +368,38 @@ export function DeveloperPlayground({
     const startTime = Date.now();
 
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
+      // Always route through the server-side sandbox proxy.
+      // Order-creation endpoints return mocked responses; reads are forwarded transparently.
+      const proxyRes = await fetch("/api/developer/playground/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: activeEndpoint.method,
+          path: customPath,
+          body: activeEndpoint.hasBody ? requestBody.trim() : undefined,
+          apiKey: customKey.trim() || undefined,
+          idempotencyKey: activeEndpoint.method === "POST" ? idempotencyKey.trim() : undefined,
+        }),
+      });
 
-      if (customKey.trim()) {
-        headers["Authorization"] = `Bearer ${customKey.trim()}`;
-      }
-
-      if (activeEndpoint.method === "POST" && idempotencyKey.trim()) {
-        headers["Idempotency-Key"] = idempotencyKey.trim();
-      }
-
-      const options: RequestInit = {
-        method: activeEndpoint.method,
-        headers,
-      };
-
-      if (activeEndpoint.hasBody && requestBody.trim()) {
-        options.body = requestBody.trim();
-      }
-
-      const res = await fetch(customPath, options);
       const latency = Date.now() - startTime;
       setDurationMs(latency);
-      setResponseStatus(res.status);
 
-      const headerObj: Record<string, string> = {};
-      res.headers.forEach((val, key) => {
-        headerObj[key] = val;
-      });
-      setResponseHeaders(headerObj);
+      const proxyData = await proxyRes.json();
 
-      let text = "";
-      try {
-        const json = await res.json();
-        text = JSON.stringify(json, null, 2);
-      } catch {
-        text = await res.text();
+      if (proxyData.proxied) {
+        // Pass-through response from a read/non-mutating endpoint
+        setResponseStatus(proxyData.status);
+        setResponseHeaders(proxyData.headers ?? {});
+        setResponseJson(JSON.stringify(proxyData.body, null, 2));
+      } else {
+        // Sandboxed mock response for order-creation endpoints
+        setResponseStatus(proxyRes.status === 201 ? 201 : proxyRes.status);
+        const headerObj: Record<string, string> = {};
+        proxyRes.headers.forEach((val, key) => { headerObj[key] = val; });
+        setResponseHeaders(headerObj);
+        setResponseJson(JSON.stringify(proxyData, null, 2));
       }
-      setResponseJson(text);
     } catch (err: any) {
       setDurationMs(Date.now() - startTime);
       setResponseStatus(500);
@@ -433,9 +431,12 @@ export function DeveloperPlayground({
               <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
                 Live Console
               </span>
+              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                Order endpoints sandboxed
+              </span>
             </div>
             <p className="text-xs text-slate-500">
-              Test endpoints directly with live requests and inspect responses in real time.
+              Read endpoints execute live. Order creation endpoints are fully sandboxed — no real orders, no balance changes.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -494,6 +495,19 @@ export function DeveloperPlayground({
             </div>
           </div>
         </div>
+
+        {/* Sandbox Warning Banner — shown for order-creation endpoints */}
+        {isSandboxedEndpoint(selectedEndpointId) && (
+          <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800/60 dark:bg-amber-950/30">
+            <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white">S</span>
+            <div>
+              <p className="font-semibold text-amber-800 dark:text-amber-300">Playground Sandbox Mode</p>
+              <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+                This endpoint is <strong>fully sandboxed</strong> in the playground. The response below is simulated — no order is created in the system and your wallet balance is not touched. To test live production orders, use your API key directly from your integration.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Endpoint Info & Quick Samples Banner */}
         <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-xs dark:border-slate-800/80 dark:bg-slate-800/40">
@@ -620,7 +634,7 @@ export function DeveloperPlayground({
       {/* Response Panel */}
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h3 className="text-base font-bold">Response</h3>
             {responseStatus !== null && (
               <span
@@ -638,6 +652,11 @@ export function DeveloperPlayground({
             {durationMs !== null && (
               <span className="flex items-center gap-1 text-xs text-slate-400">
                 <Clock className="h-3.5 w-3.5" /> {durationMs}ms
+              </span>
+            )}
+            {responseJson && isSandboxedEndpoint(selectedEndpointId) && (
+              <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                ⚠ Simulated · No real order created
               </span>
             )}
           </div>
