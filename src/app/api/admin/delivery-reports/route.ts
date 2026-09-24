@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
               gbAmount: true,
               amount: true,
               status: true,
+              createdAt: true,
               completedAt: true,
               failureReason: true,
               providerReference: true,

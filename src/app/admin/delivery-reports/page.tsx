@@ -42,6 +42,7 @@ interface ReportRow {
     gbAmount: number;
     amount: number;
     status: string;
+    createdAt: string;
     completedAt: string | null;
     failureReason: string | null;
     batch: { batchCode: string } | null;
@@ -311,6 +312,9 @@ export default function DeliveryReportsPage() {
                           {r.order.phoneNumber} · {r.order.gbAmount} GB {r.order.network}
                         </p>
                         <p className="text-xs text-slate-400">{formatGHS(r.order.amount)}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400" title="Order purchase time">
+                          🕐 {formatDateTime(r.order.createdAt)}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={r.order.status} />

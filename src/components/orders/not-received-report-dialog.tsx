@@ -33,6 +33,7 @@ export interface NotReceivedReportDetail {
     gbAmount: number;
     amount: number;
     status: string;
+    createdAt: string;
     completedAt: string | null;
     batch: { batchCode: string } | null;
   };

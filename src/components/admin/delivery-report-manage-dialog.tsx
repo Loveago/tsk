@@ -280,6 +280,14 @@ export function DeliveryReportManageDialog({
                 <p className="text-[10px] uppercase tracking-wider text-slate-400">Order Status</p>
                 <div className="mt-0.5"><StatusBadge status={report.order.status} /></div>
               </div>
+              {report.order.createdAt && (
+                <div className="col-span-2 sm:col-span-4">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-400">Purchased</p>
+                  <p className="font-medium text-slate-800 dark:text-slate-200">
+                    {formatDateTime(report.order.createdAt)}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Customer reason / message */}

@@ -54,6 +54,7 @@ export async function GET(
             gbAmount: true,
             amount: true,
             status: true,
+            createdAt: true,
             completedAt: true,
             batch: { select: { batchCode: true } },
           },
