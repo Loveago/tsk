@@ -804,6 +804,31 @@ async function submitSingleBatchChunk(
       const matchedEntry = matchedIdx !== -1 ? parsedEntries[matchedIdx] : null;
       if (matchedIdx !== -1) {
         claimedEntryIndices.add(matchedIdx);
+      } else {
+        // Recipient was not accepted into Clickyfied's order entries and was not in filteredOutEntries.
+        // We MUST NOT leave this order in PROCESSING with a provider reference that doesn't contain it!
+        // Revert it back to PENDING so it can be picked up in the next cycle.
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: "PENDING",
+            providerReference: null,
+            externalReference: null,
+            clickyfiedBatchId: null,
+            failureReason: `Excluded by provider from batch #${batchCode} (${batchOrderId}). Requeued for next cycle.`,
+          },
+        });
+
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: "PENDING",
+            previousStatus: "PROCESSING",
+            note: `Excluded by provider from batch #${batchCode} (${batchOrderId}). Reverted to pending queue for next batch.`,
+            changedBy: actorLabel,
+          },
+        });
+        continue;
       }
 
       const entryRawStatus = matchedEntry?.status;
@@ -865,15 +890,20 @@ async function submitSingleBatchChunk(
     // Persist final ClickyfiedBatch state and metrics
     try {
       const finalOrders = await prisma.order.findMany({
-        where: { id: { in: targetOrderIds } },
-        select: { status: true },
+        where: { id: { in: targetOrderIds }, status: { not: "PENDING" } },
+        select: { status: true, gbAmount: true, amount: true },
       });
+      const acceptedCount = finalOrders.length;
+      const acceptedGb = finalOrders.reduce((sum, o) => sum + o.gbAmount, 0);
+      const acceptedAmount = finalOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
       const processedCount = finalOrders.filter((o) => o.status === "SUCCESS").length;
       const failedCount = finalOrders.filter((o) => o.status === "FAILED" || o.status === "CANCELLED").length;
-      const pendingCount = finalOrders.filter((o) => o.status === "PROCESSING" || o.status === "PENDING").length;
+      const pendingCount = finalOrders.filter((o) => o.status === "PROCESSING").length;
 
       let finalBatchStatus = "PROCESSING";
-      if (pendingCount === 0) {
+      if (acceptedCount === 0) {
+        finalBatchStatus = "FAILED";
+      } else if (pendingCount === 0) {
         if (failedCount === 0) finalBatchStatus = "COMPLETED";
         else if (processedCount === 0) finalBatchStatus = "FAILED";
         else finalBatchStatus = "PARTIALLY_COMPLETED";
@@ -884,6 +914,9 @@ async function submitSingleBatchChunk(
         data: {
           clickyfiedOrderId: batchOrderId,
           status: finalBatchStatus,
+          totalOrders: acceptedCount,
+          totalGb: acceptedGb,
+          totalAmount: acceptedAmount,
           processedCount,
           failedCount,
           pendingCount,
@@ -2012,6 +2045,29 @@ export async function syncClickyfiedBatchStatus(
     }
   }
 
+  const parsedFilteredOut: Array<{
+    number: string;
+    normPhone: string;
+    allocationGb?: number;
+    reason: string;
+    type: string;
+  }> = [];
+
+  for (const fo of rawFiltered) {
+    const num = fo.number || fo.phone || fo.phoneNumber || "";
+    const norm = normalizePhoneLast9(String(num));
+    const alloc = typeof fo.allocationGB === "number" ? fo.allocationGB : typeof fo.allocationGb === "number" ? fo.allocationGb : undefined;
+    if (norm) {
+      parsedFilteredOut.push({
+        number: String(num),
+        normPhone: norm,
+        allocationGb: alloc,
+        reason: fo.reason || "Number is blocked by provider",
+        type: fo.type || "blocked",
+      });
+    }
+  }
+
   const claimedEntryIndices = new Set<number>();
   let updatedOrdersCount = 0;
 
@@ -2076,21 +2132,77 @@ export async function syncClickyfiedBatchStatus(
           updatedOrdersCount++;
         }
       }
+    } else {
+      // Order was NOT in Clickyfied entries
+      // Check if order was blocked / filtered out by Clickyfied
+      const matchedFiltered = parsedFilteredOut.find(
+        (fo) => fo.normPhone === phoneNorm
+      );
+      if (matchedFiltered) {
+        const failReason = `Blocked by provider: ${matchedFiltered.reason || "Number blocked"}`;
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: "FAILED",
+            providerReference: `CLICKYFIED:${canonicalId}:BLOCKED`,
+            failureReason: failReason,
+          },
+        });
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: "FAILED",
+            previousStatus: order.status,
+            note: `Excluded from Clickyfied batch #${batch.batchCode}: ${failReason}`,
+            changedBy: actorLabel,
+          },
+        });
+        updatedOrdersCount++;
+      } else if (order.status === "PROCESSING" || order.status === "PENDING") {
+        // Order never existed on Clickyfied in this batch!
+        // Revert it back to PENDING so it unblocks the queue and can be dispatched cleanly!
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: "PENDING",
+            providerReference: null,
+            externalReference: null,
+            clickyfiedBatchId: null,
+            failureReason: `Not found on Clickyfied in batch #${batch.batchCode} (${canonicalId}). Restored to pending queue.`,
+          },
+        });
+
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: "PENDING",
+            previousStatus: order.status,
+            note: `Restored to pending queue: Recipient was never received by Clickyfied in batch #${batch.batchCode} (${canonicalId}).`,
+            changedBy: actorLabel,
+          },
+        });
+        updatedOrdersCount++;
+      }
     }
   }
 
-  // Recalculate batch statistics
+  // Recalculate batch statistics based on orders ACTUALLY in the batch
   const currentOrders = await prisma.order.findMany({
-    where: { externalReference: batch.batchCode },
-    select: { status: true },
+    where: { clickyfiedBatchId: batch.id, status: { not: "PENDING" } },
+    select: { status: true, gbAmount: true, amount: true },
   });
 
+  const totalOrders = currentOrders.length;
+  const totalGb = currentOrders.reduce((sum, o) => sum + o.gbAmount, 0);
+  const totalAmount = currentOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
   const processedCount = currentOrders.filter((o) => o.status === "SUCCESS").length;
   const failedCount = currentOrders.filter((o) => o.status === "FAILED" || o.status === "CANCELLED").length;
-  const pendingCount = currentOrders.filter((o) => o.status === "PROCESSING" || o.status === "PENDING").length;
+  const pendingCount = currentOrders.filter((o) => o.status === "PROCESSING").length;
 
   let overallBatchStatus = "PROCESSING";
-  if (pendingCount === 0) {
+  if (totalOrders === 0) {
+    overallBatchStatus = "FAILED";
+  } else if (pendingCount === 0) {
     if (failedCount === 0) overallBatchStatus = "COMPLETED";
     else if (processedCount === 0) overallBatchStatus = "FAILED";
     else overallBatchStatus = "PARTIALLY_COMPLETED";
@@ -2101,6 +2213,9 @@ export async function syncClickyfiedBatchStatus(
     data: {
       clickyfiedOrderId: canonicalId,
       status: overallBatchStatus,
+      totalOrders,
+      totalGb,
+      totalAmount,
       processedCount,
       failedCount,
       pendingCount,
@@ -2636,39 +2751,90 @@ export async function reconcileStrandedClickyfiedBatches(
   const config = await getProviderRoutingConfig();
   const client = new ClickyfiedClient(config.clickyfied);
 
-  // 1. Batches that are in PROCESSING but lack a confirmed Clickyfied canonical order ID
-  const strandedBatches = await prisma.clickyfiedBatch.findMany({
+  // 1. All active batches that are in PROCESSING or have unconfirmed/pending orders
+  const activeBatches = await prisma.clickyfiedBatch.findMany({
     where: {
-      status: "PROCESSING",
       OR: [
-        { clickyfiedOrderId: null },
-        { clickyfiedOrderId: "" },
-        { clickyfiedOrderId: { startsWith: "CF-BATCH-" } },
+        { status: "PROCESSING" },
+        { pendingCount: { gt: 0 } },
       ],
     },
     include: {
       orders: true,
     },
+    orderBy: { createdAt: "desc" },
+    take: 100,
   });
 
   let unstrandedOrdersCount = 0;
   let confirmedOrdersCount = 0;
 
-  for (const b of strandedBatches) {
-    let confirmedOrderId: string | null = null;
-    try {
-      const canonical = await client.resolveCanonicalOrderId(b.batchCode);
-      if (canonical && canonical !== b.batchCode && canonical.startsWith("order-")) {
-        confirmedOrderId = canonical;
-      }
-    } catch {}
-
-    if (confirmedOrderId) {
+  for (const b of activeBatches) {
+    let confirmedOrderId = b.clickyfiedOrderId;
+    if (!confirmedOrderId || confirmedOrderId.startsWith("CF-BATCH-")) {
       try {
-        await syncClickyfiedBatchStatus(b.id, actorLabel);
-        confirmedOrdersCount += b.orders.length;
+        const canonical = await client.resolveCanonicalOrderId(b.batchCode);
+        if (canonical && canonical !== b.batchCode && canonical.startsWith("order-")) {
+          confirmedOrderId = canonical;
+        }
       } catch {}
+    }
+
+    if (confirmedOrderId && confirmedOrderId.startsWith("order-")) {
+      try {
+        const initialPending = b.orders.filter((o) => o.status === "PROCESSING" || o.status === "PENDING").length;
+        await syncClickyfiedBatchStatus(b.id, actorLabel);
+        
+        // Count how many orders in this batch were restored back to PENDING (unlinked from this batch)
+        const currentOrdersAfterSync = await prisma.order.findMany({
+          where: { id: { in: b.orders.map((o) => o.id) } },
+          select: { id: true, status: true },
+        });
+        const newlyPending = currentOrdersAfterSync.filter((o) => o.status === "PENDING").length;
+        const newlySuccess = currentOrdersAfterSync.filter((o) => o.status === "SUCCESS").length;
+
+        unstrandedOrdersCount += newlyPending;
+        confirmedOrdersCount += newlySuccess;
+      } catch (syncErr: any) {
+        // If Clickyfied returns 404 or cannot find this order:
+        const msg = (syncErr?.message || "").toLowerCase();
+        if (msg.includes("404") || msg.includes("not found")) {
+          const orderIds = b.orders.filter((o) => o.status !== "SUCCESS").map((o) => o.id);
+          if (orderIds.length > 0) {
+            await prisma.order.updateMany({
+              where: { id: { in: orderIds } },
+              data: {
+                status: "PENDING",
+                providerReference: null,
+                externalReference: null,
+                clickyfiedBatchId: null,
+                failureReason: `Batch #${b.batchCode} not found on Clickyfied: restored to pending queue.`,
+              },
+            });
+            await prisma.orderStatusHistory.createMany({
+              data: orderIds.map((id) => ({
+                orderId: id,
+                status: "PENDING",
+                previousStatus: "PROCESSING",
+                note: `Batch #${b.batchCode} not found on provider. Restored to pending queue by ${actorLabel}.`,
+                changedBy: actorLabel,
+              })),
+            });
+            unstrandedOrdersCount += orderIds.length;
+          }
+          await prisma.clickyfiedBatch.update({
+            where: { id: b.id },
+            data: {
+              status: "FAILED",
+              errorMessage: `Order not found on Clickyfied (${syncErr.message})`,
+              pendingCount: 0,
+              lastSyncedAt: new Date(),
+            },
+          });
+        }
+      }
     } else {
+      // No confirmed order ID exists on Clickyfied
       const orderIds = b.orders.filter((o) => o.status !== "SUCCESS").map((o) => o.id);
       if (orderIds.length > 0) {
         await prisma.order.updateMany({
@@ -2708,7 +2874,7 @@ export async function reconcileStrandedClickyfiedBatches(
     }
   }
 
-  // 2. Standalone orders stuck in PROCESSING with claim tokens or lacking confirmed provider ID
+  // 2. Standalone orders stuck in PROCESSING with claim tokens or orphaned references
   const strandedOrders = await prisma.order.findMany({
     where: {
       status: "PROCESSING",
@@ -2719,6 +2885,7 @@ export async function reconcileStrandedClickyfiedBatches(
         { providerReference: { startsWith: "CLICKYFIED_CLAIMED:" } },
         { providerReference: { startsWith: "CLICKYFIED:CF-BATCH-" } },
         { providerReference: "CLICKYFIED:BLOCKED" },
+        { clickyfiedBatch: { status: { in: ["FAILED", "COMPLETED", "PARTIALLY_COMPLETED"] } } },
       ],
     },
   });
@@ -2726,7 +2893,7 @@ export async function reconcileStrandedClickyfiedBatches(
   const standAloneIdsToReset: number[] = [];
   for (const ord of strandedOrders) {
     if (ord.externalReference && ord.externalReference.startsWith("CF-BATCH-")) {
-      const alreadyHandled = strandedBatches.some((b) => b.batchCode === ord.externalReference);
+      const alreadyHandled = activeBatches.some((b) => b.batchCode === ord.externalReference);
       if (alreadyHandled) continue;
     }
     standAloneIdsToReset.push(ord.id);
@@ -2762,7 +2929,7 @@ export async function reconcileStrandedClickyfiedBatches(
     action: "provider.clickyfied_stranded_batches_reconciled",
     target: "clickyfied:batches:stranded",
     newValue: JSON.stringify({
-      strandedBatchesCount: strandedBatches.length,
+      scannedBatchesCount: activeBatches.length,
       unstrandedOrdersCount,
       confirmedOrdersCount,
     }),
@@ -2770,10 +2937,10 @@ export async function reconcileStrandedClickyfiedBatches(
 
   return {
     success: true,
-    strandedBatchesCount: strandedBatches.length,
+    strandedBatchesCount: activeBatches.length,
     unstrandedOrdersCount,
     confirmedOrdersCount,
-    message: `Reconciliation complete: ${unstrandedOrdersCount} stranded order(s) restored to pending queue; ${confirmedOrdersCount} order(s) confirmed on provider.`,
+    message: `Reconciliation complete: checked ${activeBatches.length} active batch(es). Restored ${unstrandedOrdersCount} stranded order(s) back to pending queue; confirmed ${confirmedOrdersCount} delivered order(s).`,
   };
 }
 
