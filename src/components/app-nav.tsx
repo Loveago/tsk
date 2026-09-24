@@ -84,6 +84,7 @@ export const userNav: NavItem[] = [
   { href: "/dashboard/orders", label: "Sent Orders", icon: ClipboardList, badge: true },
   { href: "/dashboard/not-received", label: "My Not Received", icon: FileWarning },
   { href: "/dashboard/billing", label: "Billing", icon: Receipt },
+  { href: "/dashboard/transactions", label: "Transactions", icon: Wallet },
   { href: "/dashboard/mtn-verification", label: "MTN Verification", icon: CheckCircle2 },
   { href: "/dashboard/api", label: "API", icon: BookOpen },
   { href: "/dashboard/packages", label: "Packages", icon: Package },
