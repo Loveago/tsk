@@ -519,6 +519,8 @@ export default function AdminOrdersPage() {
                   { value: "Pending", label: "Pending" },
                   { value: "Processing", label: "Processing" },
                   { value: "Processed", label: "Processed" },
+                  { value: "Failed", label: "Failed" },
+                  { value: "Cancelled", label: "Cancelled" },
                   { value: "Refund", label: "Refund" },
                 ].map((s) => (
                   <option key={s.value} value={s.value}>
