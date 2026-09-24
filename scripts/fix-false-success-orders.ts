@@ -98,10 +98,17 @@ async function main() {
 
   const batchQueryKeys = new Set<string>();
   for (const o of fingerprinted) {
-    if (o.externalReference?.startsWith("CF-BATCH-")) batchQueryKeys.add(o.externalReference);
+    let provKey: string | null = null;
     if (o.providerReference?.startsWith("CLICKYFIED:")) {
       const parts = o.providerReference.replace("CLICKYFIED:", "").split(":");
-      if (parts[0] && !parts[0].startsWith("CF-BATCH-") && parts[0] !== "BLOCKED") batchQueryKeys.add(parts[0]);
+      if (parts[0] && !parts[0].startsWith("CF-BATCH-") && parts[0] !== "BLOCKED") {
+        provKey = parts[0];
+      }
+    }
+    if (provKey) {
+      batchQueryKeys.add(provKey);
+    } else if (o.externalReference?.startsWith("CF-BATCH-")) {
+      batchQueryKeys.add(o.externalReference);
     }
   }
 
@@ -136,14 +143,21 @@ async function main() {
 
   for (const order of fingerprinted) {
     const phoneNorm = normalizePhoneLast9(order.phoneNumber);
-    const batchKey = order.externalReference?.startsWith("CF-BATCH-")
-      ? order.externalReference
-      : order.providerReference?.replace("CLICKYFIED:", "").split(":")[0];
+    const provPart = order.providerReference?.startsWith("CLICKYFIED:")
+      ? order.providerReference.replace("CLICKYFIED:", "").split(":")[0]
+      : null;
+    const batchKey = (provPart && !provPart.startsWith("CF-BATCH-") && provPart !== "BLOCKED")
+      ? provPart
+      : order.externalReference;
 
     let matchedEntry: any = null;
 
-    if (batchKey && batchEntriesMap.has(batchKey)) {
-      const { entries } = batchEntriesMap.get(batchKey)!;
+    const entryData = (batchKey && batchEntriesMap.get(batchKey)) ||
+      (order.externalReference && batchEntriesMap.get(order.externalReference)) ||
+      (provPart && batchEntriesMap.get(provPart));
+
+    if (entryData) {
+      const { entries } = entryData;
       matchedEntry =
         entries.find((e: any) => {
           const eNorm = normalizePhoneLast9(String(e.number || e.phoneNumber || e.phone || ""));
@@ -151,13 +165,6 @@ async function main() {
           return eNorm === phoneNorm && (eAlloc === undefined || Math.abs(eAlloc - order.gbAmount) <= 0.1);
         }) ||
         entries.find((e: any) => normalizePhoneLast9(String(e.number || e.phoneNumber || e.phone || "")) === phoneNorm);
-    }
-
-    if (!matchedEntry) {
-      try {
-        const found = await client.findOrderByPhone(order.phoneNumber);
-        if (found?.orderId) matchedEntry = { id: found.orderEntryId, status: found.status, allocationGB: found.allocationGb };
-      } catch {}
     }
 
     if (!matchedEntry) {
