@@ -238,6 +238,40 @@ export async function dispatchOrder(
     };
   }
 
+  if (order.providerReference?.startsWith("CLICKYFIED_MANUAL_HOLD") && !options.force) {
+    return {
+      success: false,
+      provider: "MANUAL",
+      status: order.status,
+      error: "Order was held back from automated API dispatch due to a previous batch failure. It must be processed manually.",
+    };
+  }
+
+  if ((order.exportBatchId || order.exportCount > 0 || order.lastExportedAt) && !options.force) {
+    return {
+      success: false,
+      provider: "MANUAL",
+      status: order.status,
+      error: "Order was exported for manual fulfillment. Automated dispatch is disabled.",
+    };
+  }
+
+  // Check resumption watermark if automated processing was paused and re-enabled
+  const resumedSetting = await prisma.systemSetting.findUnique({
+    where: { key: "api_processing_resumed_at" },
+  });
+  if (resumedSetting?.value && !options.force) {
+    const resumedAt = new Date(resumedSetting.value);
+    if (!isNaN(resumedAt.getTime()) && order.createdAt < resumedAt) {
+      return {
+        success: false,
+        provider: "MANUAL",
+        status: order.status,
+        error: "Order was created before API processing was resumed. Kept for manual processing to prevent duplicate losses.",
+      };
+    }
+  }
+
   if (order.providerReference && !options.force) {
     return {
       success: true,
@@ -1057,6 +1091,11 @@ export function mapClickyfiedStatus(
  */
 export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: number; recoveredGb: number }> {
   try {
+    const routerConfig = await getProviderRoutingConfig();
+    if (!routerConfig.enabled || !routerConfig.clickyfied.enabled) {
+      return { recoveredCount: 0, recoveredGb: 0 };
+    }
+
     // 1. Auto-heal: restore any orders that belong to an ExportBatch and were mistakenly reverted to PENDING
     const misclassifiedExported = await prisma.order.findMany({
       where: {
@@ -1104,7 +1143,6 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
 
     // Check if any of these orders actually have a valid batch code on Clickyfied
     const { ClickyfiedClient } = await import("./clickyfied");
-    const routerConfig = await getProviderRoutingConfig();
     let clickyfiedClient: any = null;
     if (routerConfig.clickyfied && routerConfig.clickyfied.apiKey) {
       clickyfiedClient = new ClickyfiedClient(routerConfig.clickyfied);
@@ -1162,8 +1200,9 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
       where: { id: { in: ids } },
       data: {
         status: "PENDING",
-        providerReference: null,
+        providerReference: "CLICKYFIED_MANUAL_HOLD:STRANDED",
         externalReference: null,
+        failureReason: "Self-healing: Reverted stranded order from PROCESSING to PENDING (missing valid Clickyfied order reference). Held for manual fulfillment.",
       },
     });
 
@@ -1173,7 +1212,7 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
         orderId: o.id,
         status: "PENDING",
         previousStatus: "PROCESSING",
-        note: `Self-healing: Reverted stranded order from PROCESSING to PENDING (was missing valid Clickyfied order reference).`,
+        note: `Self-healing: Reverted stranded order from PROCESSING to PENDING (was missing valid Clickyfied order reference). Held for manual fulfillment.`,
         changedBy: "System Self-Healing",
       })),
     }).catch(() => {});

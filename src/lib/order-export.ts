@@ -1,6 +1,5 @@
 import ExcelJS from "exceljs";
 import { prisma } from "./prisma";
-import { getProvider } from "./provider";
 import { recordAudit } from "./audit";
 import { nextExportCode } from "./batches";
 import { recomputeBatchStatus, type Actor } from "./orders";
@@ -213,6 +212,9 @@ export async function exportOrdersToExcel(
           lastExportedAt: exportedAt,
           lastExportedBy: input.actor.label,
           failureReason: null,
+          providerReference: order.providerReference?.startsWith("CLICKYFIED:")
+            ? order.providerReference
+            : `MANUAL_EXPORT:${exportCode}`,
         },
       });
 
@@ -243,27 +245,6 @@ export async function exportOrdersToExcel(
   for (const batchId of batchIds) {
     await recomputeBatchStatus(batchId);
   }
-
-  // 5. Submit to provider + record provider references (non-fatal)
-  const provider = getProvider();
-  await Promise.all(
-    orders.map(async (order) => {
-      try {
-        const response = await provider.submitOrder({
-          phoneNumber: order.phoneNumber,
-          network: order.network as never,
-          gbAmount: order.gbAmount,
-          packageId: order.packageId ?? undefined,
-        });
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { providerReference: response.reference },
-        });
-      } catch {
-        // Provider submission failures are surfaced later by the status workflow
-      }
-    })
-  );
 
   // Audit log (§37)
   await recordAudit({

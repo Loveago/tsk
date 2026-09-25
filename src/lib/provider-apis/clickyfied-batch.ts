@@ -190,13 +190,46 @@ export async function getClickyfiedBatchConfig(): Promise<ClickyfiedBatchConfig>
  *    recipients receive exactly ONE delivery per dispatch, holding back any duplicates.
  */
 export async function getPendingMtnClickyfiedOrders() {
+  const config = await getProviderRoutingConfig();
+  if (!config.enabled || !config.clickyfied.enabled) {
+    return {
+      orders: [],
+      count: 0,
+      totalGb: 0,
+    };
+  }
+
+  const batchConfig = await getClickyfiedBatchConfig();
+  if (!batchConfig.enabled) {
+    return {
+      orders: [],
+      count: 0,
+      totalGb: 0,
+    };
+  }
+
+  // Check resumption watermark if automated processing was paused and re-enabled
+  const resumedSetting = await prisma.systemSetting.findUnique({
+    where: { key: "api_processing_resumed_at" },
+  });
+  const resumedAt = resumedSetting?.value ? new Date(resumedSetting.value) : null;
+
+  const whereClause: any = {
+    status: "PENDING",
+    network: "MTN",
+    providerReference: null,
+    failureReason: null, // Orders with any prior failure are strictly held for manual fulfillment only
+    exportBatchId: null, // Exclude exported orders
+    exportCount: 0,      // Exclude any order that was ever exported
+    lastExportedAt: null,
+  };
+
+  if (resumedAt && !isNaN(resumedAt.getTime())) {
+    whereClause.createdAt = { gte: resumedAt };
+  }
+
   const pendingOrders = await prisma.order.findMany({
-    where: {
-      status: "PENDING",
-      network: "MTN",
-      providerReference: null,
-      exportBatchId: null,
-    },
+    where: whereClause,
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -261,14 +294,17 @@ export async function getPendingMtnClickyfiedOrders() {
  * Gets a complete overview of the current MTN batch queue and timer status
  */
 export async function getClickyfiedBatchStatus(): Promise<PendingMtnBatchStats> {
-  // Self-heal any stranded processing orders so they immediately rejoin the pending queue
-  try {
-    const { recoverStrandedMtnOrders } = await import("./router");
-    await recoverStrandedMtnOrders();
-  } catch {}
-
   const config = await getProviderRoutingConfig();
   const batchConfig = await getClickyfiedBatchConfig();
+
+  // Self-heal stranded processing orders ONLY if automated routing is actively enabled
+  if (config.enabled && config.clickyfied.enabled && batchConfig.enabled) {
+    try {
+      const { recoverStrandedMtnOrders } = await import("./router");
+      await recoverStrandedMtnOrders();
+    } catch {}
+  }
+
   const { orders, count, totalGb } = await getPendingMtnClickyfiedOrders();
 
   const now = Date.now();
@@ -409,6 +445,28 @@ async function submitSingleBatchChunk(
   callbackUrl?: string,
   signingSecret?: string
 ): Promise<SingleBatchChunkResult> {
+  const config = await getProviderRoutingConfig();
+  if (!config.enabled) {
+    return {
+      success: false,
+      batchCode: "",
+      batchOrderId: "",
+      dispatchedCount: 0,
+      totalGb: 0,
+      error: "Automated API order processing is currently turned OFF. Dispatches are blocked.",
+    };
+  }
+  if (!config.clickyfied.enabled) {
+    return {
+      success: false,
+      batchCode: "",
+      batchOrderId: "",
+      dispatchedCount: 0,
+      totalGb: 0,
+      error: "Clickyfied provider integration is currently disabled in provider settings.",
+    };
+  }
+
   const batchCode = await getNextClickyfiedBatchCode();
   const targetOrderIds = targetOrders.map((o) => o.id);
   const totalGb = targetOrders.reduce((sum, o) => sum + o.gbAmount, 0);
@@ -429,6 +487,9 @@ async function submitSingleBatchChunk(
       id: { in: targetOrderIds },
       status: "PENDING",
       providerReference: null,
+      exportBatchId: null,
+      exportCount: 0,
+      lastExportedAt: null,
     },
     data: {
       status: "PROCESSING",
@@ -554,10 +615,10 @@ async function submitSingleBatchChunk(
               where: { id: { in: conflictIds } },
               data: {
                 status: "PENDING",
-                providerReference: null,
-                externalReference: null,
+                providerReference: `CLICKYFIED_INFLIGHT_HOLD:${batchCode}`,
+                externalReference: batchCode,
                 clickyfiedBatchId: null,
-                failureReason: "Recipient currently has in-flight order on Clickyfied. Queued for next batch cycle.",
+                failureReason: "Recipient currently has in-flight order on Clickyfied. Held back from batch.",
               },
             });
 
@@ -566,7 +627,7 @@ async function submitSingleBatchChunk(
                 orderId: id,
                 status: "PENDING",
                 previousStatus: "PROCESSING",
-                note: "Held back: Recipient already has an active order on Clickyfied. Queued for next cycle.",
+                note: "Held back: Recipient already has an active order on Clickyfied. Auto-retry held.",
                 changedBy: actorLabel,
               })),
             });
@@ -807,15 +868,15 @@ async function submitSingleBatchChunk(
       } else {
         // Recipient was not accepted into Clickyfied's order entries and was not in filteredOutEntries.
         // We MUST NOT leave this order in PROCESSING with a provider reference that doesn't contain it!
-        // Revert it back to PENDING so it can be picked up in the next cycle.
+        // Revert it back to PENDING for manual processing, preventing duplicate auto-retries.
         await prisma.order.update({
           where: { id: order.id },
           data: {
             status: "PENDING",
-            providerReference: null,
-            externalReference: null,
+            providerReference: `CLICKYFIED_MANUAL_HOLD:${batchCode}`,
+            externalReference: batchCode,
             clickyfiedBatchId: null,
-            failureReason: `Excluded by provider from batch #${batchCode} (${batchOrderId}). Requeued for next cycle.`,
+            failureReason: `Excluded by provider from batch #${batchCode} (${batchOrderId}). Held in PENDING for manual fulfillment only.`,
           },
         });
 
@@ -824,7 +885,7 @@ async function submitSingleBatchChunk(
             orderId: order.id,
             status: "PENDING",
             previousStatus: "PROCESSING",
-            note: `Excluded by provider from batch #${batchCode} (${batchOrderId}). Reverted to pending queue for next batch.`,
+            note: `Excluded by provider from batch #${batchCode} (${batchOrderId}). Reverted to PENDING for manual fulfillment only (auto-retries held).`,
             changedBy: actorLabel,
           },
         });
@@ -1005,10 +1066,10 @@ async function submitSingleBatchChunk(
         where: { id: { in: targetOrderIds } },
         data: {
           status: "PENDING",
-          providerReference: null,
-          externalReference: null,
+          providerReference: `CLICKYFIED_MANUAL_HOLD:${batchCode}`,
+          externalReference: batchCode,
           clickyfiedBatchId: null,
-          failureReason: `Clickyfied is locked/halted: ${batchErr?.message || "Unavailable"}. Restored to pending for manual processing.`,
+          failureReason: `Clickyfied is locked/halted: ${batchErr?.message || "Unavailable"}. Restored to PENDING for manual fulfillment only.`,
         },
       });
 
@@ -1017,7 +1078,7 @@ async function submitSingleBatchChunk(
           orderId: o.id,
           status: "PENDING",
           previousStatus: "PROCESSING",
-          note: `Clickyfied halted or locked (${batchErr?.message || "Orders paused"}). Restored to PENDING so admin can manually process.`,
+          note: `Clickyfied halted or locked (${batchErr?.message || "Orders paused"}). Restored to PENDING for manual processing (automated retries blocked).`,
           changedBy: actorLabel,
         })),
       });
@@ -1128,10 +1189,10 @@ async function submitSingleBatchChunk(
         where: { id: { in: targetOrderIds } },
         data: {
           status: "PENDING",
-          providerReference: null,
-          externalReference: null,
+          providerReference: `CLICKYFIED_MANUAL_HOLD:${batchCode}`,
+          externalReference: batchCode,
           clickyfiedBatchId: null,
-          failureReason: failReason,
+          failureReason: `${failReason}. Restored to PENDING for manual fulfillment only.`,
         },
       });
 
@@ -1140,7 +1201,7 @@ async function submitSingleBatchChunk(
           orderId: o.id,
           status: "PENDING",
           previousStatus: "PROCESSING",
-          note: `Batch rejected by provider (${httpStatus}: ${batchErr?.message || "Rejected"}). Returned to pending queue.`,
+          note: `Batch rejected by provider (${httpStatus}: ${batchErr?.message || "Rejected"}). Returned to PENDING for manual fulfillment only (automated retries blocked).`,
           changedBy: actorLabel,
         })),
       });
@@ -1239,10 +1300,10 @@ async function submitSingleBatchChunk(
       },
       data: {
         status: "PENDING",
-        providerReference: null,
-        externalReference: null,
+        providerReference: `CLICKYFIED_MANUAL_HOLD:${batchCode}`,
+        externalReference: batchCode,
         clickyfiedBatchId: null,
-        failureReason: timeoutMsg,
+        failureReason: `${timeoutMsg}. Restored to PENDING for manual fulfillment only.`,
       },
     }).catch(() => {});
 
@@ -1251,7 +1312,7 @@ async function submitSingleBatchChunk(
         orderId: o.id,
         status: "PENDING",
         previousStatus: "PROCESSING",
-        note: `Batch delivery unconfirmed on provider (#${batchCode}). Reverted to pending queue for re-dispatch.`,
+        note: `Batch delivery unconfirmed on provider (#${batchCode}). Reverted to PENDING for manual fulfillment only (automated retries blocked).`,
         changedBy: actorLabel,
       })),
     });
@@ -1352,6 +1413,16 @@ export async function dispatchClickyfiedMtnBatch(
     }
 
     const batchConfig = await getClickyfiedBatchConfig();
+    if (!batchConfig.enabled) {
+      return {
+        success: false,
+        dispatchedCount: 0,
+        totalGb: 0,
+        batchIds: [],
+        error: "Clickyfied MTN batch processing is currently disabled in settings.",
+      };
+    }
+
     const { orders, count, totalGb } = await getPendingMtnClickyfiedOrders();
     if (count === 0) {
       return {
@@ -2288,6 +2359,14 @@ export async function retryClickyfiedBatchFailedOrders(
   retriedCount: number;
   message: string;
 }> {
+  const config = await getProviderRoutingConfig();
+  if (!config.enabled) {
+    throw new Error("Automated API order processing is currently turned OFF. Cannot re-queue orders while API processing is disabled.");
+  }
+  if (!config.clickyfied.enabled) {
+    throw new Error("Clickyfied provider integration is currently disabled in provider settings.");
+  }
+
   const batch = await prisma.clickyfiedBatch.findFirst({
     where: {
       OR: [{ id: idOrBatchCode }, { batchCode: idOrBatchCode }],
@@ -2691,6 +2770,9 @@ export async function resendClickyfiedBatch(
   }
 
   const config = await getProviderRoutingConfig();
+  if (!config.enabled) {
+    throw new Error("Automated API order processing is currently turned OFF in system settings.");
+  }
   if (!config.clickyfied.enabled) {
     throw new Error("Clickyfied provider is currently disabled in provider settings.");
   }
@@ -2824,10 +2906,10 @@ export async function reconcileStrandedClickyfiedBatches(
               where: { id: { in: orderIds } },
               data: {
                 status: "PENDING",
-                providerReference: null,
-                externalReference: null,
+                providerReference: `CLICKYFIED_MANUAL_HOLD:${b.batchCode}`,
+                externalReference: b.batchCode,
                 clickyfiedBatchId: null,
-                failureReason: `Batch #${b.batchCode} not found on Clickyfied: restored to pending queue.`,
+                failureReason: `Batch #${b.batchCode} not found on Clickyfied: restored to PENDING for manual fulfillment only.`,
               },
             });
             await prisma.orderStatusHistory.createMany({
@@ -2835,7 +2917,7 @@ export async function reconcileStrandedClickyfiedBatches(
                 orderId: id,
                 status: "PENDING",
                 previousStatus: "PROCESSING",
-                note: `Batch #${b.batchCode} not found on provider. Restored to pending queue by ${actorLabel}.`,
+                note: `Batch #${b.batchCode} not found on provider. Restored to PENDING for manual fulfillment only (auto-retries held).`,
                 changedBy: actorLabel,
               })),
             });

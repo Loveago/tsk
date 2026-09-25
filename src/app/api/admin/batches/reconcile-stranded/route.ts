@@ -143,13 +143,14 @@ export async function POST(request: NextRequest) {
     const strandedIds = strandedOrders.map((o) => o.id);
     const totalGb = strandedOrders.reduce((sum, o) => sum + o.gbAmount, 0);
 
-    // 1. Atomically reset stranded orders to PENDING and wipe invalid references
+    // 1. Atomically reset stranded orders to PENDING and mark as manual hold
     await prisma.order.updateMany({
       where: { id: { in: strandedIds } },
       data: {
         status: "PENDING",
-        providerReference: null,
-        externalReference: null,
+        providerReference: targetBatchCode ? `CLICKYFIED_MANUAL_HOLD:${targetBatchCode}` : "CLICKYFIED_MANUAL_HOLD:STRANDED",
+        externalReference: targetBatchCode || null,
+        failureReason: "Stranded order reverted to PENDING (no confirmed Clickyfied ID). Held for manual fulfillment.",
       },
     });
 
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
         orderId: o.id,
         status: "PENDING",
         previousStatus: "PROCESSING",
-        note: `Reconciled stranded order (was PROCESSING without valid Clickyfied order ID). Safely reverted to PENDING by ${actor}.`,
+        note: `Reconciled stranded order (was PROCESSING without valid Clickyfied order ID). Safely reverted to PENDING by ${actor} for manual fulfillment.`,
         changedBy: `Admin (${actor})`,
       })),
     });
@@ -177,12 +178,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Optionally dispatch immediately
+    // 4. Optionally dispatch immediately ONLY if automated processing is actively enabled
     let dispatchResult = null;
     if (action === "revert_and_dispatch") {
-      dispatchResult = await dispatchClickyfiedMtnBatch(
-        `Admin (${actor}) Reconciled Batch`
-      );
+      const { getProviderRoutingConfig } = await import("@/lib/provider-apis/router");
+      const config = await getProviderRoutingConfig();
+      if (config.enabled && config.clickyfied.enabled) {
+        dispatchResult = await dispatchClickyfiedMtnBatch(
+          `Admin (${actor}) Reconciled Batch`
+        );
+      } else {
+        dispatchResult = {
+          success: false,
+          error: "Automated API order processing is currently turned OFF. Orders were held in PENDING for manual fulfillment.",
+        };
+      }
     }
 
     return NextResponse.json({

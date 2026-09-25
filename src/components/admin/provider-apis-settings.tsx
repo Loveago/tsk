@@ -482,18 +482,40 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
             <div className="flex items-center gap-2">
               <span
                 className={`inline-flex h-2.5 w-2.5 rounded-full ${
-                  isRoutingEnabled ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+                  isRoutingEnabled ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
                 }`}
               />
               <h3 className="text-base font-semibold text-slate-900 dark:text-white">
                 Automated Order Processing (Provider APIs)
               </h3>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  isRoutingEnabled
+                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                    : "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
+                }`}
+              >
+                {isRoutingEnabled ? "Active" : "Paused / Manual Mode"}
+              </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
-              When <strong>ON</strong>, orders placed for assigned networks are immediately dispatched
-              to Bigwindata or Clickyfied and status updates are tracked automatically.
-              When <strong>OFF</strong>, orders remain in PENDING status for manual file export.
+              When <strong>ON</strong>, newly placed orders for assigned networks are automatically dispatched to Bigwindata or Clickyfied.
+              To prevent massive double-fulfillment losses, resuming processing <strong>only sends fresh orders placed after resumption</strong>.
+              All existing or previously failed orders remain safely in PENDING for manual file export.
             </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
+              When <strong>OFF</strong>, all API dispatching, runners, and retries are completely blocked. Orders remain in PENDING for manual Excel export.
+            </p>
+            {settings.api_processing_resumed_at && (
+              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                Last Resumed: {new Date(settings.api_processing_resumed_at).toLocaleString()} (Old orders prior to this time are excluded from auto-dispatch)
+              </div>
+            )}
+            {!isRoutingEnabled && settings.api_processing_paused_at && (
+              <div className="text-[11px] text-rose-600 dark:text-rose-400 font-medium">
+                Paused At: {new Date(settings.api_processing_paused_at).toLocaleString()}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3">

@@ -23,6 +23,28 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const input = settingsSchema.parse(body);
 
+    // Detect state changes for Automated API Order Processing
+    const prevRouting = await prisma.systemSetting.findUnique({
+      where: { key: "provider_routing_enabled" },
+    });
+    const prevRoutingVal = prevRouting?.value ?? "false";
+
+    if (input.provider_routing_enabled === "true" && prevRoutingVal !== "true") {
+      const nowIso = new Date().toISOString();
+      await prisma.systemSetting.upsert({
+        where: { key: "api_processing_resumed_at" },
+        update: { value: nowIso },
+        create: { key: "api_processing_resumed_at", value: nowIso },
+      });
+    } else if (input.provider_routing_enabled === "false" && prevRoutingVal === "true") {
+      const nowIso = new Date().toISOString();
+      await prisma.systemSetting.upsert({
+        where: { key: "api_processing_paused_at" },
+        update: { value: nowIso },
+        create: { key: "api_processing_paused_at", value: nowIso },
+      });
+    }
+
     for (const [key, value] of Object.entries(input)) {
       if (value === undefined) continue;
       const strValue = String(value);
