@@ -46,6 +46,13 @@ export default function SendOrderPage() {
   const { toast } = useToast();
   const [packages, setPackages] = React.useState<Pkg[]>([]);
   const [submissionEnabled, setSubmissionEnabled] = React.useState(true);
+  const [networkStatus, setNetworkStatus] = React.useState<Record<string, boolean>>({
+    MTN: true,
+    TELECEL: true,
+    AIRTELTIGO: true,
+    AIRTELTIGO_BIGTIME: true,
+  });
+  const [isHalted, setIsHalted] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [network, setNetwork] = React.useState<string>("MTN");
   const [tab, setTab] = React.useState<"upload" | "paste">("upload");
@@ -122,11 +129,18 @@ export default function SendOrderPage() {
         if (d.submissionEnabled !== undefined) {
           setSubmissionEnabled(d.submissionEnabled);
         }
+        if (d.networkStatus) {
+          setNetworkStatus(d.networkStatus);
+        }
+        if (d.isHalted !== undefined) {
+          setIsHalted(d.isHalted);
+        }
         if (typeof d.userBalance === "number") {
           setUserBalance(d.userBalance);
         }
       })
       .catch(() => toast("Failed to load packages", "error"))
+
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -518,8 +532,21 @@ export default function SendOrderPage() {
       toast("Add at least one order", "error");
       return;
     }
+    if (isHalted) {
+      toast("Order processing is currently paused for scheduled system maintenance.", "error");
+      return;
+    }
+    const pausedOrder = ordersToSend.find((o) => networkStatus[o.network] === false);
+    if (pausedOrder) {
+      toast(
+        `${NETWORK_LABELS[pausedOrder.network] || pausedOrder.network} orders are currently paused for maintenance.`,
+        "error"
+      );
+      return;
+    }
     setSubmitting(true);
     setResult(null);
+
     const orderCost = ordersToSend.reduce((s, l) => s + (l.price ?? 0), 0);
     try {
       const res = await fetch("/api/orders", {
@@ -676,6 +703,7 @@ export default function SendOrderPage() {
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-xl bg-slate-100 p-1.5 dark:bg-white/5">
               {NETWORKS.map((n) => {
+                const isPaused = networkStatus[n] === false || isHalted;
                 const unavailable =
                   !loading && packages.length > 0 && !packages.some((p) => p.network === n);
                 const isSelected = network === n;
@@ -700,20 +728,34 @@ export default function SendOrderPage() {
                     key={n}
                     onClick={() => setNetwork(n)}
                     disabled={unavailable || !submissionEnabled}
-                    title={unavailable ? "No packages available for this network" : undefined}
+                    title={isPaused ? `${NETWORK_LABELS[n]} orders are paused for maintenance` : unavailable ? "No packages available for this network" : undefined}
                     className={cn(
-                      "flex h-10 items-center justify-center rounded-lg text-xs sm:text-sm font-bold transition-all duration-150",
+                      "flex h-10 items-center justify-center gap-1 rounded-lg text-xs sm:text-sm font-bold transition-all duration-150 relative",
                       isSelected ? activeStyle : inactiveStyle,
                       unavailable &&
                         "cursor-not-allowed opacity-40 hover:text-slate-500 dark:hover:text-slate-400"
                     )}
                   >
-                    {NETWORK_LABELS[n]}
+                    <span>{NETWORK_LABELS[n]}</span>
+                    {isPaused && (
+                      <span className="text-[10px] uppercase font-bold opacity-80 rounded px-1 bg-black/20 dark:bg-white/20">
+                        Paused
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
+            {networkStatus[network] === false && (
+              <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>
+                  <strong>{NETWORK_LABELS[network]} orders are temporarily paused for maintenance.</strong> New orders for {NETWORK_LABELS[network]} cannot be submitted right now. You can still select and submit orders for other active networks.
+                </span>
+              </div>
+            )}
           </div>
+
 
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5">
             {(
@@ -922,9 +964,15 @@ export default function SendOrderPage() {
       <SendSummary
         count={lines.length}
         total={total}
-        submitting={submitting || !submissionEnabled}
+        submitting={
+          submitting ||
+          !submissionEnabled ||
+          isHalted ||
+          lines.some((l) => networkStatus[l.network] === false)
+        }
         onSubmit={submit}
       />
+
 
       {/* Live Delivery Turnaround & Network Speed (Bottom) */}
       <LiveDeliverySpeedCard network={network} />

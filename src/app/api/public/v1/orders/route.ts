@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey, ApiKeyError, logApiRequest } from "@/lib/api-auth";
 import { publicOrderSchema } from "@/lib/validation";
-import { changeOrderStatus, isOrderProcessingHalted, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
+import { changeOrderStatus, isOrderProcessingHalted, isNetworkOrdersPaused, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 import { detectNetworkNameByPrefix } from "@/lib/phone-utils";
 import { handleRouteError } from "@/lib/api-helpers";
@@ -70,6 +70,10 @@ export async function POST(request: NextRequest) {
       where: { id: input.packageId },
     });
     if (!pkg || !pkg.active) return fail(request, keyId, endpoint, 400, "Package not found or inactive");
+    if (await isNetworkOrdersPaused(pkg.network)) {
+      return fail(request, keyId, endpoint, 503, `${pkg.network} orders are temporarily paused by administrator for maintenance.`);
+    }
+
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return fail(request, keyId, endpoint, 403, "Account not found");

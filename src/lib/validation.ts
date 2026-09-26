@@ -244,6 +244,9 @@ export const paystackTopupSchema = z.object({
 // ---------- Admin ----------
 export const settingsSchema = z.object({
   order_processing_halted: z.enum(["true", "false"]).optional(),
+  network_mtn_enabled: z.enum(["true", "false"]).optional(),
+  network_telecel_enabled: z.enum(["true", "false"]).optional(),
+  network_airteltigo_enabled: z.enum(["true", "false"]).optional(),
   number_submission_page_enabled: z.enum(["true", "false"]).optional(),
   mtn_single_order_per_day_enabled: z.enum(["true", "false"]).optional(),
   live_delivery_speed_enabled: z.enum(["true", "false"]).optional(),

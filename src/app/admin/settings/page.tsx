@@ -205,6 +205,9 @@ export default function AdminSettingsPage() {
   }
 
   const isHalted = settings.order_processing_halted === "true";
+  const networkMtnEnabled = settings.network_mtn_enabled !== "false";
+  const networkTelecelEnabled = settings.network_telecel_enabled !== "false";
+  const networkAirteltigoEnabled = settings.network_airteltigo_enabled !== "false";
   const submissionKillSwitchOn = settings.number_submission_page_enabled !== "false";
   const liveDeliverySpeedOn = settings.live_delivery_speed_enabled !== "false";
   const mtnSingleOrderDaily = settings.mtn_single_order_per_day_enabled === "true";
@@ -394,6 +397,150 @@ export default function AdminSettingsPage() {
                   ? "✓ Enabled: Strictly 1 order per MTN number each day"
                   : "○ Disabled: MTN numbers can receive multiple orders per day"}
               </p>
+            </div>
+
+            {/* Per-Network Order Controls */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Network Order Controls (Per-Network Pause)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Independently pause or resume ordering for each specific network. If a network is paused (e.g. MTN during provider maintenance), orders for other networks (Telecel, AirtelTigo) continue processing normally across API, Dashboard, and Storefronts.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* MTN Switch */}
+                <div className={`rounded-xl border p-4 transition-all ${
+                  networkMtnEnabled
+                    ? "border-amber-200 bg-amber-50/50 dark:border-amber-500/20 dark:bg-amber-500/5"
+                    : "border-red-200 bg-red-50/60 dark:border-red-500/20 dark:bg-red-500/10"
+                }`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-400 text-slate-950 font-black text-xs">
+                        MTN
+                      </span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">MTN Orders</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={networkMtnEnabled}
+                      onClick={() =>
+                        setSettings((s) => ({
+                          ...s,
+                          network_mtn_enabled: networkMtnEnabled ? "false" : "true",
+                        }))
+                      }
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        networkMtnEnabled ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                          networkMtnEnabled ? "left-[22px]" : "left-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold">
+                    {networkMtnEnabled ? (
+                      <span className="text-emerald-700 dark:text-emerald-400">✓ Active: Accepting orders</span>
+                    ) : (
+                      <span className="text-red-700 dark:text-red-400">⚠ Paused (API, Dashboard &amp; Stores)</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Telecel Switch */}
+                <div className={`rounded-xl border p-4 transition-all ${
+                  networkTelecelEnabled
+                    ? "border-red-200 bg-red-50/40 dark:border-red-500/20 dark:bg-red-500/5"
+                    : "border-red-200 bg-red-50/60 dark:border-red-500/20 dark:bg-red-500/10"
+                }`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-600 text-white font-black text-xs">
+                        TEL
+                      </span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">Telecel Orders</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={networkTelecelEnabled}
+                      onClick={() =>
+                        setSettings((s) => ({
+                          ...s,
+                          network_telecel_enabled: networkTelecelEnabled ? "false" : "true",
+                        }))
+                      }
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        networkTelecelEnabled ? "bg-red-600" : "bg-slate-300 dark:bg-slate-700"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                          networkTelecelEnabled ? "left-[22px]" : "left-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold">
+                    {networkTelecelEnabled ? (
+                      <span className="text-emerald-700 dark:text-emerald-400">✓ Active: Accepting orders</span>
+                    ) : (
+                      <span className="text-red-700 dark:text-red-400">⚠ Paused (API, Dashboard &amp; Stores)</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* AirtelTigo Switch */}
+                <div className={`rounded-xl border p-4 transition-all ${
+                  networkAirteltigoEnabled
+                    ? "border-blue-200 bg-blue-50/40 dark:border-blue-500/20 dark:bg-blue-500/5"
+                    : "border-red-200 bg-red-50/60 dark:border-red-500/20 dark:bg-red-500/10"
+                }`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white font-black text-xs">
+                        AT
+                      </span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-white">AirtelTigo Orders</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={networkAirteltigoEnabled}
+                      onClick={() =>
+                        setSettings((s) => ({
+                          ...s,
+                          network_airteltigo_enabled: networkAirteltigoEnabled ? "false" : "true",
+                        }))
+                      }
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        networkAirteltigoEnabled ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-700"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                          networkAirteltigoEnabled ? "left-[22px]" : "left-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold">
+                    {networkAirteltigoEnabled ? (
+                      <span className="text-emerald-700 dark:text-emerald-400">✓ Active: Accepting orders</span>
+                    ) : (
+                      <span className="text-red-700 dark:text-red-400">⚠ Paused (API, Dashboard &amp; Stores)</span>
+                    )}
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Global order processing halted switch */}

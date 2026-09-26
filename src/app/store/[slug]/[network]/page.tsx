@@ -6,6 +6,9 @@ import { NetworkLogo } from "@/components/store/network-logo";
 import { NETWORK_BRANDS, ghs, networkBySlug, storeHref } from "@/components/store/brands";
 import { NetworkBuyForm } from "./buy-form";
 
+import { Clock } from "lucide-react";
+import { isNetworkOrdersPaused } from "@/lib/orders";
+
 export const dynamic = "force-dynamic";
 
 export default async function NetworkPage({
@@ -24,14 +27,74 @@ export default async function NetworkPage({
   if (!storefront || storefront.status !== "ENABLED") notFound();
   if (featureSetting?.value === "false") {
     return (
-      <div className="mx-auto mt-20 max-w-md p-8 text-center bg-white rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Storefronts Temporarily Paused</h2>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Reseller storefront orders are currently paused by administration for scheduled maintenance. Please check back soon.
-        </p>
+      <div className="mx-auto max-w-xl px-4 py-16 text-center">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 sm:p-12 shadow-sm dark:border-slate-800 dark:bg-[#111a2c]">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-500/15">
+            <Clock className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+          </div>
+          <h2 className="mt-4 font-serif text-2xl font-bold text-slate-900 sm:text-3xl dark:text-white">
+            Storefronts Temporarily Paused
+          </h2>
+          <p className="mt-3 text-sm text-slate-600 sm:text-base dark:text-slate-300">
+            Reseller storefront orders are currently paused by administration for scheduled maintenance. You can still track any existing orders below.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href={storeHref(slug)}
+              className="inline-flex h-10 items-center rounded-full border border-slate-200 bg-white px-5 text-sm font-bold text-slate-900 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-white/10 dark:text-white"
+            >
+              Back to store
+            </Link>
+            <Link
+              href={storeHref(slug, "track")}
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-yellow-300 px-5 text-sm font-bold text-slate-900 transition-colors hover:bg-yellow-400"
+            >
+              <Clock className="h-4 w-4" />
+              Track order
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
+
+  const networkPaused = await isNetworkOrdersPaused(network);
+  if (networkPaused) {
+    return (
+      <div className="mx-auto max-w-xl px-4 py-16 text-center">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 sm:p-12 shadow-sm dark:border-slate-800 dark:bg-[#111a2c]">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-500/15">
+            <NetworkLogo network={network} className="h-10 w-10" />
+          </div>
+          <span className="mt-6 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            Network Maintenance
+          </span>
+          <h2 className="mt-4 font-serif text-2xl font-bold text-slate-900 sm:text-3xl dark:text-white">
+            {NETWORK_BRANDS[network].label} Orders Paused
+          </h2>
+          <p className="mt-3 text-sm text-slate-600 sm:text-base dark:text-slate-300">
+            Orders for {NETWORK_BRANDS[network].label} are temporarily paused for maintenance. You can still order data bundles for our other active networks or track existing orders.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href={storeHref(slug, "#shop")}
+              className="inline-flex h-10 items-center rounded-full bg-yellow-300 px-5 text-sm font-bold text-slate-900 transition-colors hover:bg-yellow-400"
+            >
+              Browse other networks
+            </Link>
+            <Link
+              href={storeHref(slug, "track")}
+              className="inline-flex h-10 items-center rounded-full border border-slate-200 bg-white px-5 text-sm font-bold text-slate-900 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-white/10 dark:text-white"
+            >
+              Track existing order
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 
   if (!storefront.isActive) {
     return (

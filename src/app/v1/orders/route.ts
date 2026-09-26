@@ -7,7 +7,7 @@ import {
   logApiRequestEntry,
   ApiError,
 } from "@/lib/developer-api";
-import { isOrderProcessingHalted, getDefaultProfileId, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
+import { isOrderProcessingHalted, isNetworkOrdersPaused, getDefaultProfileId, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
 import { dispatchWebhookEvent } from "@/lib/webhooks";
 import { phoneSchema } from "@/lib/validation";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
@@ -402,6 +402,15 @@ export async function POST(request: NextRequest) {
     if (!pkg || !pkg.active) {
       throw new ApiError("INVALID_PACKAGE", "Package not found or currently inactive", 400);
     }
+
+    if (await isNetworkOrdersPaused(pkg.network)) {
+      throw new ApiError(
+        "NETWORK_ORDERS_PAUSED",
+        `${pkg.network} orders are temporarily paused by administrator for maintenance. Please try another network or check back shortly.`,
+        503
+      );
+    }
+
 
     if (requestedNetwork && pkg.network.toUpperCase() !== requestedNetwork) {
       // Check if requestedNetwork was derived from the recipient's phone number prefix (e.g. Telecel prefix for 020 number ported to MTN).

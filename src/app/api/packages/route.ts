@@ -71,7 +71,17 @@ export async function GET(request: NextRequest) {
     });
     const submissionEnabled = killSwitch?.value !== "false";
 
-    return NextResponse.json({ packages: data, submissionEnabled, userBalance: user.balance });
+    const { getNetworkPauseSettings } = await import("@/lib/orders");
+    const pauseInfo = await getNetworkPauseSettings();
+
+    return NextResponse.json({
+      packages: data,
+      submissionEnabled,
+      userBalance: user.balance,
+      isHalted: pauseInfo.isHalted,
+      networkStatus: pauseInfo.networkStatus,
+    });
+
   } catch (err) {
     return handleRouteError(err);
   }

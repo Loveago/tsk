@@ -13,7 +13,7 @@ import {
 } from "@/lib/storefront";
 import { isPaystackConfigured, initializeTransaction } from "@/lib/paystack";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
-import { resolveUserWholesalePrice } from "@/lib/orders";
+import { resolveUserWholesalePrice, isNetworkOrdersPaused, isOrderProcessingHalted } from "@/lib/orders";
 
 /**
  * Public storefront checkout (no sign-in): validates the bundle + recipient
@@ -72,6 +72,18 @@ export async function POST(
     if (!product || !product.isActive) {
       return apiError(404, "That bundle is not available");
     }
+
+    if (await isOrderProcessingHalted()) {
+      return apiError(503, "Order processing is currently paused. Please check back later.");
+    }
+
+    if (await isNetworkOrdersPaused(product.dataPackage.network)) {
+      return apiError(
+        503,
+        `${product.dataPackage.network} bundle orders are temporarily paused by administrator for maintenance. Please check back soon or try another network.`
+      );
+    }
+
 
     // Central MTN Number Verification Check (§16, §17)
     const mtnCheck = await validateMtnOrderRecipient(

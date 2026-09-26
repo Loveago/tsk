@@ -32,6 +32,61 @@ export async function isOrderProcessingHalted(): Promise<boolean> {
   return (await getSetting("order_processing_halted", "false")) === "true";
 }
 
+export function normalizeNetwork(network?: string | null): "MTN" | "TELECEL" | "AIRTELTIGO" | null {
+  if (!network) return null;
+  const upper = network.toUpperCase().trim();
+  if (upper.startsWith("MTN")) return "MTN";
+  if (upper.startsWith("TELECEL") || upper.startsWith("VODAFONE") || upper === "VODA") return "TELECEL";
+  if (upper.startsWith("AIRTEL") || upper.startsWith("TIGO") || upper === "AT") return "AIRTELTIGO";
+  return null;
+}
+
+export async function isNetworkOrdersPaused(network?: string | null): Promise<boolean> {
+  if (await isOrderProcessingHalted()) return true;
+  const net = normalizeNetwork(network);
+  if (!net) return false;
+  if (net === "MTN") {
+    return (await getSetting("network_mtn_enabled", "true")) === "false";
+  }
+  if (net === "TELECEL") {
+    return (await getSetting("network_telecel_enabled", "true")) === "false";
+  }
+  if (net === "AIRTELTIGO") {
+    return (await getSetting("network_airteltigo_enabled", "true")) === "false";
+  }
+  return false;
+}
+
+export async function getNetworkPauseSettings(): Promise<{
+  isHalted: boolean;
+  networkStatus: {
+    MTN: boolean;
+    TELECEL: boolean;
+    AIRTELTIGO: boolean;
+    AIRTELTIGO_BIGTIME: boolean;
+  };
+}> {
+  const [halted, mtnVal, telecelVal, atVal] = await Promise.all([
+    isOrderProcessingHalted(),
+    getSetting("network_mtn_enabled", "true"),
+    getSetting("network_telecel_enabled", "true"),
+    getSetting("network_airteltigo_enabled", "true"),
+  ]);
+  const mtnEnabled = !halted && mtnVal !== "false";
+  const telecelEnabled = !halted && telecelVal !== "false";
+  const atEnabled = !halted && atVal !== "false";
+  return {
+    isHalted: halted,
+    networkStatus: {
+      MTN: mtnEnabled,
+      TELECEL: telecelEnabled,
+      AIRTELTIGO: atEnabled,
+      AIRTELTIGO_BIGTIME: atEnabled,
+    },
+  };
+}
+
+
 export async function getPricingForProfile(
   profileId: string | null,
   gbAmount: number,
@@ -209,6 +264,11 @@ export async function createOrder(input: CreateOrderInput) {
       throw new Error("Free packages (zero price) are not allowed.");
     }
   }
+
+  if (await isNetworkOrdersPaused(input.network)) {
+    throw new Error(`${input.network} orders are temporarily paused by administrator for maintenance.`);
+  }
+
 
   // Central MTN Number Verification Check (§16, §17)
   if (!input.skipMtnValidation) {

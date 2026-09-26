@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { sendOrdersSchema } from "@/lib/validation";
-import { createOrder, isOrderProcessingHalted } from "@/lib/orders";
+import { createOrder, isOrderProcessingHalted, isNetworkOrdersPaused } from "@/lib/orders";
 import {
   validateMtnOrderRecipient,
   isMtnVerificationEnabled,
@@ -71,6 +71,16 @@ export async function POST(request: NextRequest) {
         return apiError(
           400,
           `${o.network} ${o.gbAmount}GB is currently unavailable. Please refresh the page and try again.`
+        );
+      }
+    }
+
+    for (const o of deduplicatedOrders) {
+
+      if (await isNetworkOrdersPaused(o.network)) {
+        return apiError(
+          503,
+          `${o.network} orders are temporarily paused by administrator for maintenance. Please select another network or check back shortly.`
         );
       }
     }

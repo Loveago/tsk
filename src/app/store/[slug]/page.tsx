@@ -9,6 +9,8 @@ import { NETWORK_BRANDS, NETWORK_ORDER, ghs, networkHref, storeHref } from "@/co
 import { TrackForm } from "./track/track-form";
 import type { NetworkProvider } from "@/lib/types";
 
+import { isNetworkOrdersPaused, isOrderProcessingHalted } from "@/lib/orders";
+
 export const dynamic = "force-dynamic";
 
 export default async function PublicStorePage({
@@ -28,11 +30,70 @@ export default async function PublicStorePage({
   if (!storefront || storefront.status !== "ENABLED") notFound();
   if (featureSetting?.value === "false") {
     return (
-      <div className="mx-auto mt-20 max-w-md p-8 text-center bg-white rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Storefronts Temporarily Paused</h2>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Reseller storefront orders are currently paused by administration for scheduled maintenance. Please check back soon.
-        </p>
+      <div className="mx-auto max-w-4xl px-4 py-12">
+        <div className="rounded-3xl border border-slate-200/80 bg-white/90 p-8 sm:p-12 text-center shadow-lg dark:border-slate-800 dark:bg-[#111a2c]/90">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-500/15">
+            <Clock className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+          </div>
+          <span className="mt-6 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            Storefronts Under Maintenance
+          </span>
+          <h1 className="mt-4 font-serif text-3xl font-bold text-slate-900 sm:text-4xl dark:text-white">
+            Storefront Orders Temporarily Paused
+          </h1>
+          <p className="mt-3 mx-auto max-w-lg text-sm text-slate-600 sm:text-base dark:text-slate-300">
+            Reseller storefront ordering is currently paused for scheduled system maintenance. Existing orders are unaffected and can be tracked below.
+          </p>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href="#track"
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-yellow-300 px-6 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/20 transition-all hover:bg-yellow-400"
+            >
+              <Clock className="h-4 w-4" />
+              Track existing order
+            </a>
+            <Link
+              href={storeHref(slug, "track")}
+              className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+            >
+              Dedicated track page →
+            </Link>
+            {storefront.whatsapp && (
+              <a
+                href={`https://wa.me/233${storefront.whatsapp.replace(/^0/, "").replace(/\D/g, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
+              >
+                Chat on WhatsApp
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Live Order Tracking section */}
+        <section id="track" className="mt-12 scroll-mt-24">
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200/90 bg-white/85 p-6 sm:p-10 shadow-xl shadow-slate-200/40 backdrop-blur-md dark:border-white/10 dark:bg-[#111a2c]/85 dark:shadow-none">
+            <div className="relative z-10 mx-auto max-w-2xl text-center">
+              <span className="inline-flex items-center gap-2 rounded-full border border-yellow-400/40 bg-yellow-400/10 px-3.5 py-1.5 text-xs font-bold text-yellow-700 dark:text-yellow-400">
+                <Clock className="h-3.5 w-3.5 text-yellow-500" />
+                Live Order Tracking
+              </span>
+              <h2 className="mt-3 font-serif text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+                Track Your Bundle Order
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-300">
+                Enter your recipient phone number, receipt email, or Paystack order reference below to check real-time delivery status.
+              </p>
+            </div>
+
+            <div className="relative z-10 mx-auto mt-8 max-w-xl">
+              <TrackForm slug={slug} />
+            </div>
+          </div>
+        </section>
       </div>
     );
   }
@@ -83,7 +144,7 @@ export default async function PublicStorePage({
     include: { dataPackage: true },
   });
 
-  const groups = NETWORK_ORDER.map((network) => {
+  const rawGroups = NETWORK_ORDER.map((network) => {
     const items = products.filter((p) => p.dataPackage.network === network);
     if (items.length === 0) return null;
     return {
@@ -92,6 +153,14 @@ export default async function PublicStorePage({
       min: Math.min(...items.map((p) => fromPesewas(p.sellingPrice))),
     };
   }).filter((g): g is NonNullable<typeof g> => g !== null);
+
+  const groups = await Promise.all(
+    rawGroups.map(async (g) => ({
+      ...g,
+      isPaused: await isNetworkOrdersPaused(g.network),
+    }))
+  );
+
 
   return (
     <div className="pb-4">
@@ -173,20 +242,30 @@ export default async function PublicStorePage({
                   href={networkHref(slug, g.network)}
                   className="group rounded-2xl bg-white p-2 shadow-sm ring-1 ring-slate-900/5 transition-shadow hover:shadow-lg sm:rounded-3xl sm:p-3 dark:bg-[#111a2c] dark:ring-white/10"
                 >
-                  <div className={`aspect-square overflow-hidden rounded-xl sm:rounded-2xl ${brand.tile}`}>
+                  <div className={`relative aspect-square overflow-hidden rounded-xl sm:rounded-2xl ${brand.tile}`}>
                     <NetworkLogo network={g.network} className="h-full w-full" />
+                    {g.isPaused && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60 backdrop-blur-[2px]">
+                        <span className="rounded-full bg-red-500/90 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow">
+                          Paused
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="px-1 pb-1 pt-2 sm:px-2 sm:pb-2 sm:pt-3">
                     <p className="font-serif text-sm font-bold text-slate-900 sm:text-base dark:text-white">{brand.label}</p>
                     <div className="mt-1 flex items-center justify-between">
                       <p className="text-[11px] leading-tight text-slate-500 sm:text-xs dark:text-slate-400">
-                        From {ghs(g.min)} · {g.count} bundle{g.count === 1 ? "" : "s"}
+                        {g.isPaused ? "Temporarily paused" : `From ${ghs(g.min)} · ${g.count} bundle${g.count === 1 ? "" : "s"}`}
                       </p>
-                      <span className="text-xs font-bold text-yellow-500 transition-transform group-hover:translate-x-0.5 sm:text-sm">
-                        Buy →
+                      <span className={`text-xs font-bold transition-transform group-hover:translate-x-0.5 sm:text-sm ${
+                        g.isPaused ? "text-slate-400 dark:text-slate-500" : "text-yellow-500"
+                      }`}>
+                        {g.isPaused ? "Notice →" : "Buy →"}
                       </span>
                     </div>
                   </div>
+
                 </Link>
               );
             })}

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { phoneSchema } from "@/lib/validation";
 import { detectNetworkNameByPrefix } from "@/lib/phone-utils";
-import { resolveUserWholesalePrice } from "@/lib/orders";
+import { resolveUserWholesalePrice, isNetworkOrdersPaused } from "@/lib/orders";
 import { nextBatchCode } from "@/lib/batches";
 import { sanitizeCustomerRefundNote } from "@/lib/types";
 import { ApiError, formatApiSuccess, logApiRequestEntry } from "@/lib/developer-api";
@@ -131,6 +131,16 @@ export async function validateAndFilterBatchEntries(
       .trim();
 
     // 6. Matching active package resolution
+    if (await isNetworkOrdersPaused(net)) {
+      filteredOutEntries.push({
+        number: rawNumber,
+        allocationGB: alloc,
+        reason: `${net} orders are temporarily paused by administrator for maintenance`,
+        type: "unavailable",
+      });
+      continue;
+    }
+
     let matchedPkg = activePackages.find(
       (p) => p.network.toUpperCase() === net && Math.abs(p.gbAmount - alloc) < 0.01
     );
@@ -138,6 +148,7 @@ export async function validateAndFilterBatchEntries(
     if (!matchedPkg && entry.packageId) {
       matchedPkg = activePackages.find((p) => p.id === entry.packageId);
     }
+
 
     if (!matchedPkg) {
       filteredOutEntries.push({
@@ -327,6 +338,15 @@ export async function handleBatchOrderSubmission({
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new ApiError("INVALID_REQUEST", "entries array cannot be empty", 400);
   }
+
+  if (body.network && (await isNetworkOrdersPaused(body.network))) {
+    throw new ApiError(
+      "NETWORK_ORDERS_PAUSED",
+      `${body.network} orders are temporarily paused by administrator for maintenance.`,
+      503
+    );
+  }
+
 
   const rawReference = body.externalReference || body.reference;
   const reference = rawReference ? String(rawReference).trim() : null;
