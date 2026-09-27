@@ -55,6 +55,7 @@ export default function SendOrderPage() {
   const [isHalted, setIsHalted] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [network, setNetwork] = React.useState<string>("MTN");
+  const isCurrentNetworkPaused = networkStatus[network] === false || isHalted;
   const [tab, setTab] = React.useState<"upload" | "paste">("upload");
   const [bulkText, setBulkText] = React.useState("");
   const [fileName, setFileName] = React.useState<string | null>(null);
@@ -131,6 +132,13 @@ export default function SendOrderPage() {
         }
         if (d.networkStatus) {
           setNetworkStatus(d.networkStatus);
+          setNetwork((currentNet) => {
+            if (d.networkStatus[currentNet] === false || d.isHalted) {
+              const activeNet = NETWORKS.find((net) => d.networkStatus[net] !== false) || "TELECEL";
+              return activeNet;
+            }
+            return currentNet;
+          });
         }
         if (d.isHalted !== undefined) {
           setIsHalted(d.isHalted);
@@ -140,10 +148,18 @@ export default function SendOrderPage() {
         }
       })
       .catch(() => toast("Failed to load packages", "error"))
-
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Ensure selected network is never a deactivated network
+  React.useEffect(() => {
+    if (networkStatus && networkStatus[network] === false) {
+      const activeNet = NETWORKS.find((net) => networkStatus[net] !== false) || "TELECEL";
+      setNetwork(activeNet);
+    }
+  }, [networkStatus, network]);
+
 
   // Restore draft from localStorage on mount
   React.useEffect(() => {
@@ -726,20 +742,35 @@ export default function SendOrderPage() {
                 return (
                   <button
                     key={n}
-                    onClick={() => setNetwork(n)}
-                    disabled={unavailable || !submissionEnabled}
-                    title={isPaused ? `${NETWORK_LABELS[n]} orders are paused for maintenance` : unavailable ? "No packages available for this network" : undefined}
+                    type="button"
+                    onClick={() => {
+                      if (!isPaused && !unavailable && submissionEnabled) {
+                        setNetwork(n);
+                      }
+                    }}
+                    disabled={unavailable || !submissionEnabled || isPaused}
+                    title={
+                      isPaused
+                        ? `${NETWORK_LABELS[n]} is deactivated`
+                        : unavailable
+                        ? "No packages available for this network"
+                        : undefined
+                    }
                     className={cn(
-                      "flex h-10 items-center justify-center gap-1 rounded-lg text-xs sm:text-sm font-bold transition-all duration-150 relative",
-                      isSelected ? activeStyle : inactiveStyle,
-                      unavailable &&
+                      "flex h-10 items-center justify-center gap-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all duration-150 relative",
+                      isPaused
+                        ? "cursor-not-allowed opacity-40 bg-slate-200/60 text-slate-400 dark:bg-white/5 dark:text-slate-500 border border-dashed border-slate-300 dark:border-white/10 pointer-events-none select-none shadow-none"
+                        : isSelected
+                        ? activeStyle
+                        : inactiveStyle,
+                      unavailable && !isPaused &&
                         "cursor-not-allowed opacity-40 hover:text-slate-500 dark:hover:text-slate-400"
                     )}
                   >
                     <span>{NETWORK_LABELS[n]}</span>
                     {isPaused && (
-                      <span className="text-[10px] uppercase font-bold opacity-80 rounded px-1 bg-black/20 dark:bg-white/20">
-                        Paused
+                      <span className="text-[9px] uppercase font-bold tracking-wider rounded px-1.5 py-0.5 bg-slate-900/10 dark:bg-white/10 text-slate-600 dark:text-slate-400">
+                        Deactivated
                       </span>
                     )}
                   </button>
@@ -747,14 +778,15 @@ export default function SendOrderPage() {
               })}
             </div>
             {networkStatus[network] === false && (
-              <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-900 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
                 <span>
-                  <strong>{NETWORK_LABELS[network]} orders are temporarily paused for maintenance.</strong> New orders for {NETWORK_LABELS[network]} cannot be submitted right now. You can still select and submit orders for other active networks.
+                  <strong>{NETWORK_LABELS[network]} is currently deactivated.</strong> Ordering for this network is disabled. Please select an active network above.
                 </span>
               </div>
             )}
           </div>
+
 
 
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5">
@@ -791,16 +823,18 @@ export default function SendOrderPage() {
           ) : tab === "upload" ? (
             <div className="space-y-3">
               <div
-                onClick={() => !uploading && fileRef.current?.click()}
+                onClick={() => !isCurrentNetworkPaused && !uploading && fileRef.current?.click()}
                 onDragOver={(e) => {
                   e.preventDefault();
-                  setDragging(true);
+                  if (!isCurrentNetworkPaused) setDragging(true);
                 }}
                 onDragLeave={() => setDragging(false)}
-                onDrop={onDrop}
+                onDrop={isCurrentNetworkPaused ? undefined : onDrop}
                 className={cn(
                   "flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors",
-                  dragging
+                  isCurrentNetworkPaused
+                    ? "cursor-not-allowed opacity-50 border-slate-200 bg-slate-100/60 dark:border-white/5 dark:bg-white/[0.02] pointer-events-none"
+                    : dragging
                     ? "border-brand-500 bg-brand-50/60 dark:bg-brand-500/10"
                     : "border-brand-400/50 hover:border-brand-500 hover:bg-brand-50/40 dark:hover:bg-brand-500/5",
                   uploading && "pointer-events-none opacity-60"
@@ -816,6 +850,8 @@ export default function SendOrderPage() {
                 <p className="text-sm font-semibold">
                   {uploading ? (
                     "Reading your file…"
+                  ) : isCurrentNetworkPaused ? (
+                    `${NETWORK_LABELS[network]} is Deactivated`
                   ) : (
                     <>
                       Drag &amp; drop your Excel file or{" "}
@@ -824,11 +860,19 @@ export default function SendOrderPage() {
                   )}
                 </p>
                 <p className="max-w-sm text-xs text-slate-500 dark:text-slate-400">
-                  Upload an Excel (.xlsx) file with one order per row — phone number first, then
-                  GB. Every row is sent to{" "}
-                  <span className="font-semibold">{NETWORK_LABELS[network]}</span>.
+                  {isCurrentNetworkPaused ? (
+                    <span className="font-semibold text-red-500 dark:text-red-400">
+                      Orders for {NETWORK_LABELS[network]} are currently deactivated. Please select an active network above.
+                    </span>
+                  ) : (
+                    <>
+                      Upload an Excel (.xlsx) file with one order per row — phone number first, then
+                      GB. Every row is sent to{" "}
+                      <span className="font-semibold">{NETWORK_LABELS[network]}</span>.
+                    </>
+                  )}
                 </p>
-                {fileName && (
+                {fileName && !isCurrentNetworkPaused && (
                   <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
                     Selected: {fileName}
                   </p>
@@ -857,10 +901,19 @@ export default function SendOrderPage() {
             <div className="space-y-3">
               <textarea
                 rows={6}
-                placeholder={"0535308873 1gb\n0241234567,2\n0507904981 10gb"}
-                value={bulkText}
-                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={
+                  isCurrentNetworkPaused
+                    ? `${NETWORK_LABELS[network]} is currently deactivated. You cannot paste numbers here. Please select an active network above.`
+                    : "0535308873 1gb\n0241234567,2\n0507904981 10gb"
+                }
+                value={isCurrentNetworkPaused ? "" : bulkText}
+                disabled={!submissionEnabled || isCurrentNetworkPaused}
+                onChange={(e) => !isCurrentNetworkPaused && setBulkText(e.target.value)}
                 onPaste={(e) => {
+                  if (isCurrentNetworkPaused) {
+                    e.preventDefault();
+                    return;
+                  }
                   const pasted = e.clipboardData?.getData("text");
                   if (pasted) {
                     e.preventDefault();
@@ -874,9 +927,13 @@ export default function SendOrderPage() {
                   }
                 }}
                 onBlur={() => {
-                  if (bulkText) setBulkText(normalizeTextNumbers(bulkText));
+                  if (bulkText && !isCurrentNetworkPaused) setBulkText(normalizeTextNumbers(bulkText));
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 caret-brand-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400"
+                className={cn(
+                  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 caret-brand-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder:text-slate-500 dark:caret-brand-400",
+                  isCurrentNetworkPaused &&
+                    "cursor-not-allowed opacity-50 bg-slate-100/80 dark:bg-white/[0.02] text-slate-400 pointer-events-none select-none"
+                )}
               />
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="space-y-1">
@@ -891,7 +948,7 @@ export default function SendOrderPage() {
                     <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                       ✓ Duplicate numbers are automatically filtered so only one order per number is sent.
                     </p>
-                    {bulkText.trim() && (
+                    {bulkText.trim() && !isCurrentNetworkPaused && (
                       <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[11px] font-bold text-brand-600 dark:text-brand-400">
                         {splitOrderLines(bulkText).filter((l) => !isHeaderLine(l)).length} order(s) entered
                       </span>
@@ -899,7 +956,7 @@ export default function SendOrderPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {bulkText.trim() && (
+                  {bulkText.trim() && !isCurrentNetworkPaused && (
                     <>
                       <button
                         type="button"
@@ -939,10 +996,15 @@ export default function SendOrderPage() {
                   )}
                   <button
                     onClick={() => {
-                      handleText(bulkText, "pasted text");
+                      if (!isCurrentNetworkPaused) {
+                        handleText(bulkText, "pasted text");
+                      }
                     }}
-                    disabled={!bulkText.trim() || !submissionEnabled}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                    disabled={!bulkText.trim() || !submissionEnabled || isCurrentNetworkPaused}
+                    className={cn(
+                      "inline-flex h-9 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-50",
+                      isCurrentNetworkPaused && "cursor-not-allowed opacity-50 pointer-events-none"
+                    )}
                   >
                     <ClipboardPaste className="h-4 w-4" /> Parse &amp; add
                   </button>
@@ -950,6 +1012,7 @@ export default function SendOrderPage() {
               </div>
             </div>
           )}
+
         </div>
       </div>
 

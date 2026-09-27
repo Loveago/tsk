@@ -33,6 +33,10 @@ import {
   CreditCard,
   History,
   ShieldCheck,
+  Calendar,
+  Sparkles,
+  Copy,
+  Check,
 } from "lucide-react";
 
 interface UserProfile {
@@ -69,7 +73,19 @@ interface WalletTxItem {
   reference: string | null;
   note: string | null;
   createdAt: string;
+  balanceBefore?: number;
+  balanceAfter?: number;
   sendClaim?: { id: string; transactionReference: string; senderPhone: string; status: string } | null;
+}
+
+interface PeriodStats {
+  period: string;
+  startingBalance: number;
+  endingBalance: number;
+  credits: number;
+  debits: number;
+  netChange: number;
+  count: number;
 }
 
 interface OrderItem {
@@ -119,12 +135,17 @@ export default function AdminWalletsPage() {
   // Single User State
   const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
   const [stats, setStats] = React.useState<WalletStats | null>(null);
+  const [periodStats, setPeriodStats] = React.useState<PeriodStats | null>(null);
   const [txItems, setTxItems] = React.useState<WalletTxItem[]>([]);
   const [txTotal, setTxTotal] = React.useState(0);
   const [txPage, setTxPage] = React.useState(1);
   const [txPages, setTxPages] = React.useState(1);
   const [txType, setTxType] = React.useState("");
   const [txStatus, setTxStatus] = React.useState("");
+  const [txPeriod, setTxPeriod] = React.useState<string>("all");
+  const [txStartDate, setTxStartDate] = React.useState<string>("");
+  const [txEndDate, setTxEndDate] = React.useState<string>("");
+  const [txQuery, setTxQuery] = React.useState<string>("");
 
   const [orders, setOrders] = React.useState<OrderItem[]>([]);
   const [orderTotal, setOrderTotal] = React.useState(0);
@@ -180,9 +201,15 @@ export default function AdminWalletsPage() {
         userId: activeUserId,
         txPage: String(txPage),
         orderPage: String(orderPage),
+        txPeriod,
       });
       if (txType) params.set("txType", txType);
       if (txStatus) params.set("txStatus", txStatus);
+      if (txQuery.trim()) params.set("txQuery", txQuery.trim());
+      if (txPeriod === "custom") {
+        if (txStartDate) params.set("txStartDate", txStartDate);
+        if (txEndDate) params.set("txEndDate", txEndDate);
+      }
 
       const res = await fetch(`/api/admin/wallets?${params.toString()}`);
       const json = await res.json();
@@ -190,6 +217,7 @@ export default function AdminWalletsPage() {
 
       setUserProfile(json.user);
       setStats(json.stats);
+      setPeriodStats(json.periodStats ?? null);
       setTxItems(json.transactions?.items ?? []);
       setTxTotal(json.transactions?.total ?? 0);
       setTxPages(json.transactions?.pages ?? 1);
@@ -202,7 +230,7 @@ export default function AdminWalletsPage() {
     } finally {
       setSingleLoading(false);
     }
-  }, [activeUserId, txPage, orderPage, txType, txStatus, toast]);
+  }, [activeUserId, txPage, orderPage, txType, txStatus, txPeriod, txStartDate, txEndDate, txQuery, toast]);
 
   // Load overview / directory when no user is selected
   const loadOverview = React.useCallback(async () => {
@@ -310,15 +338,27 @@ export default function AdminWalletsPage() {
       toast("No transactions to export for this user", "info");
       return;
     }
-    const headers = ["ID", "Date", "Type", "Amount (GHS)", "Status", "Reference", "Note"];
+    const headers = [
+      "ID",
+      "Date",
+      "Type",
+      "Amount (GHS)",
+      "Reason / Note",
+      "Balance Before (GHS)",
+      "Balance After (GHS)",
+      "Status",
+      "Reference",
+    ];
     const rows = txItems.map((tx) => [
       tx.id,
       new Date(tx.createdAt).toISOString(),
       tx.type,
       tx.amount.toFixed(2),
+      `"${(tx.note || "").replace(/"/g, '""')}"`,
+      typeof tx.balanceBefore === "number" ? tx.balanceBefore.toFixed(2) : "",
+      typeof tx.balanceAfter === "number" ? tx.balanceAfter.toFixed(2) : "",
       tx.status,
       tx.reference || "",
-      `"${(tx.note || "").replace(/"/g, '""')}"`,
     ]);
 
     const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
@@ -609,7 +649,7 @@ export default function AdminWalletsPage() {
                         setTxType(e.target.value);
                         setTxPage(1);
                       }}
-                      className="h-8 text-xs w-36"
+                      className="h-8 text-xs w-32"
                     >
                       <option value="">All Types</option>
                       <option value="TOPUP">Top-ups</option>
@@ -624,7 +664,7 @@ export default function AdminWalletsPage() {
                         setTxStatus(e.target.value);
                         setTxPage(1);
                       }}
-                      className="h-8 text-xs w-36"
+                      className="h-8 text-xs w-32"
                     >
                       <option value="">All Statuses</option>
                       <option value="APPROVED">Approved</option>
@@ -637,7 +677,129 @@ export default function AdminWalletsPage() {
 
               {/* TAB 1: WALLET TRANSACTIONS LEDGER */}
               {activeTab === "transactions" && (
-                <div>
+                <div className="space-y-4">
+                  {/* Period Filter Buttons */}
+                  <div className="space-y-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80">
+                      {[
+                        { key: "today", label: "Today" },
+                        { key: "yesterday", label: "Yesterday" },
+                        { key: "7days", label: "Last 7 Days" },
+                        { key: "month", label: "This Month" },
+                        { key: "all", label: "All Time" },
+                        { key: "custom", label: "Custom Date" },
+                      ].map((p) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => {
+                            setTxPeriod(p.key);
+                            setTxPage(1);
+                          }}
+                          className={`rounded-lg py-1.5 px-3 text-xs font-bold transition cursor-pointer ${
+                            txPeriod === p.key
+                              ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white"
+                              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {txPeriod === "custom" && (
+                      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-800/50">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">From:</span>
+                          <input
+                            type="date"
+                            value={txStartDate}
+                            onChange={(e) => {
+                              setTxStartDate(e.target.value);
+                              setTxPage(1);
+                            }}
+                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">To:</span>
+                          <input
+                            type="date"
+                            value={txEndDate}
+                            onChange={(e) => {
+                              setTxEndDate(e.target.value);
+                              setTxPage(1);
+                            }}
+                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Period Stats Card */}
+                  {periodStats && (
+                    <div className="rounded-xl border border-slate-200/80 bg-gradient-to-r from-slate-50 via-white to-indigo-50/20 p-3.5 dark:border-slate-800 dark:from-slate-800/40 dark:via-slate-900 dark:to-slate-800/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                          <Sparkles className="h-3 w-3 text-brand-600" />
+                          Ledger Period Summary ({txPeriod.toUpperCase()})
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500">
+                          {periodStats.count} transaction{periodStats.count !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                        <div className="rounded-lg bg-white p-2.5 border border-slate-100 dark:bg-slate-800 dark:border-slate-700">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Starting Balance</span>
+                          <span className="text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                            {formatGHS(periodStats.startingBalance)}
+                          </span>
+                        </div>
+                        <div className="rounded-lg bg-emerald-50/70 p-2.5 border border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20">
+                          <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block">Money In (+)</span>
+                          <span className="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                            +{formatGHS(periodStats.credits)}
+                          </span>
+                        </div>
+                        <div className="rounded-lg bg-rose-50/70 p-2.5 border border-rose-100 dark:bg-rose-500/10 dark:border-rose-500/20">
+                          <span className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 block">Money Out (−)</span>
+                          <span className="text-sm font-bold tabular-nums text-rose-700 dark:text-rose-400">
+                            −{formatGHS(periodStats.debits)}
+                          </span>
+                        </div>
+                        <div className="rounded-lg bg-white p-2.5 border border-slate-100 dark:bg-slate-800 dark:border-slate-700">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Net Change</span>
+                          <span className={`text-sm font-bold tabular-nums ${periodStats.netChange >= 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                            {periodStats.netChange >= 0 ? "+" : "−"}{formatGHS(Math.abs(periodStats.netChange))}
+                          </span>
+                        </div>
+                        <div className="col-span-2 sm:col-span-1 rounded-lg bg-slate-900 text-white p-2.5 dark:bg-brand-600">
+                          <span className="text-[10px] uppercase font-bold text-white/70 block">Ending Balance</span>
+                          <span className="text-sm font-black tabular-nums text-white">
+                            {formatGHS(periodStats.endingBalance)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Search within ledger */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <Input
+                      type="text"
+                      placeholder="Filter transactions by note, phone, order #, or ref..."
+                      value={txQuery}
+                      onChange={(e) => {
+                        setTxQuery(e.target.value);
+                        setTxPage(1);
+                      }}
+                      className="pl-8.5 h-9 text-xs rounded-xl"
+                    />
+                  </div>
+
                   {txItems.length === 0 ? (
                     <div className="py-12">
                       <EmptyState
@@ -653,81 +815,127 @@ export default function AdminWalletsPage() {
                           tx.type === "TOPUP" ||
                           tx.type === "REFUND" ||
                           (tx.type === "ADJUSTMENT" && tx.amount > 0);
+                        const isMtn = /MTN/i.test(tx.note || "");
+                        const isTelecel = /TELECEL/i.test(tx.note || "");
+                        const isAirtelTigo = /AIRTEL|AT/i.test(tx.note || "");
+
                         return (
                           <div
                             key={tx.id}
-                            className="flex flex-wrap items-center justify-between gap-3 py-3.5 text-sm"
+                            className="flex flex-col gap-2.5 py-4 text-sm hover:bg-slate-50/50 dark:hover:bg-slate-800/30 rounded-xl px-2 transition"
                           >
-                            <div className="flex items-start gap-3 min-w-0">
-                              <div
-                                className={`rounded-xl p-2 shrink-0 ${
-                                  isCredit
-                                    ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-                                    : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
-                                }`}
-                              >
-                                {isCredit ? (
-                                  <ArrowDownLeft className="h-4 w-4" />
-                                ) : (
-                                  <ArrowUpRight className="h-4 w-4" />
-                                )}
-                              </div>
-                              <div className="space-y-0.5 min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span
-                                    className={`font-bold ${
-                                      isCredit
-                                        ? "text-emerald-600 dark:text-emerald-400"
-                                        : "text-slate-900 dark:text-white"
-                                    }`}
-                                  >
-                                    {isCredit ? "+" : "-"}
-                                    {formatGHS(Math.abs(tx.amount))}
-                                  </span>
-                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                                    {tx.type}
-                                  </span>
-                                  <StatusBadge status={tx.status} />
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-start gap-3 min-w-0">
+                                <div
+                                  className={`rounded-xl p-2 shrink-0 ${
+                                    isCredit
+                                      ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                                      : "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"
+                                  }`}
+                                >
+                                  {isCredit ? (
+                                    <ArrowDownLeft className="h-4 w-4" />
+                                  ) : (
+                                    <ArrowUpRight className="h-4 w-4" />
+                                  )}
                                 </div>
-                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                                  {tx.reference && <span>Ref: {tx.reference}</span>}
-                                  {tx.note && <span>· Note: {tx.note}</span>}
-                                  <span>· {formatDateTime(tx.createdAt)}</span>
+                                <div className="space-y-0.5 min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span
+                                      className={`font-black text-base tabular-nums ${
+                                        isCredit
+                                          ? "text-emerald-600 dark:text-emerald-400"
+                                          : "text-rose-600 dark:text-rose-400"
+                                      }`}
+                                    >
+                                      {isCredit ? "+" : "−"}
+                                      {formatGHS(Math.abs(tx.amount))}
+                                    </span>
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
+                                        isCredit
+                                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                          : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300"
+                                      }`}
+                                    >
+                                      {isCredit ? "CREDIT" : "DEBIT"}
+                                    </span>
+                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                      {tx.type}
+                                    </span>
+                                    {isMtn && (
+                                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900 dark:bg-amber-400/20 dark:text-amber-300">
+                                        MTN
+                                      </span>
+                                    )}
+                                    {isTelecel && (
+                                      <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-900 dark:bg-red-400/20 dark:text-red-300">
+                                        TELECEL
+                                      </span>
+                                    )}
+                                    {isAirtelTigo && (
+                                      <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-900 dark:bg-blue-400/20 dark:text-blue-300">
+                                        AT
+                                      </span>
+                                    )}
+                                    <StatusBadge status={tx.status} />
+                                  </div>
+                                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                    {tx.note || (tx.reference ? `Ref: ${tx.reference}` : tx.type)}
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                    {tx.reference && <span>Ref: {tx.reference}</span>}
+                                    <span>· {formatDateTime(tx.createdAt)}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            {/* Pending transaction moderation actions */}
-                            {tx.status === "PENDING" && (
-                              <div className="flex items-center gap-1.5">
-                                {tx.reference?.startsWith("PSK-") && (
+                              {/* Pending transaction moderation actions */}
+                              {tx.status === "PENDING" && (
+                                <div className="flex items-center gap-1.5">
+                                  {tx.reference?.startsWith("PSK-") && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={busyActionId === tx.id}
+                                      onClick={() => verifyPaystack(tx.id, tx.reference!)}
+                                      className="h-8 text-xs border-brand-500/40 text-brand-600 hover:bg-brand-50 dark:text-brand-400 cursor-pointer"
+                                    >
+                                      <RefreshCw className="h-3 w-3 mr-1" /> Verify PSK
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    disabled={busyActionId === tx.id}
+                                    onClick={() => handleTxDecision(tx.id, "APPROVED")}
+                                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                                  >
+                                    <CheckCircle2 className="h-3 w-3 mr-1" /> Approve
+                                  </Button>
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     disabled={busyActionId === tx.id}
-                                    onClick={() => verifyPaystack(tx.id, tx.reference!)}
-                                    className="h-8 text-xs border-brand-500/40 text-brand-600 hover:bg-brand-50 dark:text-brand-400 cursor-pointer"
+                                    onClick={() => handleTxDecision(tx.id, "REJECTED")}
+                                    className="h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 cursor-pointer"
                                   >
-                                    <RefreshCw className="h-3 w-3 mr-1" /> Verify PSK
+                                    <XCircle className="h-3 w-3 mr-1" /> Reject
                                   </Button>
-                                )}
-                                <Button
-                                  size="sm"
-                                  disabled={busyActionId === tx.id}
-                                  onClick={() => handleTxDecision(tx.id, "APPROVED")}
-                                  className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                                >
-                                  <CheckCircle2 className="h-3 w-3 mr-1" /> Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={busyActionId === tx.id}
-                                  onClick={() => handleTxDecision(tx.id, "REJECTED")}
-                                  className="h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 cursor-pointer"
-                                >
-                                  <XCircle className="h-3 w-3 mr-1" /> Reject
-                                </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Balance Before and After strip */}
+                            {typeof tx.balanceBefore === "number" && typeof tx.balanceAfter === "number" && (
+                              <div className="flex items-center gap-2 text-xs rounded-lg bg-slate-50 px-3 py-1.5 dark:bg-slate-800/60 w-fit">
+                                <span className="text-[10px] uppercase font-bold text-slate-400">Balance:</span>
+                                <span className="font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
+                                  {formatGHS(tx.balanceBefore)}
+                                </span>
+                                <span className="text-slate-400">→</span>
+                                <span className="font-bold text-slate-900 dark:text-white tabular-nums">
+                                  {formatGHS(tx.balanceAfter)}
+                                </span>
                               </div>
                             )}
                           </div>

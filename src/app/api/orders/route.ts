@@ -319,11 +319,48 @@ export async function POST(request: NextRequest) {
           created.push(...chunkOrders);
         }
       }
+
+      // Record ledger debit transaction for the created order(s)
+      try {
+        if (created.length === 1) {
+          const o = created[0];
+          await prisma.walletTransaction.create({
+            data: {
+              userId: user.id,
+              type: "DEBIT",
+              amount: o.amount,
+              status: "APPROVED",
+              reference: `order:${o.id}`,
+              note: `Data: ${o.network} ${o.gbAmount}GB to ${o.phoneNumber} (Order #${o.id})`,
+            },
+          });
+        } else if (created.length > 1) {
+          // For multi-recipient orders, create itemized debit records for each order recipient
+          await prisma.walletTransaction.createMany({
+            data: created.map((o) => ({
+              userId: user.id,
+              type: "DEBIT",
+              amount: o.amount,
+              status: "APPROVED",
+              reference: `order:${o.id}`,
+              note: `Data: ${o.network} ${o.gbAmount}GB to ${o.phoneNumber} (Order #${o.id})`,
+            })),
+          });
+        }
+      } catch (txErr) {
+        console.error("Failed to create walletTransaction record for web order:", txErr);
+      }
     } catch (err) {
       // Roll back partially created batches/orders, then refund the balance
       for (const batch of createdBatches) {
         await prisma.order.deleteMany({ where: { batchId: batch.id } });
         await prisma.orderBatch.delete({ where: { id: batch.id } }).catch(() => {});
+      }
+      if (created.length > 0) {
+        const orderRefs = created.map((o) => `order:${o.id}`);
+        await prisma.walletTransaction.deleteMany({
+          where: { userId: user.id, reference: { in: orderRefs } },
+        }).catch(() => {});
       }
       await prisma.user.update({
         where: { id: user.id },

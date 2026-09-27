@@ -102,35 +102,146 @@ export async function GET(request: NextRequest) {
           }),
         ]);
 
+      // Helper to compute delta for running balance
+      const computeDelta = (type: string, amount: number, status: string): number => {
+        if (status !== "APPROVED") return 0;
+        switch (type) {
+          case "TOPUP":
+          case "REFUND":
+            return Math.abs(amount);
+          case "DEBIT":
+          case "SIGNUP_FEE":
+            return -Math.abs(amount);
+          case "ADJUSTMENT":
+            return amount;
+          default:
+            return 0;
+        }
+      };
+
+      // Fetch all wallet transactions for this user oldest first to compute running balance
+      const allUserTxs = await prisma.walletTransaction.findMany({
+        where: { userId },
+        orderBy: { createdAt: "asc" },
+        include: {
+          sendClaim: {
+            select: {
+              id: true,
+              transactionReference: true,
+              senderPhone: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      let sumDeltas = 0;
+      for (const tx of allUserTxs) {
+        sumDeltas += computeDelta(tx.type, tx.amount, tx.status);
+      }
+      const baseline = user.balance - sumDeltas;
+
+      let running = baseline;
+      const enrichedAllTxs = allUserTxs.map((tx) => {
+        const balanceBefore = running;
+        running += computeDelta(tx.type, tx.amount, tx.status);
+        const balanceAfter = running;
+        return {
+          ...tx,
+          balanceBefore: Math.round(balanceBefore * 100) / 100,
+          balanceAfter: Math.round(balanceAfter * 100) / 100,
+        };
+      });
+
       // Pagination & filters for transactions
       const txPage = Math.max(1, Number(searchParams.get("txPage") ?? 1));
       const txPageSize = Math.min(100, Math.max(1, Number(searchParams.get("txPageSize") ?? 15)));
       const txType = searchParams.get("txType") || undefined;
       const txStatus = searchParams.get("txStatus") || undefined;
+      const txPeriod = searchParams.get("txPeriod") || "all";
+      const txStartDate = searchParams.get("txStartDate");
+      const txEndDate = searchParams.get("txEndDate");
+      const txQuery = searchParams.get("txQuery")?.trim().toLowerCase();
 
-      const txWhere: Prisma.WalletTransactionWhereInput = { userId };
-      if (txType) txWhere.type = txType;
-      if (txStatus) txWhere.status = txStatus;
+      // Period boundaries
+      const now = new Date();
+      let pStart: Date | null = null;
+      let pEnd: Date | null = null;
+      if (txPeriod === "today") {
+        pStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        pEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      } else if (txPeriod === "yesterday") {
+        const y = new Date(now);
+        y.setDate(y.getDate() - 1);
+        pStart = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 0, 0, 0, 0);
+        pEnd = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59, 999);
+      } else if (txPeriod === "7days") {
+        pStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        pEnd = now;
+      } else if (txPeriod === "month") {
+        pStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        pEnd = now;
+      } else if (txPeriod === "custom" && txStartDate) {
+        pStart = new Date(txStartDate);
+        pEnd = txEndDate ? new Date(txEndDate) : new Date();
+        if (txEndDate && txEndDate.length <= 10) {
+          pEnd.setHours(23, 59, 59, 999);
+        }
+      }
 
-      const [transactions, txTotal] = await Promise.all([
-        prisma.walletTransaction.findMany({
-          where: txWhere,
-          orderBy: { createdAt: "desc" },
-          skip: (txPage - 1) * txPageSize,
-          take: txPageSize,
-          include: {
-            sendClaim: {
-              select: {
-                id: true,
-                transactionReference: true,
-                senderPhone: true,
-                status: true,
-              },
-            },
-          },
-        }),
-        prisma.walletTransaction.count({ where: txWhere }),
-      ]);
+      // Period starting and ending balance
+      let periodStartingBalance = baseline;
+      let periodEndingBalance = user.balance;
+
+      if (pStart) {
+        const prior = enrichedAllTxs.filter((t) => new Date(t.createdAt) < pStart!);
+        if (prior.length > 0) {
+          periodStartingBalance = prior[prior.length - 1].balanceAfter;
+        }
+      }
+      if (pEnd) {
+        const withinOrPrior = enrichedAllTxs.filter((t) => new Date(t.createdAt) <= pEnd!);
+        if (withinOrPrior.length > 0) {
+          periodEndingBalance = withinOrPrior[withinOrPrior.length - 1].balanceAfter;
+        } else {
+          periodEndingBalance = periodStartingBalance;
+        }
+      }
+
+      // Filter transactions
+      const periodTxs = enrichedAllTxs.filter((tx) => {
+        const d = new Date(tx.createdAt);
+        if (pStart && d < pStart) return false;
+        if (pEnd && d > pEnd) return false;
+        return true;
+      });
+
+      let periodCredits = 0;
+      let periodDebits = 0;
+      for (const tx of periodTxs) {
+        if (tx.status !== "APPROVED") continue;
+        const d = computeDelta(tx.type, tx.amount, tx.status);
+        if (d > 0) periodCredits += d;
+        else if (d < 0) periodDebits += Math.abs(d);
+      }
+
+      // Filter by type, status, and search query
+      const filteredTxs = [...periodTxs].reverse().filter((tx) => {
+        if (txType && tx.type !== txType) return false;
+        if (txStatus && tx.status !== txStatus) return false;
+        if (txQuery) {
+          const matchNote = tx.note?.toLowerCase().includes(txQuery);
+          const matchRef = tx.reference?.toLowerCase().includes(txQuery);
+          const matchType = tx.type.toLowerCase().includes(txQuery);
+          const matchAmount = String(tx.amount).includes(txQuery);
+          const matchSender = tx.sendClaim?.senderPhone?.toLowerCase().includes(txQuery);
+          if (!matchNote && !matchRef && !matchType && !matchAmount && !matchSender) return false;
+        }
+        return true;
+      });
+
+      const txTotal = filteredTxs.length;
+      const transactions = filteredTxs.slice((txPage - 1) * txPageSize, txPage * txPageSize);
 
       // Pagination for orders activity
       const orderPage = Math.max(1, Number(searchParams.get("orderPage") ?? 1));
@@ -169,6 +280,15 @@ export async function GET(request: NextRequest) {
           totalOrderSpend: ordersAgg._sum.amount ?? 0,
           successOrdersCount,
           failedOrdersCount,
+        },
+        periodStats: {
+          period: txPeriod,
+          startingBalance: Math.round(periodStartingBalance * 100) / 100,
+          endingBalance: Math.round(periodEndingBalance * 100) / 100,
+          credits: Math.round(periodCredits * 100) / 100,
+          debits: Math.round(periodDebits * 100) / 100,
+          netChange: Math.round((periodCredits - periodDebits) * 100) / 100,
+          count: periodTxs.length,
         },
         transactions: {
           items: transactions,
