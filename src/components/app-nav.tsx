@@ -83,13 +83,13 @@ export const userNav: NavItem[] = [
   { href: "/dashboard/send", label: "Send Order", icon: Send },
   { href: "/dashboard/orders", label: "Sent Orders", icon: ClipboardList, badge: true },
   { href: "/dashboard/not-received", label: "My Not Received", icon: FileWarning },
-  { href: "/dashboard/billing", label: "Billing", icon: Receipt },
   { href: "/dashboard/transactions", label: "Transactions", icon: Wallet },
-  { href: "/dashboard/mtn-verification", label: "MTN Verification", icon: CheckCircle2 },
-  { href: "/dashboard/api", label: "API", icon: BookOpen },
+  { href: "/dashboard/billing", label: "Billing", icon: Receipt },
   { href: "/dashboard/packages", label: "Packages", icon: Package },
   { href: "/dashboard/reports", label: "Reports", icon: FileBarChart },
-  { href: "/dashboard/profile", label: "Profile", icon: User, mobileOnly: true },
+  { href: "/dashboard/api", label: "API", icon: BookOpen },
+  { href: "/dashboard/mtn-verification", label: "MTN Verification", icon: CheckCircle2 },
+  { href: "/dashboard/profile", label: "Profile", icon: User },
 ];
 
 export const adminNav: NavItem[] = [

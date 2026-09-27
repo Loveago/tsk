@@ -348,7 +348,7 @@ export default function TransactionsPage() {
   const [page, setPage] = React.useState(1);
   const [totalPages, setTotalPages] = React.useState(1);
   const [total, setTotal] = React.useState(0);
-  const pageSize = 20;
+  const [pageSize, setPageSize] = React.useState(25);
 
   const [periodStats, setPeriodStats] = React.useState<PeriodStats>({
     startingBalance: 0,
@@ -376,11 +376,11 @@ export default function TransactionsPage() {
   }, [searchQuery]);
 
   const fetchData = React.useCallback(
-    async (p: PeriodType, f: FilterType, pg: number, q: string, cStart: string, cEnd: string) => {
+    async (p: PeriodType, f: FilterType, pg: number, q: string, cStart: string, cEnd: string, ps: number) => {
       setLoading(true);
       const params = new URLSearchParams({
         page: String(pg),
-        pageSize: String(pageSize),
+        pageSize: String(ps),
         period: p,
       });
       if (f !== "ALL") params.set("type", f);
@@ -425,8 +425,8 @@ export default function TransactionsPage() {
   );
 
   React.useEffect(() => {
-    fetchData(period, filter, page, debouncedSearch, customStart, customEnd);
-  }, [period, filter, page, debouncedSearch, customStart, customEnd, fetchData]);
+    fetchData(period, filter, page, debouncedSearch, customStart, customEnd, pageSize);
+  }, [period, filter, page, debouncedSearch, customStart, customEnd, pageSize, fetchData]);
 
   const handlePeriodChange = (newPeriod: PeriodType) => {
     setPeriod(newPeriod);
@@ -488,7 +488,7 @@ export default function TransactionsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => fetchData(period, filter, page, debouncedSearch, customStart, customEnd)}
+            onClick={() => fetchData(period, filter, page, debouncedSearch, customStart, customEnd, pageSize)}
             disabled={loading}
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-xs transition hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
             aria-label="Refresh transactions"
@@ -742,13 +742,30 @@ export default function TransactionsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center justify-between px-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
               Showing {transactions.length} of {total} transaction{total !== 1 ? "s" : ""}
             </p>
-            <p className="text-xs text-slate-400">
-              Page {page} of {totalPages}
-            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="text-slate-400">Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-200 dark:hover:bg-white/10 cursor-pointer"
+                >
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                </select>
+              </div>
+              <p className="text-xs text-slate-400">
+                Page {page} of {totalPages}
+              </p>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -760,32 +777,51 @@ export default function TransactionsPage() {
       )}
 
       {/* ── Pagination ── */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1 || loading}
-            className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Previous
-          </button>
+      {(totalPages > 1 || total > 25) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || loading}
+              className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Previous
+            </button>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Page <span className="font-bold text-slate-900 dark:text-white">{page}</span> of{" "}
+              <span className="font-bold text-slate-900 dark:text-white">{totalPages}</span>
+            </p>
+          </div>
 
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Page <span className="font-bold text-slate-900 dark:text-white">{page}</span> of{" "}
-            <span className="font-bold text-slate-900 dark:text-white">{totalPages}</span>
-          </p>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-slate-400">Show:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-200 dark:hover:bg-white/10 cursor-pointer"
+              >
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+              </select>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages || loading}
-            className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            Next
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
+              className="flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Next
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       )}
     </div>

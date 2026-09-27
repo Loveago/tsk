@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS, sanitizeCustomerRefundNote } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { ChevronRight, FileWarning, Layers, Search, Clock, Eye, CheckCircle2, Smartphone, Code2 } from "lucide-react";
+import { ChevronRight, FileWarning, Layers, Search, Clock, Eye, CheckCircle2, Smartphone, Code2, FileSpreadsheet } from "lucide-react";
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
 import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
+import { Pagination } from "@/components/ui/pagination";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const;
 const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
@@ -92,10 +93,13 @@ export default function OrdersPage() {
   const [dateFilter, setDateFilter] = React.useState<DateFilterValue>(getTodayRange());
   const [page, setPage] = React.useState(1);
   const [pages, setPages] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(25);
   const [loading, setLoading] = React.useState(true);
+  const [exporting, setExporting] = React.useState(false);
 
   // Batches state
   const [rows, setRows] = React.useState<BatchRow[]>([]);
+  const [batchTotal, setBatchTotal] = React.useState(0);
 
   // Single orders state
   const [singleOrders, setSingleOrders] = React.useState<UserOrderRow[]>([]);
@@ -123,7 +127,7 @@ export default function OrdersPage() {
     setLoading(true);
     const params = new URLSearchParams({
       page: String(page),
-      pageSize: viewMode === "batches" ? "12" : "15",
+      pageSize: String(pageSize),
     });
     if (network) params.set("network", network);
     if (status) params.set("status", status);
@@ -155,18 +159,60 @@ export default function OrdersPage() {
         const json = await res.json();
         if (res.ok) {
           setRows(json.data ?? []);
+          setBatchTotal(json.total ?? 0);
           setPages(json.pages ?? 1);
         }
       }
     } finally {
       setLoading(false);
     }
-  }, [page, network, status, q, dateFilter, viewMode]);
+  }, [page, pageSize, network, status, q, dateFilter, viewMode]);
 
   React.useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load]);
+
+  const handleExport = async (batchId?: string) => {
+    try {
+      setExporting(true);
+      const params = new URLSearchParams({ format: "xlsx" });
+      if (batchId) {
+        params.set("batchId", batchId);
+      } else {
+        if (network) params.set("network", network);
+        if (status) params.set("status", status);
+        if (q) params.set("q", q);
+        if (dateFilter.from) params.set("from", dateFilter.from);
+        if (dateFilter.to) params.set("to", dateFilter.to);
+        if (viewMode === "api") params.set("source", "API");
+        else if (viewMode === "single") params.set("source", "SINGLE");
+      }
+
+      toast("Preparing your Excel export...", "info");
+      const res = await fetch(`/api/orders/export?${params.toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || "Failed to export orders");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      a.download = batchId ? `batch-orders-${dateStamp}.xlsx` : `my-orders-${dateStamp}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast("Excel file downloaded successfully", "success");
+    } catch (err: any) {
+      toast(err.message || "Failed to export orders", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const openDetail = async (id: string) => {
     setDetailLoading(true);
@@ -426,6 +472,37 @@ export default function OrdersPage() {
               </option>
             ))}
           </select>
+
+          <select
+            className={selectCls}
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            title="Items per page"
+          >
+            <option value={25}>25 / page</option>
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+          </select>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handleExport()}
+            disabled={exporting || loading}
+            className="h-9 gap-1.5 font-semibold text-slate-700 dark:text-slate-200 border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 shadow-xs"
+            title="Export Sent Orders to Excel (.xlsx)"
+          >
+            {exporting ? (
+              <Spinner className="h-3.5 w-3.5" />
+            ) : (
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            )}
+            <span>{exporting ? "Exporting…" : "Export Excel"}</span>
+          </Button>
         </div>
       </div>
 
@@ -972,19 +1049,18 @@ export default function OrdersPage() {
         </>
       )}
 
-      {pages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">Page {page} of {pages}</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        pages={pages}
+        total={viewMode === "batches" ? batchTotal : viewMode === "single" ? singleTotal : apiTotal}
+        onPage={setPage}
+        pageSize={pageSize}
+        pageSizeOptions={[25, 50, 100]}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+        }}
+      />
 
       <Dialog
         open={!!detail || detailLoading}
@@ -1014,12 +1090,30 @@ export default function OrdersPage() {
                   />
                   <span className="text-xs font-semibold text-slate-500">{detail.progress}%</span>
                 </div>
-                {(detail.batch.status === "COMPLETED" || detail.batch.completedAt) && (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                    <span>Delivered at {formatDateTime(detail.batch.completedAt ?? detail.batch.updatedAt ?? detail.batch.createdAt)}</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  {(detail.batch.status === "COMPLETED" || detail.batch.completedAt) && (
+                    <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      <span>Delivered at {formatDateTime(detail.batch.completedAt ?? detail.batch.updatedAt ?? detail.batch.createdAt)}</span>
+                    </div>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExport(detail.batch.id)}
+                    disabled={exporting}
+                    className="h-8 gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5"
+                    title="Export this batch to Excel (.xlsx)"
+                  >
+                    {exporting ? (
+                      <Spinner className="h-3 w-3" />
+                    ) : (
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    )}
+                    <span>Export Batch (Excel)</span>
+                  </Button>
+                </div>
               </div>
               <BatchStatsChips stats={detail.stats} className="mt-2" />
             </div>

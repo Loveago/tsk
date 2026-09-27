@@ -156,18 +156,26 @@ export function AppShell({
     const sendOrder = userNav.find((i) => i.href === "/dashboard/send");
     const sentOrders = userNav.find((i) => i.href === "/dashboard/orders");
     const notReceived = userNav.find((i) => i.href === "/dashboard/not-received");
+    const transactions = userNav.find((i) => i.href === "/dashboard/transactions");
     const billing = userNav.find((i) => i.href === "/dashboard/billing");
-    const mtn = userNav.find((i) => i.href === "/dashboard/mtn-verification");
+    const packages = userNav.find((i) => i.href === "/dashboard/packages");
+    const reports = userNav.find((i) => i.href === "/dashboard/reports");
     const api = userNav.find((i) => i.href === "/dashboard/api");
+    const mtn = userNav.find((i) => i.href === "/dashboard/mtn-verification");
+    const profile = userNav.find((i) => i.href === "/dashboard/profile");
     const others = userNav.filter(
       (i) =>
         ![
           "/dashboard/send",
           "/dashboard/orders",
           "/dashboard/not-received",
+          "/dashboard/transactions",
           "/dashboard/billing",
-          "/dashboard/mtn-verification",
+          "/dashboard/packages",
+          "/dashboard/reports",
           "/dashboard/api",
+          "/dashboard/mtn-verification",
+          "/dashboard/profile",
         ].includes(i.href)
     );
 
@@ -175,10 +183,14 @@ export function AppShell({
       sendOrder,
       sentOrders,
       notReceived,
+      transactions,
       billing,
       ...resolvedExtras,
-      mtn,
+      packages,
+      reports,
       api,
+      mtn,
+      profile,
       ...others,
     ].filter(Boolean) as NavItem[];
   }

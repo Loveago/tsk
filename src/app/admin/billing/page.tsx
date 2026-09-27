@@ -13,6 +13,7 @@ import { IncomingMomoTable } from "@/components/admin/incoming-momo-table";
 import { ClaimsTable } from "@/components/admin/claims-table";
 import { MomoSettingsCard } from "@/components/admin/momo-settings-card";
 import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
+import { Pagination } from "@/components/ui/pagination";
 import {
   Wallet,
   Check,
@@ -46,6 +47,7 @@ export default function AdminBillingPage() {
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(25);
   const [status, setStatus] = React.useState("PENDING");
   const [type, setType] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -70,7 +72,7 @@ export default function AdminBillingPage() {
 
   const load = React.useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), pageSize: "20" });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (status) params.set("status", status);
     if (type) params.set("type", type);
     if (searchQuery) params.set("q", searchQuery);
@@ -80,7 +82,7 @@ export default function AdminBillingPage() {
     setTotal(json.total ?? 0);
     setPages(json.pages ?? 1);
     setLoading(false);
-  }, [page, status, type, searchQuery]);
+  }, [page, pageSize, status, type, searchQuery]);
 
   React.useEffect(() => {
     const t = setTimeout(load, 200);
@@ -281,6 +283,15 @@ export default function AdminBillingPage() {
                 className="h-10 text-xs"
               />
             </div>
+
+            <div className="w-36 space-y-1.5">
+              <Label>Show</Label>
+              <Select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+              </Select>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -363,19 +374,20 @@ export default function AdminBillingPage() {
                 ))}
               </div>
             )}
-            {pages > 1 && (
-              <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
-                <span className="text-slate-500">Page {page} of {pages}</span>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                    Previous
-                  </Button>
-                  <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
+            <div className="border-t border-slate-100 p-4 dark:border-slate-800">
+              <Pagination
+                page={page}
+                pages={pages}
+                total={total}
+                onPage={setPage}
+                pageSize={pageSize}
+                pageSizeOptions={[25, 50, 100]}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize);
+                  setPage(1);
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
