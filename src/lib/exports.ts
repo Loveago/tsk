@@ -21,17 +21,142 @@ export function toCsv(rows: Record<string, unknown>[], columns: ExportColumn[]):
   return `\uFEFF${head}\n${body}`;
 }
 
+export interface ToXlsxOptions {
+  includeSummary?: boolean;
+  summaryMeta?: {
+    totalOrders: number;
+    totalGb: number;
+    totalAmount: number;
+    dateRangeLabel?: string;
+    filtersApplied?: Array<{ label: string; value: string }>;
+    networkBreakdown?: Record<string, { count: number; gb: number; amount: number }>;
+    statusBreakdown?: Record<string, { count: number; gb: number; amount: number }>;
+  };
+}
+
 export async function toXlsx(
   rows: Record<string, unknown>[],
   columns: ExportColumn[],
-  sheetName: string
+  sheetName: string,
+  options?: ToXlsxOptions
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Tskconnect";
-  const ws = wb.addWorksheet(sheetName.slice(0, 30));
-  ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: c.width ?? 18 }));
-  ws.getRow(1).font = { bold: true };
-  for (const r of rows) ws.addRow(r);
+  wb.created = new Date();
+
+  // 1. Optional Executive Summary worksheet
+  if (options?.includeSummary && options.summaryMeta) {
+    const sws = wb.addWorksheet("Summary Overview", {
+      views: [{ showGridLines: true }],
+    });
+    sws.columns = [{ width: 28 }, { width: 20 }, { width: 20 }, { width: 22 }];
+
+    const titleRow = sws.addRow(["Tskconnect Orders Export Summary"]);
+    titleRow.font = { bold: true, size: 16, color: { argb: "FF0F172A" } };
+    sws.addRow([`Generated: ${new Date().toLocaleString("en-US")}`]);
+    sws.addRow([]);
+
+    const kpiHeader = sws.addRow(["Metric", "Value", "", ""]);
+    kpiHeader.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    kpiHeader.eachCell((c) => {
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
+    });
+    sws.addRow(["Total Matching Orders", options.summaryMeta.totalOrders]);
+    sws.addRow(["Total Data Volume", `${options.summaryMeta.totalGb.toFixed(2)} GB`]);
+    sws.addRow(["Total Amount", `GHS ${options.summaryMeta.totalAmount.toFixed(2)}`]);
+    if (options.summaryMeta.dateRangeLabel) {
+      sws.addRow(["Date & Time Filter", options.summaryMeta.dateRangeLabel]);
+    }
+
+    if (options.summaryMeta.filtersApplied && options.summaryMeta.filtersApplied.length > 0) {
+      sws.addRow([]);
+      const fHeader = sws.addRow(["Filter Name", "Applied Value", "", ""]);
+      fHeader.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      fHeader.eachCell((c) => {
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF334155" } };
+      });
+      for (const f of options.summaryMeta.filtersApplied) {
+        sws.addRow([f.label, f.value]);
+      }
+    }
+
+    if (options.summaryMeta.networkBreakdown && Object.keys(options.summaryMeta.networkBreakdown).length > 0) {
+      sws.addRow([]);
+      const netHeader = sws.addRow(["Network Provider", "Orders Count", "Total GB", "Total Amount (GHS)"]);
+      netHeader.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      netHeader.eachCell((c) => {
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0284C7" } };
+      });
+      for (const [net, stats] of Object.entries(options.summaryMeta.networkBreakdown)) {
+        sws.addRow([net, stats.count, `${stats.gb.toFixed(2)} GB`, `GHS ${stats.amount.toFixed(2)}`]);
+      }
+    }
+
+    if (options.summaryMeta.statusBreakdown && Object.keys(options.summaryMeta.statusBreakdown).length > 0) {
+      sws.addRow([]);
+      const statHeader = sws.addRow(["Order Status", "Orders Count", "Total GB", "Total Amount (GHS)"]);
+      statHeader.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      statHeader.eachCell((c) => {
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF059669" } };
+      });
+      for (const [st, stats] of Object.entries(options.summaryMeta.statusBreakdown)) {
+        sws.addRow([st, stats.count, `${stats.gb.toFixed(2)} GB`, `GHS ${stats.amount.toFixed(2)}`]);
+      }
+    }
+  }
+
+  // 2. Orders Sheet
+  const ws = wb.addWorksheet(sheetName.slice(0, 30), {
+    views: [{ state: "frozen", ySplit: 1, showGridLines: true }],
+  });
+
+  ws.columns = columns.map((c) => ({
+    header: c.header,
+    key: c.key,
+    width: c.width ?? 18,
+  }));
+
+  // Style header row
+  const headerRow = ws.getRow(1);
+  headerRow.height = 25;
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+  headerRow.eachCell((cell) => {
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF0F172A" },
+    };
+    cell.alignment = { vertical: "middle", horizontal: "left" };
+    cell.border = {
+      bottom: { style: "medium", color: { argb: "FF334155" } },
+    };
+  });
+
+  // Style data rows
+  rows.forEach((r, idx) => {
+    const row = ws.addRow(r);
+    row.height = 20;
+    const isEven = idx % 2 === 1;
+    row.eachCell((cell, colNumber) => {
+      cell.alignment = { vertical: "middle" };
+      if (isEven) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFF8FAFC" },
+        };
+      }
+      cell.border = {
+        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+      };
+      // Format phone numbers explicitly as text so Excel displays leading zeros
+      const colKey = columns[colNumber - 1]?.key;
+      if (colKey === "phone") {
+        cell.numFmt = "@";
+      }
+    });
+  });
+
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf as ArrayBuffer);
 }

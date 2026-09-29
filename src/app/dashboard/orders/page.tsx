@@ -12,6 +12,7 @@ import { formatDateTime, formatGHS, sanitizeCustomerRefundNote } from "@/lib/typ
 import { orderCode } from "@/lib/utils";
 import { ChevronRight, FileWarning, Layers, Search, Clock, Eye, CheckCircle2, Smartphone, Code2, FileSpreadsheet } from "lucide-react";
 import { NotReceivedReportDetailDialog } from "@/components/orders/not-received-report-dialog";
+import { ExportOrdersDialog } from "@/components/orders/export-orders-dialog";
 import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 import { Pagination } from "@/components/ui/pagination";
 
@@ -96,6 +97,8 @@ export default function OrdersPage() {
   const [pageSize, setPageSize] = React.useState(25);
   const [loading, setLoading] = React.useState(true);
   const [exporting, setExporting] = React.useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
+  const [exportBatchTarget, setExportBatchTarget] = React.useState<{ id: string; code?: string } | null>(null);
 
   // Batches state
   const [rows, setRows] = React.useState<BatchRow[]>([]);
@@ -491,17 +494,16 @@ export default function OrdersPage() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => handleExport()}
-            disabled={exporting || loading}
+            onClick={() => {
+              setExportBatchTarget(null);
+              setExportDialogOpen(true);
+            }}
+            disabled={loading}
             className="h-9 gap-1.5 font-semibold text-slate-700 dark:text-slate-200 border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 shadow-xs"
-            title="Export Sent Orders to Excel (.xlsx)"
+            title="Filter and Export Orders to Excel (.xlsx)"
           >
-            {exporting ? (
-              <Spinner className="h-3.5 w-3.5" />
-            ) : (
-              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            )}
-            <span>{exporting ? "Exporting…" : "Export Excel"}</span>
+            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Export Excel</span>
           </Button>
         </div>
       </div>
@@ -1101,16 +1103,14 @@ export default function OrdersPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => handleExport(detail.batch.id)}
-                    disabled={exporting}
+                    onClick={() => {
+                      setExportBatchTarget({ id: detail.batch.id, code: detail.batch.batchCode });
+                      setExportDialogOpen(true);
+                    }}
                     className="h-8 gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5"
                     title="Export this batch to Excel (.xlsx)"
                   >
-                    {exporting ? (
-                      <Spinner className="h-3 w-3" />
-                    ) : (
-                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                    )}
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                     <span>Export Batch (Excel)</span>
                   </Button>
                 </div>
@@ -1225,6 +1225,21 @@ export default function OrdersPage() {
         reportId={viewReportId}
         open={!!viewReportId}
         onClose={() => setViewReportId(null)}
+      />
+
+      <ExportOrdersDialog
+        open={exportDialogOpen}
+        onClose={() => {
+          setExportDialogOpen(false);
+          setExportBatchTarget(null);
+        }}
+        initialNetwork={network}
+        initialStatus={status}
+        initialQ={q}
+        initialFrom={dateFilter.from}
+        initialTo={dateFilter.to}
+        initialBatchId={exportBatchTarget?.id}
+        initialBatchCode={exportBatchTarget?.code}
       />
     </div>
   );
