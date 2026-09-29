@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     }
     if (network) where.order = { is: { network } };
     if (q) {
-      const orderId = Number(q.replace(/^CF-/i, "")) - 10000;
+      const orderId = Number(q.replace(/^(?:TSK|CF)-/i, "")) - 10000;
       where.OR = [
         { order: { is: { phoneNumber: { contains: q } } } },
         { user: { is: { OR: [{ name: { contains: q } }, { email: { contains: q } }] } } },

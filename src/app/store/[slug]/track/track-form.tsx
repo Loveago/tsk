@@ -351,7 +351,7 @@ export function TrackForm({ slug }: { slug: string }) {
           id="track-query"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="024 XXX XXXX · you@example.com · CF-ST-... · STF-..."
+          placeholder="024 XXX XXXX · you@example.com · TSK-ST-... · STF-..."
           className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-yellow-400 caret-yellow-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:caret-yellow-400"
         />
 
@@ -367,7 +367,7 @@ export function TrackForm({ slug }: { slug: string }) {
             <label htmlFor="track-date" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               Order Date{" "}
               <span className="text-[11px] font-normal text-slate-500">
-                {query.includes("@") || /^CF-ST-|^STF-|^PSK-|^REG-/i.test(query.trim())
+                {query.includes("@") || /^(?:TSK|CF)-ST-|^STF-|^PSK-|^REG-/i.test(query.trim())
                   ? "(Optional for email / ref lookup)"
                   : "(Required for phone lookup)"}
               </span>
@@ -389,7 +389,7 @@ export function TrackForm({ slug }: { slug: string }) {
             className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-yellow-400 dark:border-white/10 dark:bg-white/5 dark:text-white"
           />
           <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            {query.includes("@") || /^CF-ST-|^STF-|^PSK-|^REG-/i.test(query.trim())
+            {query.includes("@") || /^(?:TSK|CF)-ST-|^STF-|^PSK-|^REG-/i.test(query.trim())
               ? "Matches all recent orders matching your email or reference."
               : "Filters orders to the specific date placed to protect customer privacy."}
           </p>

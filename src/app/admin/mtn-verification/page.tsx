@@ -423,6 +423,58 @@ export default function AdminMtnVerificationPage() {
     }
   };
 
+  const [exportingAccepted, setExportingAccepted] = React.useState(false);
+
+  const handleExportAccepted = async (format: "txt" | "csv" = "txt") => {
+    setExportingAccepted(true);
+    try {
+      const params = new URLSearchParams({ format });
+      if (selectedAccIds.size > 0) {
+        params.set("ids", Array.from(selectedAccIds).join(","));
+      } else {
+        if (accSource !== "ALL") params.set("source", accSource);
+        if (accSearch.trim()) params.set("q", accSearch.trim());
+      }
+
+      const res = await fetch(`/api/admin/mtn-verification/accepted/export?${params.toString()}`);
+      if (!res.ok) {
+        let errMsg = "Export failed";
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errMsg;
+        } catch {
+          // ignore
+        }
+        throw new Error(errMsg);
+      }
+
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const filename =
+        filenameMatch?.[1] ??
+        `accepted-mtn-numbers-${new Date().toISOString().slice(0, 10)}.${format}`;
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const countMsg = selectedAccIds.size > 0
+        ? ` (${selectedAccIds.size} selected)`
+        : "";
+      toast(`Accepted MTN numbers exported successfully as ${format.toUpperCase()}${countMsg}`, "success");
+    } catch (err: any) {
+      toast(err.message ?? "Export failed", "error");
+    } finally {
+      setExportingAccepted(false);
+    }
+  };
+
   const openNumberDetails = (num: string) => {
     setSelectedNumberForDetails(num);
     setNumberDetailsModalOpen(true);
@@ -448,15 +500,45 @@ export default function AdminMtnVerificationPage() {
     }
   };
 
-  const handleExportBlocked = (format: "txt" | "csv") => {
-    const params = new URLSearchParams({ format });
-    if (selectedBlockedIds.size > 0) {
-      params.set("ids", Array.from(selectedBlockedIds).join(","));
-    } else {
-      if (blockStatus !== "ALL") params.set("status", blockStatus);
-      if (blockSearch.trim()) params.set("q", blockSearch.trim());
+  const handleExportBlocked = async (format: "txt" | "csv") => {
+    try {
+      const params = new URLSearchParams({ format });
+      if (selectedBlockedIds.size > 0) {
+        params.set("ids", Array.from(selectedBlockedIds).join(","));
+      } else {
+        if (blockStatus !== "ALL") params.set("status", blockStatus);
+        if (blockSearch.trim()) params.set("q", blockSearch.trim());
+      }
+      const res = await fetch(`/api/admin/mtn-verification/blocked/export?${params.toString()}`);
+      if (!res.ok) {
+        let errMsg = "Export failed";
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errMsg;
+        } catch {
+          // ignore
+        }
+        throw new Error(errMsg);
+      }
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const filename =
+        filenameMatch?.[1] ??
+        `unverified-blocked-mtn-numbers-${new Date().toISOString().slice(0, 10)}.${format}`;
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast(`Exported ${format.toUpperCase()} successfully`, "success");
+    } catch (err: any) {
+      toast(err.message ?? "Export failed", "error");
     }
-    window.open(`/api/admin/mtn-verification/blocked/export?${params.toString()}`, "_blank");
   };
 
   const handleMarkBatchSubmitted = async (batchId: string) => {
@@ -947,20 +1029,22 @@ export default function AdminMtnVerificationPage() {
                   variant="outline"
                   size="sm"
                   className="h-8.5 text-xs"
-                  onClick={() => window.open("/api/admin/mtn-verification/accepted/export?format=csv", "_blank")}
+                  disabled={exportingAccepted || (accepted.length === 0 && selectedAccIds.size === 0)}
+                  onClick={() => handleExportAccepted("csv")}
                 >
                   <Download className="h-3.5 w-3.5 mr-1" />
-                  Export CSV
+                  {exportingAccepted ? "Exporting..." : `Export CSV${selectedAccIds.size > 0 ? ` (${selectedAccIds.size})` : ""}`}
                 </Button>
 
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-8.5 text-xs"
-                  onClick={() => window.open("/api/admin/mtn-verification/accepted/export?format=txt", "_blank")}
+                  disabled={exportingAccepted || (accepted.length === 0 && selectedAccIds.size === 0)}
+                  onClick={() => handleExportAccepted("txt")}
                 >
                   <Download className="h-3.5 w-3.5 mr-1" />
-                  Export TXT
+                  {exportingAccepted ? "Exporting..." : `Export TXT${selectedAccIds.size > 0 ? ` (${selectedAccIds.size})` : ""}`}
                 </Button>
 
                 <Button

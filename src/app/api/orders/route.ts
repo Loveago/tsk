@@ -13,6 +13,7 @@ import { nextBatchCode } from "@/lib/batches";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 import { normalizeOrderStatus, sanitizeCustomerRefundNote } from "@/lib/types";
+import { parseOrderCode } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -429,13 +430,16 @@ export async function GET(request: NextRequest) {
     }
     if (q) {
       const trimmed = q.trim();
+      const parsedId = parseOrderCode(trimmed);
       const idMatch = trimmed.match(/^(?:ORD-|API-)?0*(\d+)$/i);
       const orConditions: any[] = [
         { phoneNumber: { contains: trimmed } },
         { externalReference: { contains: trimmed } },
         { batch: { is: { batchCode: { contains: trimmed } } } },
       ];
-      if (idMatch && Number(idMatch[1]) < 2147483647) {
+      if (parsedId !== null && parsedId < 2147483647) {
+        orConditions.push({ id: parsedId });
+      } else if (idMatch && Number(idMatch[1]) < 2147483647) {
         orConditions.push({ id: Number(idMatch[1]) });
       }
       where.OR = orConditions;

@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { handleRouteError } from "@/lib/api-helpers";
 import { toXlsx, toCsv, exportResponse, type ExportColumn } from "@/lib/exports";
 import { normalizeOrderStatus, sanitizeCustomerRefundNote } from "@/lib/types";
-import { orderCode } from "@/lib/utils";
+import { orderCode, parseOrderCode } from "@/lib/utils";
 
 const orderColumns: ExportColumn[] = [
   { key: "id", header: "Order ID", width: 14 },
@@ -56,13 +56,16 @@ export async function GET(request: NextRequest) {
 
     if (q) {
       const trimmed = q.trim();
+      const parsedId = parseOrderCode(trimmed);
       const idMatch = trimmed.match(/^(?:ORD-|API-)?0*(\d+)$/i);
       const orConditions: any[] = [
         { phoneNumber: { contains: trimmed } },
         { externalReference: { contains: trimmed } },
         { batch: { is: { batchCode: { contains: trimmed } } } },
       ];
-      if (idMatch && Number(idMatch[1]) < 2147483647) {
+      if (parsedId !== null && parsedId < 2147483647) {
+        orConditions.push({ id: parsedId });
+      } else if (idMatch && Number(idMatch[1]) < 2147483647) {
         orConditions.push({ id: Number(idMatch[1]) });
       }
       where.OR = orConditions;

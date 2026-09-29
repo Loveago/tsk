@@ -6,11 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function orderCode(id: number): string {
-  return `CF-${10000 + id}`;
+  return `TSK-${10000 + id}`;
 }
 
 export function parseOrderCode(code: string): number | null {
-  const match = /^CF-(\d+)$/i.exec(code.trim());
+  const match = /^(?:TSK|CF)-(\d+)$/i.exec(code.trim());
   if (match) {
     const id = parseInt(match[1], 10) - 10000;
     return id > 0 ? id : null;

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      const searchNum = parseInt(search.replace(/^CF-WD-0*/i, ""), 10);
+      const searchNum = parseInt(search.replace(/^(?:TSK|CF)-WD-0*/i, ""), 10);
       where.OR = [
         { momoNumber: { contains: search, mode: "insensitive" } },
         { accountName: { contains: search, mode: "insensitive" } },
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       return {
         id: w.id,
         seq: w.seq,
-        reference: w.reference ?? `CF-WD-${String(w.seq).padStart(5, "0")}`,
+        reference: w.reference ?? `TSK-WD-${String(w.seq).padStart(5, "0")}`,
         userId: w.userId,
         userName: w.user.name,
         userEmail: w.user.email,

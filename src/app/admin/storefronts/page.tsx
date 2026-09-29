@@ -110,7 +110,7 @@ export default async function AdminStorefrontsPage() {
           network: w.network,
           momoNumber: w.momoNumber,
           accountName: w.accountName,
-          reference: w.reference ?? `CF-WD-${String(w.seq).padStart(5, "0")}`,
+          reference: w.reference ?? `TSK-WD-${String(w.seq).padStart(5, "0")}`,
         }))}
         applications={applications.map((a) => ({
           id: a.id,

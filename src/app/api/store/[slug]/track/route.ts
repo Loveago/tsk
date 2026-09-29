@@ -54,8 +54,8 @@ export async function POST(
           { underlyingOrder: { is: { phoneNumber: localPhone } } },
         ],
       };
-    } else if (/^CF-ST-\d{1,6}$/i.test(q) || (/^\d{1,6}$/.test(q) && digits.length <= 6)) {
-      const seq = Number(q.replace(/^CF-ST-/i, "").replace(/^0+(?=\d)/, ""));
+    } else if (/^(?:TSK|CF)-ST-\d{1,6}$/i.test(q) || (/^\d{1,6}$/.test(q) && digits.length <= 6)) {
+      const seq = Number(q.replace(/^(?:TSK|CF)-ST-/i, "").replace(/^0+(?=\d)/, ""));
       where = {
         storefrontId: storefront.id,
         OR: [

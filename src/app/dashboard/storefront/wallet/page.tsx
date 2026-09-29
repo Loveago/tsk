@@ -84,7 +84,7 @@ export default async function StorefrontWalletPage({
                 network: pending.network,
                 momoNumber: pending.momoNumber,
                 accountName: pending.accountName,
-                reference: pending.reference ?? `CF-WD-${String(pending.seq).padStart(5, "0")}`,
+                reference: pending.reference ?? `TSK-WD-${String(pending.seq).padStart(5, "0")}`,
                 requestedAt: pending.requestedAt.toISOString(),
               }
             : null
@@ -102,7 +102,7 @@ export default async function StorefrontWalletPage({
           withdrawals={withdrawals.map((w) => ({
             id: w.id,
             seq: w.seq,
-            reference: w.reference ?? `CF-WD-${String(w.seq).padStart(5, "0")}`,
+            reference: w.reference ?? `TSK-WD-${String(w.seq).padStart(5, "0")}`,
             amount: w.amount,
             fee: w.fee ?? 100,
             netAmount: w.netAmount ?? Math.max(0, w.amount - (w.fee ?? 100)),

@@ -16,12 +16,12 @@ export function formatGhs(pesewas: number): string {
 }
 
 export function storefrontOrderCode(seq: number, reference?: string | null): string {
-  if (reference && (reference.startsWith("GH-") || reference.startsWith("STF-"))) {
+  if (reference && (reference.startsWith("GH-") || reference.startsWith("STF-") || reference.startsWith("TSK-") || reference.startsWith("CF-"))) {
     return reference;
   }
-  return `CF-ST-${String(seq).padStart(5, "0")}`;
+  return `TSK-ST-${String(seq).padStart(5, "0")}`;
 }
 
 export function withdrawalCode(seq: number): string {
-  return `CF-WD-${String(seq).padStart(5, "0")}`;
+  return `TSK-WD-${String(seq).padStart(5, "0")}`;
 }
