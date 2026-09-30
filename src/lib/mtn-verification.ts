@@ -389,6 +389,23 @@ export async function bulkRemoveAcceptedMtnNumbers(ids: string[], actorLabel = "
   return res.count;
 }
 
+/**
+ * Clears all accepted MTN numbers from the database (§5, §20).
+ */
+export async function clearAllAcceptedMtnNumbers(actorLabel = "Admin") {
+  const count = await prisma.acceptedMtnNumber.count();
+  await prisma.acceptedMtnNumber.deleteMany({});
+
+  await recordAudit({
+    actorLabel,
+    action: "ADMIN_CLEARED_ALL_ACCEPTED_MTN_NUMBERS",
+    target: "all_accepted_mtn_numbers",
+    newValue: JSON.stringify({ countDeleted: count }),
+  });
+
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // File Parsing for Import (TXT / CSV) (§3, §4, §30)
 // ---------------------------------------------------------------------------

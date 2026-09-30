@@ -595,9 +595,17 @@ export const mtnAcceptedAddSchema = z.object({
   phoneNumber: phoneSchema,
 });
 
-export const mtnAcceptedBulkDeleteSchema = z.object({
-  ids: z.array(z.string().min(1)).min(1, "Select at least one record to delete"),
-});
+export const mtnAcceptedBulkDeleteSchema = z
+  .object({
+    ids: z.array(z.string().min(1)).optional(),
+    all: z.boolean().optional(),
+  })
+  .refine(
+    (data) => data.all === true || (Array.isArray(data.ids) && data.ids.length > 0),
+    {
+      message: "Either specify 'all: true' or provide a list of IDs to delete",
+    }
+  );
 
 export const mtnImportConfirmSchema = z.object({
   sessionId: z.string().optional(),

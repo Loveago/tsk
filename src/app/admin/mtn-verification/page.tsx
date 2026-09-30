@@ -34,6 +34,7 @@ import { ImportAcceptedModal } from "@/components/admin/mtn-verification/import-
 import { CreateBatchModal } from "@/components/admin/mtn-verification/create-batch-modal";
 import { VerifyBatchModal } from "@/components/admin/mtn-verification/verify-batch-modal";
 import { AddNumberModal } from "@/components/admin/mtn-verification/add-number-modal";
+import { ClearAcceptedModal } from "@/components/admin/mtn-verification/clear-accepted-modal";
 import { NumberDetailsModal } from "@/components/admin/mtn-verification/number-details-modal";
 import { isMtnPhoneNumber, detectNetworkNameByPrefix } from "@/lib/phone-utils";
 
@@ -106,6 +107,7 @@ export default function AdminMtnVerificationPage() {
   const [verifyBatchModalOpen, setVerifyBatchModalOpen] = React.useState(false);
   const [activeBatchToVerify, setActiveBatchToVerify] = React.useState<any | null>(null);
   const [addNumberModalOpen, setAddNumberModalOpen] = React.useState(false);
+  const [clearAcceptedModalOpen, setClearAcceptedModalOpen] = React.useState(false);
   const [numberDetailsModalOpen, setNumberDetailsModalOpen] = React.useState(false);
   const [selectedNumberForDetails, setSelectedNumberForDetails] = React.useState<string | null>(null);
 
@@ -1065,6 +1067,18 @@ export default function AdminMtnVerificationPage() {
                   <Plus className="h-3.5 w-3.5 mr-1" />
                   Add Single
                 </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8.5 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                  disabled={accTotal === 0 && stats.accepted === 0}
+                  onClick={() => setClearAcceptedModalOpen(true)}
+                  title="Clear all verified numbers from the database"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1 text-rose-500" />
+                  Clear All Numbers
+                </Button>
               </div>
             </div>
 
@@ -1699,6 +1713,17 @@ export default function AdminMtnVerificationPage() {
           if (activeTab === "requests") fetchRequests();
           else if (activeTab === "accepted") fetchAccepted();
           else if (activeTab === "blocked") fetchBlocked();
+        }}
+      />
+
+      <ClearAcceptedModal
+        open={clearAcceptedModalOpen}
+        onClose={() => setClearAcceptedModalOpen(false)}
+        totalCount={accTotal || stats.accepted}
+        onSuccess={() => {
+          setSelectedAccIds(new Set());
+          fetchAccepted();
+          fetchStats();
         }}
       />
     </div>

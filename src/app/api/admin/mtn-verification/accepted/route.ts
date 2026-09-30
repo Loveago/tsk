@@ -5,6 +5,7 @@ import {
   addAcceptedMtnNumber,
   removeAcceptedMtnNumber,
   bulkRemoveAcceptedMtnNumbers,
+  clearAllAcceptedMtnNumbers,
   isMtnPhoneNumber,
   detectNetworkNameByPrefix,
 } from "@/lib/mtn-verification";
@@ -115,6 +116,12 @@ export async function DELETE(request: NextRequest) {
     const admin = await requireAdmin();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
+    const clearAll = searchParams.get("all") === "true";
+
+    if (clearAll) {
+      const count = await clearAllAcceptedMtnNumbers(admin.email);
+      return NextResponse.json({ success: true, count, clearedAll: true });
+    }
 
     if (id) {
       // Single delete
@@ -122,11 +129,20 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: true, count: 1 });
     }
 
-    // Bulk delete via body
-    const body = await request.json();
-    const input = mtnAcceptedBulkDeleteSchema.parse(body);
+    // Bulk delete or clear all via body
+    const body = await request.json().catch(() => ({}));
+    if (body.all === true) {
+      const count = await clearAllAcceptedMtnNumbers(admin.email);
+      return NextResponse.json({ success: true, count, clearedAll: true });
+    }
 
-    const count = await bulkRemoveAcceptedMtnNumbers(input.ids, admin.email);
+    const input = mtnAcceptedBulkDeleteSchema.parse(body);
+    if (input.all === true) {
+      const count = await clearAllAcceptedMtnNumbers(admin.email);
+      return NextResponse.json({ success: true, count, clearedAll: true });
+    }
+
+    const count = await bulkRemoveAcceptedMtnNumbers(input.ids ?? [], admin.email);
     return NextResponse.json({ success: true, count });
   } catch (err) {
     return handleRouteError(err);
