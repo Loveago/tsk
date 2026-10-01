@@ -75,17 +75,171 @@ function isCompletePhone(raw: string): boolean {
 }
 
 /**
+ * Extracts a Ghanaian phone number from a line.
+ */
+export function extractPhoneNumberFromLine(line: string): { phone: string; rawMatch: string } | null {
+  const working = line.trim().replace(/^\s*(?:no\.?|#)?\s*\d{1,4}[.)\-:]\s+/i, "");
+
+  // International format: (+233 or 233) followed by 9 digits
+  const intlMatch = working.match(/(?:\+?233)\s*([235]\d{2}[\s.-]?\d{3}[\s.-]?\d{3})\b/);
+  if (intlMatch) {
+    const digits = intlMatch[1].replace(/\D/g, "");
+    if (digits.length === 9) {
+      return { phone: "0" + digits, rawMatch: intlMatch[0] };
+    }
+  }
+
+  // Local 10-digit with optional spaces/dashes (e.g. 024 123 4567, 0535308873)
+  const localMatch = working.match(/\b(0[235]\d[\s.-]?\d{3}[\s.-]?\d{4})\b/);
+  if (localMatch) {
+    const digits = localMatch[1].replace(/\D/g, "");
+    if (digits.length === 10) {
+      return { phone: digits, rawMatch: localMatch[0] };
+    }
+  }
+
+  // Continuous 10 digits starting with 02, 03, 05
+  const contMatch = working.match(/(?:^|[^\d])(0[235]\d{8})(?:[^\d]|$)/);
+  if (contMatch) {
+    return { phone: contMatch[1], rawMatch: contMatch[1] };
+  }
+
+  // 9 digits without leading 0
+  const nineMatch = working.match(/\b([235]\d{8})\b/);
+  if (nineMatch) {
+    return { phone: "0" + nineMatch[1], rawMatch: nineMatch[0] };
+  }
+
+  return null;
+}
+
+/**
+ * Extracts a GB amount from a line (or remainder of line after phone is removed).
+ */
+export function extractGbFromLine(lineWithoutPhone: string): number | null {
+  let rem = lineWithoutPhone.trim();
+  rem = rem.replace(
+    /\b(?:MTN|TELECEL|VODAFONE|AIRTELTIGO|AIRTEL|TIGO|AT|BIGTIME|BIG\s*TIME|ISHARE|I-SHARE|ATBT)\b/gi,
+    " "
+  );
+  rem = rem.replace(
+    /\b(?:number|numbers|phone|recipient|beneficiary|size|amount|data|package|item|no|qty|bundle|vol|volume)\b/gi,
+    " "
+  );
+
+  const gbMatch = rem.match(/(?:^|[^\d.])(\d+(?:[.,]\d+)?)\s*(?:gb|gbs|gig|gigs|gigabytes|g)?(?=[^\d.]|$)/i);
+  if (gbMatch) {
+    const n = parseFloat(gbMatch[1].replace(",", "."));
+    if (Number.isFinite(n) && n > 0 && n <= 1000) {
+      return n;
+    }
+  }
+  return null;
+}
+
+/**
  * Splits bulk order text into individual order lines.
- * Handles newlines and inline orders separated by commas/semicolons where
- * a comma/semicolon is followed by a new Ghanaian phone number.
+ * Handles:
+ * - Single-line orders (e.g. "0270890079 15gb", "0241234567, 2")
+ * - Multi-line orders where the phone number is on one line and the GB amount is on the next line (e.g.
+ *   0270890079
+ *   15gb
+ *   )
+ * - Orders separated by commas/semicolons inline
  */
 export function splitOrderLines(text: string): string[] {
   const cleanText = normalizeTextNumbers(text);
-  return cleanText
+  const rawLines = cleanText
     .replace(/[,;]\s*(?=(?:\+?233|0)?[25]\d{8}\b)/g, "\n")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
+
+  const merged: string[] = [];
+  let i = 0;
+
+  while (i < rawLines.length) {
+    const line = rawLines[i];
+
+    // If it's a pure header line with no phone and no GB (e.g. "Phone", "Numbers"), preserve it as-is
+    if (isHeaderLine(line) && extractGbFromLine(line) === null) {
+      merged.push(line);
+      i++;
+      continue;
+    }
+
+    const phoneInfo = extractPhoneNumberFromLine(line);
+    const rem = phoneInfo ? line.replace(phoneInfo.rawMatch, " ") : line;
+    const gb = extractGbFromLine(rem);
+
+    // Case 1: Line already has both phone number and GB amount
+    if (phoneInfo && gb !== null) {
+      merged.push(line);
+      i++;
+      continue;
+    }
+
+    // Case 2: Line has a phone number, but NO GB amount (e.g. "0270890079")
+    if (phoneInfo && gb === null) {
+      // Look ahead to see if subsequent line contains the GB amount
+      if (i + 1 < rawLines.length) {
+        const nextLine = rawLines[i + 1];
+        const nextPhoneInfo = extractPhoneNumberFromLine(nextLine);
+        const nextGb = extractGbFromLine(nextLine);
+
+        // If next line has no phone and contains a GB amount, combine them!
+        if (!nextPhoneInfo && nextGb !== null) {
+          let combined = `${line} ${nextLine}`;
+          i += 2;
+
+          // Check if there is an additional line with network name (e.g. "AT iShare")
+          if (i < rawLines.length) {
+            const thirdLine = rawLines[i];
+            const thirdPhone = extractPhoneNumberFromLine(thirdLine);
+            const thirdGb = extractGbFromLine(thirdLine);
+            const isNet = normalizeNetworkToken(thirdLine);
+            if (!thirdPhone && thirdGb === null && isNet) {
+              combined += ` ${thirdLine}`;
+              i++;
+            }
+          }
+
+          merged.push(combined);
+          continue;
+        }
+      }
+
+      // If next line doesn't provide GB, keep line as-is
+      merged.push(line);
+      i++;
+      continue;
+    }
+
+    // Case 3: Line has GB amount, but NO phone number (e.g. user typed "15gb" then "0270890079")
+    if (!phoneInfo && gb !== null) {
+      if (i + 1 < rawLines.length) {
+        const nextLine = rawLines[i + 1];
+        const nextPhoneInfo = extractPhoneNumberFromLine(nextLine);
+        const nextRem = nextPhoneInfo ? nextLine.replace(nextPhoneInfo.rawMatch, " ") : nextLine;
+        const nextGb = extractGbFromLine(nextRem);
+
+        if (nextPhoneInfo && nextGb === null) {
+          merged.push(`${nextLine} ${line}`);
+          i += 2;
+          continue;
+        }
+      }
+
+      merged.push(line);
+      i++;
+      continue;
+    }
+
+    merged.push(line);
+    i++;
+  }
+
+  return merged;
 }
 
 /**
@@ -103,8 +257,14 @@ export function isHeaderLine(line: string): boolean {
     /(?:\+?233|0)?[235]\d[\s.-]?\d{3}[\s.-]?\d{4}\b|\b[235]\d{8}\b|(?:^|[^\d])0[235]\d{8}(?:[^\d]|$)/.test(
       clean
     );
+  if (hasPhone) return false;
+
+  // A standalone GB amount or number (e.g. "15gb", "10 GB", "5") is not a header line
+  if (/^(?:no\.?|#)?\s*\d+(?:[.,]\d+)?\s*(?:gb|gbs|gig|gigs|g)?$/i.test(clean)) {
+    return false;
+  }
+
   if (
-    !hasPhone &&
     /(?:number|numbers|phone|recipient|beneficiary|msisdn|contact|gb|gbs|size|data|package|network|amount|qty|vol|volume|s\/n|sn|no\.?)/i.test(
       clean
     )
@@ -192,11 +352,11 @@ export function parseOrderLine(
   if (network) {
     rem = rem.replace(new RegExp(`\\b${network}\\b`, "gi"), " ");
   }
-  rem = rem.replace(/\b(?:MTN|TELECEL|VODAFONE|AIRTELTIGO|AIRTEL|TIGO|AT|BIGTIME|BIG\s*TIME|ISHARE)\b/gi, " ");
+  rem = rem.replace(/\b(?:MTN|TELECEL|VODAFONE|AIRTELTIGO|AIRTEL|TIGO|AT|BIGTIME|BIG\s*TIME|ISHARE|I-SHARE|ATBT)\b/gi, " ");
 
   // 5. Remove common label words: "number", "numbers", "phone", "recipient", "size", etc.
   rem = rem.replace(
-    /\b(?:number|numbers|phone|recipient|beneficiary|size|amount|data|package|item|no|qty)\b/gi,
+    /\b(?:number|numbers|phone|recipient|beneficiary|size|amount|data|package|item|no|qty|bundle|vol|volume)\b/gi,
     " "
   );
 

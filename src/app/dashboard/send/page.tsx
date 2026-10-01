@@ -904,7 +904,7 @@ export default function SendOrderPage() {
                 placeholder={
                   isCurrentNetworkPaused
                     ? `${NETWORK_LABELS[network]} is currently deactivated. You cannot paste numbers here. Please select an active network above.`
-                    : "0535308873 1gb\n0241234567,2\n0507904981 10gb"
+                    : "0535308873 1gb\n0241234567,2\n0270890079\n15gb"
                 }
                 value={isCurrentNetworkPaused ? "" : bulkText}
                 disabled={!submissionEnabled || isCurrentNetworkPaused}
@@ -938,10 +938,10 @@ export default function SendOrderPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="space-y-1">
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    One order per line:{" "}
-                    <span className="font-mono font-semibold">number, gb</span> — e.g.{" "}
-                    <span className="font-mono font-semibold">0535308873,1</span> or{" "}
-                    <span className="font-mono font-semibold">0241234567 2gb</span>. All orders go
+                    One order per line or multi-line:{" "}
+                    <span className="font-mono font-semibold">number, gb</span> (e.g.{" "}
+                    <span className="font-mono font-semibold">0535308873 1gb</span>,{" "}
+                    <span className="font-mono font-semibold">0241234567, 2</span>, or number on one line and gb on the next). All orders go
                     to <span className="font-semibold">{NETWORK_LABELS[network]}</span>
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
@@ -978,7 +978,10 @@ export default function SendOrderPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setBulkText(normalizeTextNumbers(bulkText))}
+                        onClick={() => {
+                          const formatted = splitOrderLines(bulkText).join("\n");
+                          setBulkText(formatted);
+                        }}
                         className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
                       >
                         Format Numbers
