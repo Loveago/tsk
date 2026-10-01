@@ -2554,6 +2554,9 @@ export async function syncClickyfiedDeliveryReport(
   }
 }
 
+// In-memory set to prevent concurrent duplicate dispatches for the same order IDs
+const inFlightOrderDispatches = new Set<number>();
+
 /**
  * Bulk dispatch a list of order IDs according to network routing
  */
@@ -2570,6 +2573,19 @@ export async function dispatchOrdersBatch(orderIds: number[]): Promise<{
   const results: Array<{ orderId: number; result: ProviderDispatchResult }> = [];
 
   for (const id of orderIds) {
+    if (inFlightOrderDispatches.has(id)) {
+      results.push({
+        orderId: id,
+        result: {
+          success: false,
+          provider: "MANUAL",
+          error: "Order is already actively being dispatched in another request",
+        },
+      });
+      continue;
+    }
+
+    inFlightOrderDispatches.add(id);
     try {
       const result = await dispatchOrder(id, { skipThresholdTrigger: true });
       results.push({ orderId: id, result });
@@ -2586,6 +2602,8 @@ export async function dispatchOrdersBatch(orderIds: number[]): Promise<{
         orderId: id,
         result: { success: false, provider: "MANUAL", error: err?.message || "Internal error" },
       });
+    } finally {
+      inFlightOrderDispatches.delete(id);
     }
   }
 

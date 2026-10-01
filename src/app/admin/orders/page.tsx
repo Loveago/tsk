@@ -80,6 +80,8 @@ export default function AdminOrdersPage() {
   const [singleTotal, setSingleTotal] = React.useState(0);
   const [singlePages, setSinglePages] = React.useState(1);
   const [selectedOrderIds, setSelectedOrderIds] = React.useState<Set<number>>(new Set());
+  const [dispatchingToApi, setDispatchingToApi] = React.useState(false);
+  const [bulkUpdatingStatus, setBulkUpdatingStatus] = React.useState(false);
 
   // ── storefront orders state ──────────────────────────────────
   const [sfOrders, setSfOrders] = React.useState<StorefrontOrderRow[]>([]);
@@ -245,8 +247,9 @@ export default function AdminOrdersPage() {
   };
 
   const handleBulkSingleOrderStatus = async (nextStatus: string) => {
-    if (selectedOrderIds.size === 0) return;
+    if (selectedOrderIds.size === 0 || bulkUpdatingStatus || dispatchingToApi) return;
     try {
+      setBulkUpdatingStatus(true);
       const res = await fetch(`/api/admin/orders`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -256,15 +259,18 @@ export default function AdminOrdersPage() {
       if (!res.ok) return toast(json.error ?? "Failed to bulk update orders", "error");
       toast(`Bulk updated ${json.updatedCount ?? selectedOrderIds.size} orders`, "success");
       setSelectedOrderIds(new Set());
-      load();
+      await load();
     } catch {
       toast("Error during bulk order update", "error");
+    } finally {
+      setBulkUpdatingStatus(false);
     }
   };
 
   const handleBulkDispatchToApi = async () => {
-    if (selectedOrderIds.size === 0) return;
+    if (selectedOrderIds.size === 0 || dispatchingToApi || bulkUpdatingStatus) return;
     try {
+      setDispatchingToApi(true);
       const res = await fetch(`/api/admin/provider-apis/dispatch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -277,9 +283,11 @@ export default function AdminOrdersPage() {
         json.failed > 0 ? "error" : "success"
       );
       setSelectedOrderIds(new Set());
-      load();
+      await load();
     } catch {
       toast("Error during provider API dispatch", "error");
+    } finally {
+      setDispatchingToApi(false);
     }
   };
 
@@ -625,8 +633,9 @@ export default function AdminOrdersPage() {
               return selectedOrderIds.size < currentList.length ? (
                 <button
                   type="button"
+                  disabled={dispatchingToApi || bulkUpdatingStatus}
                   onClick={() => setSelectedOrderIds(new Set(currentList.map((o) => o.id)))}
-                  className="underline hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer"
+                  className="underline hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   (Select all {currentList.length} on this page)
                 </button>
@@ -634,30 +643,59 @@ export default function AdminOrdersPage() {
             })()}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Pending")}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={dispatchingToApi || bulkUpdatingStatus}
+              onClick={() => handleBulkSingleOrderStatus("Pending")}
+            >
               Pending
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Processing")}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={dispatchingToApi || bulkUpdatingStatus}
+              onClick={() => handleBulkSingleOrderStatus("Processing")}
+            >
               Processing
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Processed")}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={dispatchingToApi || bulkUpdatingStatus}
+              onClick={() => handleBulkSingleOrderStatus("Processed")}
+            >
               Processed
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkSingleOrderStatus("Refund")}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={dispatchingToApi || bulkUpdatingStatus}
+              onClick={() => handleBulkSingleOrderStatus("Refund")}
+            >
               Refund
             </Button>
             <Button
               size="sm"
               variant="default"
+              disabled={dispatchingToApi || bulkUpdatingStatus}
               onClick={handleBulkDispatchToApi}
-              className="bg-brand-600 hover:bg-brand-700 text-white font-medium"
+              className="bg-brand-600 hover:bg-brand-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
             >
-              ⚡ Dispatch to API
+              {dispatchingToApi ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <span>Dispatching to API...</span>
+                </>
+              ) : (
+                <span>⚡ Dispatch to API</span>
+              )}
             </Button>
             <button
               type="button"
+              disabled={dispatchingToApi || bulkUpdatingStatus}
               onClick={() => setSelectedOrderIds(new Set())}
-              className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+              className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Clear
             </button>
