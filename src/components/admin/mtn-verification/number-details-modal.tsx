@@ -20,6 +20,8 @@ import {
   User,
   Plus,
   Trash2,
+  Ban,
+  ShieldAlert,
 } from "lucide-react";
 
 interface NumberDetailsModalProps {
@@ -101,6 +103,37 @@ export function NumberDetailsModal({
     }
   };
 
+  const handleToggleBlocked = async () => {
+    if (!phoneNumber) return;
+    setActionInProgress(true);
+    try {
+      if (data?.blockedNumber) {
+        const res = await fetch(`/api/admin/mtn-verification/blocked-numbers?id=${data.blockedNumber.id}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) throw new Error("Failed to unblock number");
+        toast(`Unblocked ${phoneNumber} from purchasing`, "success");
+      } else {
+        const res = await fetch("/api/admin/mtn-verification/blocked-numbers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phoneNumber,
+            reason: "Blocked from number details modal",
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to block number");
+        toast(`Blocked ${phoneNumber} from purchasing`, "success");
+      }
+      fetchDetails(phoneNumber);
+      onActionComplete?.();
+    } catch (err: any) {
+      toast(err.message ?? "Error updating block status", "error");
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
   return (
     <Dialog
       open={open}
@@ -127,13 +160,42 @@ export function NumberDetailsModal({
                 <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
                   {data.network}
                 </span>
+                {data.blockedNumber && (
+                  <span className="inline-flex items-center gap-1 rounded bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                    <Ban className="h-3 w-3" /> BLOCKED
+                  </span>
+                )}
               </div>
               <p className="mt-0.5 text-xs text-slate-500">
                 {data.accepted ? "Whitelisted — Can purchase MTN packages" : "Not whitelisted"}
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {data.blockedNumber ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400"
+                  onClick={handleToggleBlocked}
+                  disabled={actionInProgress}
+                >
+                  <Ban className="h-3.5 w-3.5 mr-1 text-rose-500" />
+                  Unblock Buying
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400"
+                  onClick={handleToggleBlocked}
+                  disabled={actionInProgress}
+                >
+                  <Ban className="h-3.5 w-3.5 mr-1" />
+                  Block from Buying
+                </Button>
+              )}
+
               {data.accepted ? (
                 <Button
                   variant="outline"
@@ -143,7 +205,7 @@ export function NumberDetailsModal({
                   disabled={actionInProgress}
                 >
                   <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  Remove from Whitelist
+                  Remove Whitelist
                 </Button>
               ) : (
                 <Button
@@ -164,6 +226,39 @@ export function NumberDetailsModal({
                 </Button>
               </Link>
             </div>
+          </div>
+
+          {/* Purchasing Blacklist Status Section */}
+          <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+              <ShieldAlert className="h-4 w-4 text-rose-600" />
+              Purchasing Blacklist Status
+            </h4>
+            {data.blockedNumber ? (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-xs text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-200">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-rose-700 dark:text-rose-400">
+                    ✕ BLOCKED FROM PURCHASING ON SYSTEM
+                  </span>
+                  <span className="text-[11px] text-rose-500">
+                    {formatDateTime(data.blockedNumber.createdAt)}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-rose-800 dark:text-rose-300">
+                  <strong>Reason:</strong> {data.blockedNumber.reason || "Blocked by administrator"}
+                </p>
+                {data.blockedNumber.blockedBy && (
+                  <p className="mt-0.5 text-[10px] text-rose-600 dark:text-rose-400">
+                    Logged by: {data.blockedNumber.blockedBy}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="mt-2 text-xs text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                <span>Allowed to purchase bundles across all channels (Storefronts, API, and Dashboard).</span>
+              </div>
+            )}
           </div>
 
           {/* Whitelist Status Section */}

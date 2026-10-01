@@ -865,3 +865,16 @@ model BlockedMtnNumber {
   @@index([lastSeenAt])
 }
 
+model BlockedNumber {
+  id               String   @id @default(cuid())
+  number           String
+  normalizedNumber String   @unique
+  reason           String?
+  blockedBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([normalizedNumber])
+  @@index([createdAt])
+}
+

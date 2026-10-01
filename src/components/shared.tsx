@@ -8,15 +8,17 @@ export function StatCard({
   hint,
   icon: Icon,
   className,
+  onClick,
 }: {
   title: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
   icon?: React.ComponentType<{ className?: string }>;
   className?: string;
+  onClick?: () => void;
 }) {
   return (
-    <Card className={cn("p-5", className)}>
+    <Card className={cn("p-5", className)} onClick={onClick}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</p>

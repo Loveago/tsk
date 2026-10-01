@@ -69,20 +69,8 @@ export function ImportAcceptedModal({
       // Read file text directly in the browser. This allows sending clean JSON,
       // avoiding Node/undici multipart/form-data boundary parsing errors.
       let data: any;
-      try {
-        const content = await selectedFile.text();
-        const res = await fetch("/api/admin/mtn-verification/accepted/import/preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filename: selectedFile.name,
-            content,
-          }),
-        });
-        data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to parse file");
-      } catch (jsonErr: any) {
-        // Fallback: If JSON fails or file is too large for memory, try FormData with safe ASCII filename
+      if (/\.xlsx?$/i.test(selectedFile.name)) {
+        // Binary Excel file: send via FormData
         const safeFilename = selectedFile.name.replace(/[^\w.-]/g, "_");
         const formData = new FormData();
         formData.append("file", selectedFile, safeFilename);
@@ -92,7 +80,34 @@ export function ImportAcceptedModal({
           body: formData,
         });
         data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? jsonErr.message ?? "Failed to parse file");
+        if (!res.ok) throw new Error(data.error ?? "Failed to parse Excel file");
+      } else {
+        // Text / CSV file
+        try {
+          const content = await selectedFile.text();
+          const res = await fetch("/api/admin/mtn-verification/accepted/import/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              filename: selectedFile.name,
+              content,
+            }),
+          });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "Failed to parse file");
+        } catch (jsonErr: any) {
+          // Fallback: If JSON fails or file is too large for memory, try FormData with safe ASCII filename
+          const safeFilename = selectedFile.name.replace(/[^\w.-]/g, "_");
+          const formData = new FormData();
+          formData.append("file", selectedFile, safeFilename);
+
+          const res = await fetch("/api/admin/mtn-verification/accepted/import/preview", {
+            method: "POST",
+            body: formData,
+          });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? jsonErr.message ?? "Failed to parse file");
+        }
       }
 
       // If direct import is requested, immediately trigger confirm
@@ -243,7 +258,7 @@ export function ImportAcceptedModal({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.csv"
+                accept=".xlsx,.xls,.csv,.txt"
                 className="hidden"
                 onChange={(e) => {
                   if (e.target.files?.[0]) handleFileChange(e.target.files[0]);
@@ -256,7 +271,7 @@ export function ImportAcceptedModal({
                 Drag &amp; drop your file here, or click to browse
               </p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Supported: TXT (1 number per line) or CSV (max 250MB, handles 100k+ to millions of numbers)
+                Supported: Excel (.xlsx), CSV, or TXT (max 250MB, handles 100k+ to millions of numbers)
               </p>
             </div>
 

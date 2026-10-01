@@ -190,6 +190,23 @@ export async function POST(request: NextRequest) {
       return { ...o, price, packageId: pkg?.id ?? null };
     });
 
+    // Check if any recipient numbers are blocked from purchasing on the system
+    const allPhones = Array.from(
+      new Set(deduplicatedOrders.map((o) => normalizeGhanaPhoneNumber(o.phoneNumber)))
+    );
+    const blockedRecipientRows = await prisma.blockedNumber.findMany({
+      where: { normalizedNumber: { in: allPhones } },
+      select: { normalizedNumber: true, number: true },
+    });
+    if (blockedRecipientRows.length > 0) {
+      const sample = blockedRecipientRows.slice(0, 3).map((b) => b.number || b.normalizedNumber).join(", ");
+      const more = blockedRecipientRows.length > 3 ? ` and ${blockedRecipientRows.length - 3} more` : "";
+      return apiError(
+        400,
+        `Cannot place order: ${blockedRecipientRows.length} number(s) (${sample}${more}) are blocked from purchasing on our system.`
+      );
+    }
+
     // Validate MTN numbers before balance deduction in batch (§2, §16)
     const mtnOrders = deduplicatedOrders.filter((o) => o.network.toUpperCase() === "MTN");
     if (mtnOrders.length > 0) {

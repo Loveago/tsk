@@ -85,6 +85,15 @@ export async function POST(
     }
 
 
+    // Check if customer phone number is blocked from purchasing on the system
+    const { isPhoneNumberBlocked } = await import("@/lib/blocked-numbers");
+    if (await isPhoneNumberBlocked(input.customerPhone)) {
+      return apiError(
+        400,
+        `This phone number (${input.customerPhone}) is blocked from purchasing on our system.`
+      );
+    }
+
     // Central MTN Number Verification Check (§16, §17)
     const mtnCheck = await validateMtnOrderRecipient(
       input.customerPhone,

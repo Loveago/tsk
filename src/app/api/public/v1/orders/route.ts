@@ -4,6 +4,7 @@ import { requireApiKey, ApiKeyError, logApiRequest } from "@/lib/api-auth";
 import { publicOrderSchema } from "@/lib/validation";
 import { changeOrderStatus, isOrderProcessingHalted, isNetworkOrdersPaused, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
+import { isPhoneNumberBlocked } from "@/lib/blocked-numbers";
 import { detectNetworkNameByPrefix } from "@/lib/phone-utils";
 import { handleRouteError } from "@/lib/api-helpers";
 import { z } from "zod";
@@ -94,6 +95,18 @@ export async function POST(request: NextRequest) {
     }
     const amount = await resolveUserWholesalePrice(user, pkg);
     if (amount <= 0) return fail(request, keyId, endpoint, 400, "No price configured for this package");
+
+    // Check if recipient number is blocked from purchasing on the system
+    if (await isPhoneNumberBlocked(input.phoneNumber)) {
+      const blockedMsg = `This phone number (${input.phoneNumber}) is blocked from purchasing on our system.`;
+      if (idemKey) {
+        await prisma.idempotencyKey.update({
+          where: { key: idemKey },
+          data: { status: "FAILED", response: blockedMsg },
+        }).catch(() => undefined);
+      }
+      return fail(request, keyId, endpoint, 400, blockedMsg);
+    }
 
     // Check if recipient number already has an active order
     const latestOrder = await prisma.order.findFirst({

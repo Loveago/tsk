@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { parseMtnNumbersFile, createImportStagingSession } from "@/lib/mtn-verification";
+import { parseExcelBufferToCsvText } from "@/lib/excel-utils";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
 export const maxDuration = 300;
@@ -26,16 +27,21 @@ export async function POST(request: NextRequest) {
         const formData = await request.formData();
         const file = formData.get("file");
         if (!file || !(file instanceof File)) {
-          return apiError(400, "Please upload a TXT or CSV file");
+          return apiError(400, "Please upload an Excel (.xlsx), CSV, or TXT file");
         }
         filename = file.name;
         if (file.size > MAX_FILE_SIZE_BYTES) {
           return apiError(400, `File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds maximum limit of 250MB`);
         }
-        content = await file.text();
+        if (/\.xlsx?$/i.test(filename)) {
+          const buffer = Buffer.from(await file.arrayBuffer());
+          content = await parseExcelBufferToCsvText(buffer);
+        } else {
+          content = await file.text();
+        }
       } catch (formErr: any) {
         console.error("[mtn-verification/import/preview] FormData parsing error:", formErr);
-        return apiError(400, "Failed to parse uploaded form data. Please ensure the file is a valid TXT or CSV file.");
+        return apiError(400, "Failed to parse uploaded form data. Please ensure the file is a valid Excel (.xlsx), CSV, or TXT file.");
       }
     } else {
       // Fallback: raw body as text

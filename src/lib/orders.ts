@@ -269,6 +269,11 @@ export async function createOrder(input: CreateOrderInput) {
     throw new Error(`${input.network} orders are temporarily paused by administrator for maintenance.`);
   }
 
+  // Check if phone number is blocked from purchasing on the system
+  const { isPhoneNumberBlocked } = await import("./blocked-numbers");
+  if (await isPhoneNumberBlocked(input.phoneNumber)) {
+    throw new Error(`This phone number (${input.phoneNumber}) is blocked from purchasing on our system.`);
+  }
 
   // Central MTN Number Verification Check (§16, §17)
   if (!input.skipMtnValidation) {

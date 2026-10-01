@@ -98,12 +98,22 @@ export async function validateMtnOrderRecipient(
   userId?: string | null,
   opts: { throwOnFailure?: boolean; recordUnverified?: boolean } = {}
 ): Promise<{ allowed: boolean; reason?: string }> {
+  const normalized = normalizeGhanaPhoneNumber(phoneNumber);
+
+  // Check if number is blocked from purchasing on the system
+  const { isPhoneNumberBlocked } = await import("./blocked-numbers");
+  if (await isPhoneNumberBlocked(normalized)) {
+    const reason = `This phone number (${normalized}) is blocked from purchasing on our system.`;
+    if (opts.throwOnFailure) {
+      throw new Error(reason);
+    }
+    return { allowed: false, reason };
+  }
+
   const net = network.toUpperCase();
   if (net !== "MTN") {
     return { allowed: true };
   }
-
-  const normalized = normalizeGhanaPhoneNumber(phoneNumber);
   const verificationEnabled = await isMtnVerificationEnabled();
   let isAccepted = await isMtnNumberAccepted(normalized);
   if (verificationEnabled && !isAccepted) {
@@ -1311,13 +1321,14 @@ export async function clearAllBlockedMtnNumbers(actorLabel = "Admin") {
 // ---------------------------------------------------------------------------
 
 export async function getMtnVerificationStats() {
-  const [accepted, pending, processing, verified, rejected, blocked] = await Promise.all([
+  const [accepted, pending, processing, verified, rejected, unverified, blockedNumbers] = await Promise.all([
     prisma.acceptedMtnNumber.count(),
     prisma.mtnVerificationRequest.count({ where: { status: "SUBMITTED" } }),
     prisma.mtnVerificationRequest.count({ where: { status: "PROCESSING" } }),
     prisma.mtnVerificationRequest.count({ where: { status: "VERIFIED" } }),
     prisma.mtnVerificationRequest.count({ where: { status: "REJECTED" } }),
     prisma.blockedMtnNumber.count(),
+    prisma.blockedNumber.count(),
   ]);
 
   return {
@@ -1326,7 +1337,9 @@ export async function getMtnVerificationStats() {
     processing,
     verified,
     rejected,
-    blocked,
+    blocked: unverified,
+    unverified,
+    blockedNumbers,
   };
 }
 
@@ -1394,7 +1407,7 @@ export async function createBatchFromBlockedNumbers({
  */
 export async function getMtnNumberDetails(rawNumber: string) {
   const canonical = normalizeGhanaPhoneNumber(rawNumber);
-  const [accepted, requests, blocked] = await Promise.all([
+  const [accepted, requests, blocked, blockedNumber] = await Promise.all([
     prisma.acceptedMtnNumber.findUnique({
       where: { normalizedNumber: canonical },
       include: {
@@ -1410,6 +1423,9 @@ export async function getMtnNumberDetails(rawNumber: string) {
       },
     }),
     prisma.blockedMtnNumber.findUnique({
+      where: { normalizedNumber: canonical },
+    }),
+    prisma.blockedNumber.findUnique({
       where: { normalizedNumber: canonical },
     }),
   ]);
@@ -1432,6 +1448,7 @@ export async function getMtnNumberDetails(rawNumber: string) {
     accepted,
     requests,
     blocked: blocked ? { ...blocked, user } : null,
+    blockedNumber,
   };
 }
 
