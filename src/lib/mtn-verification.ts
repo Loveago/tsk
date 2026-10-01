@@ -855,6 +855,52 @@ export async function submitVerificationRequest(
   };
 }
 
+/**
+ * Bulk removes verification requests by IDs (§5, §20).
+ */
+export async function bulkRemoveVerificationRequests(ids: string[], actorLabel = "Admin") {
+  await prisma.mtnVerificationBatchNumber.updateMany({
+    where: { verificationRequestId: { in: ids } },
+    data: { verificationRequestId: null },
+  });
+
+  const res = await prisma.mtnVerificationRequest.deleteMany({
+    where: { id: { in: ids } },
+  });
+
+  await recordAudit({
+    actorLabel,
+    action: "ADMIN_REMOVED_MTN_VERIFICATION_REQUESTS",
+    target: `bulk:${res.count}_requests`,
+    newValue: JSON.stringify({ count: res.count, ids }),
+  });
+
+  return res.count;
+}
+
+/**
+ * Clears all verification requests from the database (§5, §20).
+ */
+export async function clearAllVerificationRequests(actorLabel = "Admin") {
+  const count = await prisma.mtnVerificationRequest.count();
+
+  await prisma.mtnVerificationBatchNumber.updateMany({
+    where: { verificationRequestId: { not: null } },
+    data: { verificationRequestId: null },
+  });
+
+  await prisma.mtnVerificationRequest.deleteMany({});
+
+  await recordAudit({
+    actorLabel,
+    action: "ADMIN_CLEARED_ALL_MTN_VERIFICATION_REQUESTS",
+    target: "all_verification_requests",
+    newValue: JSON.stringify({ countDeleted: count }),
+  });
+
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // Verification Batches (§9, §10, §11, §12)
 // ---------------------------------------------------------------------------
@@ -1223,6 +1269,41 @@ export async function submitBlockedForVerification(blockedId: string, actorLabel
   }
 
   return submitVerificationRequest(userId, blocked.normalizedNumber, actorLabel);
+}
+
+/**
+ * Bulk removes blocked/unverified MTN numbers by IDs (§13, §14).
+ */
+export async function bulkRemoveBlockedMtnNumbers(ids: string[], actorLabel = "Admin") {
+  const res = await prisma.blockedMtnNumber.deleteMany({
+    where: { id: { in: ids } },
+  });
+
+  await recordAudit({
+    actorLabel,
+    action: "ADMIN_REMOVED_BLOCKED_MTN_NUMBERS",
+    target: `bulk:${res.count}_blocked`,
+    newValue: JSON.stringify({ count: res.count, ids }),
+  });
+
+  return res.count;
+}
+
+/**
+ * Clears all blocked/unverified MTN numbers from the database (§13, §14).
+ */
+export async function clearAllBlockedMtnNumbers(actorLabel = "Admin") {
+  const count = await prisma.blockedMtnNumber.count();
+  await prisma.blockedMtnNumber.deleteMany({});
+
+  await recordAudit({
+    actorLabel,
+    action: "ADMIN_CLEARED_ALL_BLOCKED_MTN_NUMBERS",
+    target: "all_blocked_numbers",
+    newValue: JSON.stringify({ countDeleted: count }),
+  });
+
+  return count;
 }
 
 // ---------------------------------------------------------------------------

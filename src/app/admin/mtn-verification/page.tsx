@@ -35,6 +35,8 @@ import { CreateBatchModal } from "@/components/admin/mtn-verification/create-bat
 import { VerifyBatchModal } from "@/components/admin/mtn-verification/verify-batch-modal";
 import { AddNumberModal } from "@/components/admin/mtn-verification/add-number-modal";
 import { ClearAcceptedModal } from "@/components/admin/mtn-verification/clear-accepted-modal";
+import { ClearRequestsModal } from "@/components/admin/mtn-verification/clear-requests-modal";
+import { ClearBlockedModal } from "@/components/admin/mtn-verification/clear-blocked-modal";
 import { NumberDetailsModal } from "@/components/admin/mtn-verification/number-details-modal";
 import { isMtnPhoneNumber, detectNetworkNameByPrefix } from "@/lib/phone-utils";
 
@@ -108,6 +110,8 @@ export default function AdminMtnVerificationPage() {
   const [activeBatchToVerify, setActiveBatchToVerify] = React.useState<any | null>(null);
   const [addNumberModalOpen, setAddNumberModalOpen] = React.useState(false);
   const [clearAcceptedModalOpen, setClearAcceptedModalOpen] = React.useState(false);
+  const [clearRequestsModalOpen, setClearRequestsModalOpen] = React.useState(false);
+  const [clearBlockedModalOpen, setClearBlockedModalOpen] = React.useState(false);
   const [numberDetailsModalOpen, setNumberDetailsModalOpen] = React.useState(false);
   const [selectedNumberForDetails, setSelectedNumberForDetails] = React.useState<string | null>(null);
 
@@ -342,6 +346,44 @@ export default function AdminMtnVerificationPage() {
       fetchStats();
     } catch (err: any) {
       toast(err.message ?? "Error", "error");
+    }
+  };
+
+  const handleBulkDeleteRequests = async () => {
+    if (!selectedReqIds.size) return;
+    if (!confirm(`Are you sure you want to delete ${selectedReqIds.size} verification requests?`)) return;
+    try {
+      const res = await fetch("/api/admin/mtn-verification/requests", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedReqIds) }),
+      });
+      if (!res.ok) throw new Error("Bulk delete failed");
+      toast(`Deleted ${selectedReqIds.size} verification requests`, "success");
+      setSelectedReqIds(new Set());
+      fetchRequests();
+      fetchStats();
+    } catch (err: any) {
+      toast(err.message ?? "Error deleting", "error");
+    }
+  };
+
+  const handleBulkDeleteBlocked = async () => {
+    if (!selectedBlockedIds.size) return;
+    if (!confirm(`Are you sure you want to delete ${selectedBlockedIds.size} blocked numbers?`)) return;
+    try {
+      const res = await fetch("/api/admin/mtn-verification/blocked", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedBlockedIds) }),
+      });
+      if (!res.ok) throw new Error("Bulk delete failed");
+      toast(`Deleted ${selectedBlockedIds.size} blocked numbers`, "success");
+      setSelectedBlockedIds(new Set());
+      fetchBlocked();
+      fetchStats();
+    } catch (err: any) {
+      toast(err.message ?? "Error deleting", "error");
     }
   };
 
@@ -815,8 +857,29 @@ export default function AdminMtnVerificationPage() {
                       <Layers className="h-3.5 w-3.5 mr-1" />
                       Create Batch ({selectedReqIds.size})
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8.5 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={handleBulkDeleteRequests}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" />
+                      Delete ({selectedReqIds.size})
+                    </Button>
                   </>
                 )}
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8.5 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                  disabled={reqTotal === 0 && (stats.pending + stats.processing + stats.verified + stats.rejected === 0)}
+                  onClick={() => setClearRequestsModalOpen(true)}
+                  title="Clear all verification requests from the database"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1 text-rose-500" />
+                  Clear All Requests
+                </Button>
               </div>
             </div>
 
@@ -1448,14 +1511,25 @@ export default function AdminMtnVerificationPage() {
 
               <div className="flex flex-wrap items-center gap-2">
                 {selectedBlockedIds.size > 0 && (
-                  <Button
-                    size="sm"
-                    onClick={handleCreateBatchFromBlocked}
-                    className="h-8.5 text-xs bg-brand-600 hover:bg-brand-700 text-white"
-                  >
-                    <Layers className="h-3.5 w-3.5 mr-1" />
-                    Create Batch ({selectedBlockedIds.size})
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={handleCreateBatchFromBlocked}
+                      className="h-8.5 text-xs bg-brand-600 hover:bg-brand-700 text-white"
+                    >
+                      <Layers className="h-3.5 w-3.5 mr-1" />
+                      Create Batch ({selectedBlockedIds.size})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8.5 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={handleBulkDeleteBlocked}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" />
+                      Delete ({selectedBlockedIds.size})
+                    </Button>
+                  </>
                 )}
 
                 <Button
@@ -1476,6 +1550,18 @@ export default function AdminMtnVerificationPage() {
                 >
                   <Download className="h-3.5 w-3.5 mr-1" />
                   Export TXT{selectedBlockedIds.size > 0 ? ` (${selectedBlockedIds.size})` : ""}
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8.5 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                  disabled={blockTotal === 0 && stats.blocked === 0}
+                  onClick={() => setClearBlockedModalOpen(true)}
+                  title="Clear all blocked numbers from the database"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1 text-rose-500" />
+                  Clear All Blocked
                 </Button>
 
                 <div className="text-xs text-slate-500">
@@ -1723,6 +1809,28 @@ export default function AdminMtnVerificationPage() {
         onSuccess={() => {
           setSelectedAccIds(new Set());
           fetchAccepted();
+          fetchStats();
+        }}
+      />
+
+      <ClearRequestsModal
+        open={clearRequestsModalOpen}
+        onClose={() => setClearRequestsModalOpen(false)}
+        totalCount={reqTotal || (stats.pending + stats.processing + stats.verified + stats.rejected)}
+        onSuccess={() => {
+          setSelectedReqIds(new Set());
+          fetchRequests();
+          fetchStats();
+        }}
+      />
+
+      <ClearBlockedModal
+        open={clearBlockedModalOpen}
+        onClose={() => setClearBlockedModalOpen(false)}
+        totalCount={blockTotal || stats.blocked}
+        onSuccess={() => {
+          setSelectedBlockedIds(new Set());
+          fetchBlocked();
           fetchStats();
         }}
       />

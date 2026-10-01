@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError, apiError } from "@/lib/api-helpers";
+import {
+  bulkRemoveBlockedMtnNumbers,
+  clearAllBlockedMtnNumbers,
+} from "@/lib/mtn-verification";
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,6 +60,40 @@ export async function GET(request: NextRequest) {
       pageSize,
       pages: Math.ceil(total / pageSize),
     });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const admin = await requireAdmin();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    const clearAll = searchParams.get("all") === "true";
+
+    if (clearAll) {
+      const count = await clearAllBlockedMtnNumbers(admin.email);
+      return NextResponse.json({ success: true, count, clearedAll: true });
+    }
+
+    if (id) {
+      const count = await bulkRemoveBlockedMtnNumbers([id], admin.email);
+      return NextResponse.json({ success: true, count: 1 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    if (body.all === true) {
+      const count = await clearAllBlockedMtnNumbers(admin.email);
+      return NextResponse.json({ success: true, count, clearedAll: true });
+    }
+
+    if (Array.isArray(body.ids) && body.ids.length > 0) {
+      const count = await bulkRemoveBlockedMtnNumbers(body.ids, admin.email);
+      return NextResponse.json({ success: true, count });
+    }
+
+    return apiError(400, "Either 'all: true' or a list of 'ids' is required");
   } catch (err) {
     return handleRouteError(err);
   }
