@@ -259,6 +259,12 @@ export async function POST(request: NextRequest) {
         }
 
         if (unverified.length > 0) {
+          // Record unverified numbers in BlockedMtnNumber registry for admin review & verification
+          const unverifiedItems = unverified.map((o) => ({ number: o.phoneNumber, userId: user.id }));
+          await recordUnverifiedMtnNumbersBatch(unverifiedItems).catch((err) => {
+            console.error("Failed to record unverified MTN numbers during order submission:", err);
+          });
+
           const sample = unverified.slice(0, 5).map((o) => o.phoneNumber).join(", ");
           const more = unverified.length > 5 ? ` and ${unverified.length - 5} more` : "";
           return apiError(

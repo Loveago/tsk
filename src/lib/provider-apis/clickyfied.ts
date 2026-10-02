@@ -509,51 +509,60 @@ export class ClickyfiedClient {
       body: JSON.stringify({ numbers: cleanNumbers }),
     });
 
-    // Flexible extraction based on potential Clickyfied return shapes
-    let validNumbers: string[] = [];
-    let invalidNumbers: string[] = [];
+    // Flexible extraction based on Clickyfied verified results
+    const validNormSet = new Set<string>();
 
-    if (Array.isArray(res?.valid)) {
-      validNumbers = res.valid.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")));
-      invalidNumbers = Array.isArray(res?.invalid)
-        ? res.invalid.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")))
-        : [];
-    } else if (Array.isArray(res?.verified)) {
-      validNumbers = res.verified.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")));
-      invalidNumbers = Array.isArray(res?.unverified)
-        ? res.unverified.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")))
-        : [];
-    } else if (Array.isArray(res?.numbers)) {
-      validNumbers = res.numbers.map((n: any) => normalizeGhanaPhoneNumber(String(n || "")));
-    } else if (Array.isArray(res?.results)) {
+    if (Array.isArray(res?.results)) {
       for (const item of res.results) {
         const isFound =
-          item.found === true ||
-          item.valid === true ||
-          item.verified === true ||
-          item.status === "VERIFIED";
-        const num = normalizeGhanaPhoneNumber(String(item.number || ""));
-        if (isFound) {
-          validNumbers.push(num);
-        } else {
-          invalidNumbers.push(num);
+          item?.found === true ||
+          item?.valid === true ||
+          item?.verified === true ||
+          item?.status === "VERIFIED";
+        const num = normalizeGhanaPhoneNumber(String(item?.number || ""));
+        if (num && isFound) {
+          validNormSet.add(num);
         }
+      }
+    } else if (Array.isArray(res?.valid)) {
+      for (const item of res.valid) {
+        const num = normalizeGhanaPhoneNumber(String(item || ""));
+        if (num) validNormSet.add(num);
+      }
+    } else if (Array.isArray(res?.verified)) {
+      for (const item of res.verified) {
+        const num = normalizeGhanaPhoneNumber(String(item || ""));
+        if (num) validNormSet.add(num);
       }
     } else if (Array.isArray(res?.data)) {
       for (const item of res.data) {
         const isFound =
           typeof item === "string"
             ? true
-            : item.found === true || item.valid === true || item.verified === true;
+            : item?.found === true || item?.valid === true || item?.verified === true;
         const num = normalizeGhanaPhoneNumber(
-          typeof item === "string" ? item : String(item.number || "")
+          typeof item === "string" ? item : String(item?.number || "")
         );
-        if (isFound) validNumbers.push(num);
-        else invalidNumbers.push(num);
+        if (num && isFound) validNormSet.add(num);
       }
-    } else if (res?.success && !res?.invalid?.length) {
-      // Fallback: if { success: true } and no invalid listed, assume all requested numbers verified
-      validNumbers = cleanNumbers.map((n) => normalizeGhanaPhoneNumber(n));
+    }
+
+    // Strictly classify every requested number:
+    // Only numbers explicitly confirmed by Clickyfied as found/verified are valid.
+    const validNumbers: string[] = [];
+    const invalidNumbers: string[] = [];
+
+    for (const raw of numbers) {
+      const canon = normalizeGhanaPhoneNumber(raw);
+      if (validNormSet.has(canon)) {
+        if (!validNumbers.includes(canon)) {
+          validNumbers.push(canon);
+        }
+      } else {
+        if (!invalidNumbers.includes(canon)) {
+          invalidNumbers.push(canon);
+        }
+      }
     }
 
     return {

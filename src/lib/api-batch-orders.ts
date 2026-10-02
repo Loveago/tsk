@@ -22,7 +22,7 @@ export interface FilteredOutEntry {
   number: string;
   allocationGB: number;
   reason: string;
-  type: "blocked" | "invalid" | "duplicate" | "in_flight" | "unavailable";
+  type: "blocked" | "invalid" | "duplicate" | "in_flight" | "unavailable" | "unverified";
 }
 
 export interface ValidBatchEntry {
@@ -179,7 +179,27 @@ export async function validateAndFilterBatchEntries(
       continue;
     }
 
-    // 8. Wholesale price resolution
+    // 8. Central MTN Number Verification Check
+    if (net === "MTN") {
+      const { validateMtnOrderRecipient } = await import("./mtn-verification");
+      const mtnCheck = await validateMtnOrderRecipient(
+        normalizedPhone,
+        net,
+        user?.id,
+        { recordUnverified: true }
+      );
+      if (!mtnCheck.allowed) {
+        filteredOutEntries.push({
+          number: rawNumber,
+          allocationGB: alloc,
+          reason: mtnCheck.reason ?? "MTN recipient phone number is not verified",
+          type: "unverified",
+        });
+        continue;
+      }
+    }
+
+    // 9. Wholesale price resolution
     let price = 0;
     if (user) {
       price = await resolveUserWholesalePrice(user, matchedPkg);
