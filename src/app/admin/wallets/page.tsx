@@ -61,6 +61,8 @@ interface WalletStats {
   totalRefundsCount: number;
   totalOrdersCount: number;
   totalOrderSpend: number;
+  storefrontOrdersCount?: number;
+  storefrontOrderSpend?: number;
   successOrdersCount: number;
   failedOrdersCount: number;
 }
@@ -96,6 +98,7 @@ interface OrderItem {
   status: string;
   phoneNumber: string;
   createdAt: string;
+  source?: string;
   batch?: { batchCode: string } | null;
 }
 
@@ -594,7 +597,11 @@ export default function AdminWalletsPage() {
                   title="Spent on Orders"
                   value={formatGHS(stats.totalOrderSpend)}
                   icon={ShoppingBag}
-                  hint={`${stats.successOrdersCount} successful bundles`}
+                  hint={
+                    stats.storefrontOrdersCount && stats.storefrontOrdersCount > 0
+                      ? `${stats.totalOrdersCount} wallet orders (${stats.storefrontOrdersCount} storefront paid via Paystack)`
+                      : `${stats.totalOrdersCount} wallet bundle orders`
+                  }
                 />
                 <StatCard
                   title="Total Refunds"
@@ -603,10 +610,16 @@ export default function AdminWalletsPage() {
                   hint={`${stats.totalRefundsCount} refunded transactions`}
                 />
                 <StatCard
-                  title="Total Orders"
+                  title="Wallet Orders"
                   value={String(stats.totalOrdersCount)}
                   icon={History}
-                  hint={stats.failedOrdersCount > 0 ? `${stats.failedOrdersCount} failed` : "All in good standing"}
+                  hint={
+                    stats.storefrontOrdersCount && stats.storefrontOrdersCount > 0
+                      ? `+${stats.storefrontOrdersCount} storefront sales (GHS ${(stats.storefrontOrderSpend ?? 0).toFixed(2)})`
+                      : stats.failedOrdersCount > 0
+                      ? `${stats.failedOrdersCount} failed`
+                      : "All in good standing"
+                  }
                 />
               </div>
             )}
@@ -992,6 +1005,7 @@ export default function AdminWalletsPage() {
                         <thead className="border-b border-slate-100 text-xs text-slate-400 dark:border-slate-800">
                           <tr>
                             <th className="py-2.5 font-medium">Order ID</th>
+                            <th className="py-2.5 font-medium">Source / Channel</th>
                             <th className="py-2.5 font-medium">Network &amp; GB</th>
                             <th className="py-2.5 font-medium">Recipient Phone</th>
                             <th className="py-2.5 font-medium">Amount</th>
@@ -1004,6 +1018,21 @@ export default function AdminWalletsPage() {
                             <tr key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
                               <td className="py-3 font-mono text-xs font-semibold text-slate-600 dark:text-slate-300">
                                 #{o.id} {o.batch?.batchCode ? `(${o.batch.batchCode})` : ""}
+                              </td>
+                              <td className="py-3">
+                                {o.source === "STOREFRONT" ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-300 dark:border-purple-500/20">
+                                    Storefront (Paid via Paystack)
+                                  </span>
+                                ) : o.source === "API" ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20">
+                                    API
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20">
+                                    Dashboard Wallet
+                                  </span>
+                                )}
                               </td>
                               <td className="py-3 font-semibold">
                                 {o.network} {o.gbAmount} GB

@@ -59,48 +59,60 @@ export async function GET(request: NextRequest) {
       }
 
       // Financial stats aggregation
-      const [topupsAgg, debitsAgg, refundsAgg, ordersAgg, successOrdersCount, failedOrdersCount] =
-        await Promise.all([
-          prisma.walletTransaction.aggregate({
-            where: {
-              userId,
-              type: { in: ["TOPUP", "ADJUSTMENT", "SIGNUP_FEE"] },
-              status: "APPROVED",
-              amount: { gt: 0 },
-            },
-            _sum: { amount: true },
-            _count: { _all: true },
-          }),
-          prisma.walletTransaction.aggregate({
-            where: {
-              userId,
-              type: "DEBIT",
-              status: "APPROVED",
-            },
-            _sum: { amount: true },
-            _count: { _all: true },
-          }),
-          prisma.walletTransaction.aggregate({
-            where: {
-              userId,
-              type: "REFUND",
-              status: "APPROVED",
-            },
-            _sum: { amount: true },
-            _count: { _all: true },
-          }),
-          prisma.order.aggregate({
-            where: { userId },
-            _sum: { amount: true },
-            _count: { _all: true },
-          }),
-          prisma.order.count({
-            where: { userId, status: "SUCCESS" },
-          }),
-          prisma.order.count({
-            where: { userId, status: "FAILED" },
-          }),
-        ]);
+      const [
+        topupsAgg,
+        debitsAgg,
+        refundsAgg,
+        walletOrdersAgg,
+        storefrontOrdersAgg,
+        successOrdersCount,
+        failedOrdersCount,
+      ] = await Promise.all([
+        prisma.walletTransaction.aggregate({
+          where: {
+            userId,
+            type: { in: ["TOPUP", "ADJUSTMENT", "SIGNUP_FEE"] },
+            status: "APPROVED",
+            amount: { gt: 0 },
+          },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        prisma.walletTransaction.aggregate({
+          where: {
+            userId,
+            type: "DEBIT",
+            status: "APPROVED",
+          },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        prisma.walletTransaction.aggregate({
+          where: {
+            userId,
+            type: "REFUND",
+            status: "APPROVED",
+          },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        prisma.order.aggregate({
+          where: { userId, source: { not: "STOREFRONT" } },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        prisma.order.aggregate({
+          where: { userId, source: "STOREFRONT" },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        prisma.order.count({
+          where: { userId, status: "SUCCESS" },
+        }),
+        prisma.order.count({
+          where: { userId, status: "FAILED" },
+        }),
+      ]);
 
       // Helper to compute delta for running balance
       const computeDelta = (type: string, amount: number, status: string): number => {
@@ -261,6 +273,8 @@ export async function GET(request: NextRequest) {
             status: true,
             phoneNumber: true,
             createdAt: true,
+            source: true,
+            externalReference: true,
             batch: { select: { batchCode: true } },
           },
         }),
@@ -276,8 +290,10 @@ export async function GET(request: NextRequest) {
           totalDebitsCount: debitsAgg._count._all,
           totalRefunds: refundsAgg._sum.amount ?? 0,
           totalRefundsCount: refundsAgg._count._all,
-          totalOrdersCount: ordersAgg._count._all,
-          totalOrderSpend: ordersAgg._sum.amount ?? 0,
+          totalOrdersCount: walletOrdersAgg._count._all,
+          totalOrderSpend: walletOrdersAgg._sum.amount ?? 0,
+          storefrontOrdersCount: storefrontOrdersAgg._count._all,
+          storefrontOrderSpend: storefrontOrdersAgg._sum.amount ?? 0,
           successOrdersCount,
           failedOrdersCount,
         },
