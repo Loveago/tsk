@@ -10,7 +10,6 @@ import {
   X,
   ChevronRight,
   Home,
-  RotateCcw,
   ChevronDown,
   UserRound,
   Send,
@@ -537,20 +536,6 @@ export function StoreChrome(props: StoreChromeProps) {
                 Track Orders
                 <ChevronRight className="ml-auto h-4 w-4 text-slate-300" />
               </Link>
-              {wa && (
-                <a
-                  href={wa}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-yellow-300">
-                    <RotateCcw className="h-4 w-4 text-slate-900" />
-                  </span>
-                  Request Refund
-                  <ChevronRight className="ml-auto h-4 w-4 text-slate-300" />
-                </a>
-              )}
             </nav>
 
             <p className="px-6 pb-1 pt-6 text-[11px] font-bold uppercase tracking-widest text-slate-400">Buy data</p>
