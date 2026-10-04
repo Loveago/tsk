@@ -138,86 +138,67 @@ export async function POST(request: NextRequest) {
       return fail(request, keyId, endpoint, 422, mtnCheck.reason ?? "MTN number verification required");
     }
 
-    // Atomic balance decrement
-    const debited = await prisma.user.updateMany({
-      where: { id: userId, balance: { gte: amount }, status: "ACTIVE" },
-      data: { balance: { decrement: amount } },
-    });
-    if (debited.count === 0) {
-      if (idemKey) {
-        await prisma.idempotencyKey.update({
-          where: { key: idemKey },
-          data: { status: "FAILED", response: "Insufficient balance" },
-        });
-      }
-      return fail(request, keyId, endpoint, 402, "Insufficient wallet balance. Top up and retry.");
-    }
-
+    let order: any;
     try {
-      const order = await prisma.order.create({
-        data: {
-          userId,
-          phoneNumber: input.phoneNumber,
-          network: input.network ?? pkg.network,
-          packageId: pkg.id,
-          gbAmount: pkg.gbAmount,
-          amount,
-          status: "PENDING",
-          source: "API",
-        },
-      });
+      order = await prisma.$transaction(async (tx) => {
+        // Atomic balance decrement
+        const debited = await tx.user.updateMany({
+          where: { id: userId, balance: { gte: amount }, status: "ACTIVE" },
+          data: { balance: { decrement: amount } },
+        });
 
-      await prisma.walletTransaction.create({
-        data: { userId, type: "DEBIT", amount, status: "APPROVED", reference: `order:${order.id}` },
-      });
+        if (debited.count === 0) {
+          throw new Error("INSUFFICIENT_BALANCE");
+        }
 
-      await prisma.orderStatusHistory.create({
-        data: {
-          orderId: order.id,
-          status: "PENDING",
-          note: "Order accepted via API",
-          changedBy: keyId ? `api_key:${keyId}` : "api",
-        },
-      });
+        const createdOrder = await tx.order.create({
+          data: {
+            userId,
+            phoneNumber: input.phoneNumber,
+            network: input.network ?? pkg.network,
+            packageId: pkg.id,
+            gbAmount: pkg.gbAmount,
+            amount,
+            status: "PENDING",
+            source: "API",
+            isSandbox: false,
+          },
+        });
 
-      if (idemKey) {
-        await prisma.idempotencyKey
-          .update({
+        await tx.walletTransaction.create({
+          data: { userId, type: "DEBIT", amount, status: "APPROVED", reference: `order:${createdOrder.id}` },
+        });
+
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: createdOrder.id,
+            status: "PENDING",
+            note: "Order accepted via API",
+            changedBy: keyId ? `api_key:${keyId}` : "api",
+          },
+        });
+
+        if (idemKey) {
+          await tx.idempotencyKey.upsert({
             where: { key: idemKey },
-            data: { orderId: order.id, status: "COMPLETED" },
-          })
-          .catch(() => undefined);
-      }
-
-      // Automatically dispatch to configured provider API (or Clickify sandbox)
-      try {
-        const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
-        const config = await getProviderRoutingConfig();
-        if (shouldAutoDispatch(config)) {
-          dispatchOrder(order.id).catch((err) => {
-            console.error(`Auto-dispatch failed for public v1 order #${order.id}:`, err);
+            create: { key: idemKey, userId, orderId: createdOrder.id, status: "COMPLETED" },
+            update: { orderId: createdOrder.id, status: "COMPLETED" },
           });
         }
-      } catch (err) {
-        console.error("Public v1 auto-dispatch check error:", err);
+
+        return createdOrder;
+      });
+    } catch (err: any) {
+      if (err?.message === "INSUFFICIENT_BALANCE") {
+        if (idemKey) {
+          await prisma.idempotencyKey.update({
+            where: { key: idemKey },
+            data: { status: "FAILED", response: "Insufficient balance" },
+          }).catch(() => undefined);
+        }
+        return fail(request, keyId, endpoint, 402, "Insufficient wallet balance. Top up and retry.");
       }
 
-      await logApiRequest(keyId, endpoint, "POST", 201, true, ipOf(request));
-      return NextResponse.json(
-        {
-          success: true,
-          order: {
-            id: order.id, status: "PROCESSING", amount, network: order.network,
-            gbAmount: order.gbAmount, phoneNumber: order.phoneNumber, createdAt: order.createdAt,
-          },
-        },
-        { status: 201 }
-      );
-    } catch (err) {
-      // Refund on failure
-      await prisma.user
-        .update({ where: { id: userId }, data: { balance: { increment: amount } } })
-        .catch(() => undefined);
       if (idemKey) {
         await prisma.idempotencyKey
           .update({
@@ -226,8 +207,33 @@ export async function POST(request: NextRequest) {
           })
           .catch(() => undefined);
       }
-      return fail(request, keyId, endpoint, 500, "Order creation failed. Balance refunded.");
+      return fail(request, keyId, endpoint, 500, "Failed to create order");
     }
+
+    // Automatically dispatch to configured provider API (or Clickify sandbox)
+    try {
+      const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
+      const config = await getProviderRoutingConfig();
+      if (shouldAutoDispatch(config)) {
+        dispatchOrder(order.id).catch((err) => {
+          console.error(`Auto-dispatch failed for public v1 order #${order.id}:`, err);
+        });
+      }
+    } catch (err) {
+      console.error("Public v1 auto-dispatch check error:", err);
+    }
+
+    await logApiRequest(keyId, endpoint, "POST", 201, true, ipOf(request));
+    return NextResponse.json(
+      {
+        success: true,
+        order: {
+          id: order.id, status: "PROCESSING", amount, network: order.network,
+          gbAmount: order.gbAmount, phoneNumber: order.phoneNumber, createdAt: order.createdAt,
+        },
+      },
+      { status: 201 }
+    );
   } catch (err) {
     if (err instanceof ApiKeyError) {
       return NextResponse.json({ success: false, error: err.message }, { status: err.status });

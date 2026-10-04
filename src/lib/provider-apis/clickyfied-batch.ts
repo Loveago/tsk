@@ -217,6 +217,7 @@ export async function getPendingMtnClickyfiedOrders() {
   const whereClause: any = {
     status: "PENDING",
     network: "MTN",
+    isSandbox: false, // Strictly exclude sandbox test orders from live Clickyfied batches
     providerReference: null,
     failureReason: null, // Orders with any prior failure are strictly held for manual fulfillment only
     exportBatchId: null, // Exclude exported orders

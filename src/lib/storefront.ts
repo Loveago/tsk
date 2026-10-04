@@ -518,11 +518,16 @@ export async function settleStorefrontPayment(
   if (!row) return { settled: false, reason: "unknown reference" };
   if (row.underlyingOrderId) return { settled: true }; // already settled — idempotent
 
+  if (!row.sellingPrice || row.sellingPrice <= 0) {
+    return { settled: false, reason: "Invalid product price" };
+  }
+
   const expectedWithFee = row.sellingPrice + Math.round(row.sellingPrice * 0.02);
   const isAmountValid =
     Boolean(input.paystackAmount) &&
     input.paystackAmount > 0 &&
-    (input.paystackAmount === expectedWithFee || input.paystackAmount === row.sellingPrice);
+    (Math.abs(input.paystackAmount - expectedWithFee) <= 2 ||
+     Math.abs(input.paystackAmount - row.sellingPrice) <= 2);
 
   if (!isAmountValid) {
     return { settled: false, reason: "Invalid payment amount or amount mismatch" };

@@ -604,17 +604,19 @@ export async function POST(request: NextRequest) {
       createdOrder.id
     ).catch(() => undefined);
 
-    // If provider API routing is enabled (or Clickify sandbox is active), auto-dispatch to provider
-    try {
-      const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
-      const config = await getProviderRoutingConfig();
-      if (shouldAutoDispatch(config)) {
-        dispatchOrder(createdOrder.id).catch((err) => {
-          console.error(`Auto-dispatch failed for dev v1 order #${createdOrder.id}:`, err);
-        });
+    // If provider API routing is enabled, auto-dispatch paid live orders to provider (sandbox orders are isolated)
+    if (!authContext.isSandbox && !createdOrder.isSandbox) {
+      try {
+        const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
+        const config = await getProviderRoutingConfig();
+        if (shouldAutoDispatch(config)) {
+          dispatchOrder(createdOrder.id).catch((err) => {
+            console.error(`Auto-dispatch failed for dev v1 order #${createdOrder.id}:`, err);
+          });
+        }
+      } catch (err) {
+        console.error("Developer v1 auto-dispatch check error:", err);
       }
-    } catch (err) {
-      console.error("Developer v1 auto-dispatch check error:", err);
     }
 
     await logApiRequestEntry({

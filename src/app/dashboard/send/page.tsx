@@ -113,8 +113,13 @@ export default function SendOrderPage() {
   }, []);
 
   React.useEffect(() => {
-    const onBalanceUpdate = () => {
-      void fetchBalance();
+    const onBalanceUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ balance?: number }>;
+      if (customEvent.detail && typeof customEvent.detail.balance === "number") {
+        setUserBalance(customEvent.detail.balance);
+      } else {
+        void fetchBalance();
+      }
     };
     window.addEventListener("balance-update", onBalanceUpdate);
     return () => {
@@ -606,7 +611,14 @@ export default function SendOrderPage() {
         try {
           localStorage.removeItem(DRAFT_STORAGE_KEY);
         } catch {}
-        window.dispatchEvent(new Event("balance-update"));
+        if (typeof json.newBalance === "number") {
+          setUserBalance(json.newBalance);
+          window.dispatchEvent(
+            new CustomEvent("balance-update", { detail: { balance: json.newBalance } })
+          );
+        } else {
+          window.dispatchEvent(new Event("balance-update"));
+        }
       }
       toast("Orders sent!", "success");
     } finally {

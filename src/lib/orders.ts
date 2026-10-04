@@ -196,7 +196,7 @@ export async function resolveUserWholesalePrice(
     const defPrice = await getPricingForProfile(defaultProfileId, pkg.gbAmount, pkg.network);
     if (defPrice != null && defPrice > 0) return defPrice;
   }
-  return pkg.retailPriceGHS ?? 0;
+  return (pkg.retailPriceGHS && pkg.retailPriceGHS > 0) ? pkg.retailPriceGHS : 0;
 }
 
 export interface CreateOrderInput {
@@ -224,7 +224,10 @@ export interface CreateOrderInput {
  * to the provider by the admin export workflow (PENDING -> PROCESSING), so the
  * pending queue is meaningful and networks are never mixed inside an export.
  */
-export async function createOrder(input: CreateOrderInput) {
+export async function createOrder(
+  input: CreateOrderInput,
+  client: any = prisma
+) {
   const userRecord = await prisma.user.findUnique({
     where: { id: input.userId },
     select: { id: true, role: true, pricingProfileId: true },
@@ -254,15 +257,8 @@ export async function createOrder(input: CreateOrderInput) {
     }
   }
 
-  if (price == null) {
-    throw new Error("No price configured for this package in your profile");
-  }
-  
-  if (price === 0) {
-    const allowZero = await getSetting("allow_zero_price_orders", "true");
-    if (allowZero === "false") {
-      throw new Error("Free packages (zero price) are not allowed.");
-    }
+  if (price == null || price <= 0) {
+    throw new Error("No price configured or invalid price for this package. Orders cannot have a zero or negative price.");
   }
 
   if (await isNetworkOrdersPaused(input.network)) {
@@ -285,7 +281,7 @@ export async function createOrder(input: CreateOrderInput) {
   const status = input.status ?? "PENDING";
   const createdAt = input.createdAt ?? new Date();
 
-  const order = await prisma.order.create({
+  const order = await client.order.create({
     data: {
       userId: input.userId,
       phoneNumber: input.phoneNumber,

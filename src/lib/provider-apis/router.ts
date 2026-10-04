@@ -238,6 +238,15 @@ export async function dispatchOrder(
     };
   }
 
+  if (order.isSandbox && !options.force) {
+    return {
+      success: true,
+      provider: "MANUAL",
+      status: order.status,
+      error: "Sandbox test order is isolated from live provider routing.",
+    };
+  }
+
   if (order.providerReference?.startsWith("CLICKYFIED_MANUAL_HOLD") && !options.force) {
     return {
       success: false,

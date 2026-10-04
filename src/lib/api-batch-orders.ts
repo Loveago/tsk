@@ -208,6 +208,16 @@ export async function validateAndFilterBatchEntries(
       price = matchedPkg.retailPriceGHS ?? 0;
     }
 
+    if (!price || price <= 0) {
+      filteredOutEntries.push({
+        number: rawNumber,
+        allocationGB: alloc,
+        reason: `No valid price configured for ${net} ${alloc}GB`,
+        type: "unavailable",
+      });
+      continue;
+    }
+
     validEntries.push({
       phoneNumber: normalizedPhone,
       rawNumber,
@@ -535,6 +545,19 @@ export async function handleBatchOrderSubmission({
   // 5. Total cost & balance check
   const totalCost = validEntries.reduce((sum, e) => sum + e.price, 0);
 
+  if (totalCost <= 0) {
+    if (idemKey) {
+      await prisma.idempotencyKey.deleteMany({
+        where: { key: idemKey, status: "PROCESSING" },
+      }).catch(() => undefined);
+    }
+    throw new ApiError(
+      "INVALID_REQUEST",
+      "Batch total cost must be greater than zero.",
+      400
+    );
+  }
+
   if (!authContext.isSandbox) {
     if ((user.balance ?? 0) < totalCost) {
       if (idemKey) {
@@ -685,26 +708,28 @@ export async function handleBatchOrderSubmission({
     result.createdOrders[0]?.id
   ).catch(() => undefined);
 
-  // 8. Auto-dispatch triggering if provider routing is enabled
-  try {
-    const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
-    const config = await getProviderRoutingConfig();
-    if (shouldAutoDispatch(config)) {
-      if (batchNetwork.toUpperCase().startsWith("MTN")) {
-        const { checkAndTriggerMtnBatch } = await import("@/lib/provider-apis/clickyfied-batch");
-        checkAndTriggerMtnBatch("THRESHOLD").catch((err) => {
-          console.error("Batch auto-dispatch MTN trigger error:", err);
-        });
-      } else {
-        for (const ord of result.createdOrders) {
-          dispatchOrder(ord.id).catch((err) => {
-            console.error(`Batch auto-dispatch failed for order #${ord.id}:`, err);
+  // 8. Auto-dispatch triggering if provider routing is enabled (LIVE paid orders only)
+  if (!authContext.isSandbox) {
+    try {
+      const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
+      const config = await getProviderRoutingConfig();
+      if (shouldAutoDispatch(config)) {
+        if (batchNetwork.toUpperCase().startsWith("MTN")) {
+          const { checkAndTriggerMtnBatch } = await import("@/lib/provider-apis/clickyfied-batch");
+          checkAndTriggerMtnBatch("THRESHOLD").catch((err) => {
+            console.error("Batch auto-dispatch MTN trigger error:", err);
           });
+        } else {
+          for (const ord of result.createdOrders) {
+            dispatchOrder(ord.id).catch((err) => {
+              console.error(`Batch auto-dispatch failed for order #${ord.id}:`, err);
+            });
+          }
         }
       }
+    } catch (err) {
+      console.error("Batch auto-dispatch routing error:", err);
     }
-  } catch (err) {
-    console.error("Batch auto-dispatch routing error:", err);
   }
 
   // 9. Log API request and return 201 Created
