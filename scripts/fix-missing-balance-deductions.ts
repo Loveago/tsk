@@ -1,19 +1,19 @@
 /**
  * fix-missing-balance-deductions.ts
  *
- * Finds all today's non-sandbox orders (from midnight until now) that were
- * placed but NOT debited from the user's wallet, then deducts the missing
- * amount from each affected user's balance.
+ * Finds all orders placed today (or in a specified window) that have NOT been
+ * debited from the user's wallet, then deducts the missing amount from each
+ * affected user's balance and creates the missing DEBIT ledger records.
  *
- * IMPORTANT: Run this on the VPS where DATABASE_URL points to production.
+ * NOTE: This includes orders that were placed via API sandbox but were delivered
+ * live to real recipients without deducting the user's balance.
  *
  * Usage:
  *   npx tsx scripts/fix-missing-balance-deductions.ts             # Dry-run (safe, no changes)
  *   npx tsx scripts/fix-missing-balance-deductions.ts --apply      # Apply live deductions
+ *   npx tsx scripts/fix-missing-balance-deductions.ts --user=userId1,userId2       # Limit to specific users
  *   npx tsx scripts/fix-missing-balance-deductions.ts --from=2026-10-04T00:00:00Z  # Custom start (ISO UTC)
  *   npx tsx scripts/fix-missing-balance-deductions.ts --to=2026-10-04T23:59:59Z    # Custom end   (ISO UTC)
- *   npx tsx scripts/fix-missing-balance-deductions.ts --user=userId1,userId2       # Limit to specific users
- *   npx tsx scripts/fix-missing-balance-deductions.ts --apply --user=uid1,uid2     # Apply to specific users only
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -61,12 +61,14 @@ async function main() {
   }
   console.log("");
 
-  // ── 1. Fetch all non-sandbox orders in the window ──────────────────────────
+  // ── 1. Fetch all orders in the window ──────────────────────────────────────
+  // We include API and WEB orders with amount > 0 that are NOT CANCELLED or REFUNDED.
+  // Note: We DO include isSandbox: true orders because buggy sandbox API orders were dispatched live to real users!
   const orderWhere: Record<string, unknown> = {
     createdAt: { gte: WINDOW_START, lte: WINDOW_END },
-    isSandbox: false,
-    source: { not: "STOREFRONT" }, // Storefront orders are paid via Paystack; reseller wallet is credited separately
-    status: { notIn: ["CANCELLED", "REFUNDED"] }, // Do NOT re-deduct cancelled/refunded orders
+    amount: { gt: 0 },
+    source: { not: "STOREFRONT" }, // Storefront orders are paid via Paystack
+    status: { notIn: ["CANCELLED", "REFUNDED"] }, // Do not charge cancelled/refunded orders
   };
 
   if (targetUserIds.length > 0) {
@@ -85,6 +87,7 @@ async function main() {
       network: true,
       gbAmount: true,
       phoneNumber: true,
+      isSandbox: true,
       createdAt: true,
       batchId: true,
       batch: {
@@ -96,8 +99,7 @@ async function main() {
     },
   });
 
-  console.log(`Orders in window: ${orders.length}`);
-  console.log("");
+  console.log(`Total orders found in window: ${orders.length}`);
 
   if (orders.length === 0) {
     console.log("No orders found in window. Exiting.");
@@ -105,18 +107,7 @@ async function main() {
     return;
   }
 
-  // ── 2. For each order, check if a DEBIT WalletTransaction exists ───────────
-  // References that the system creates:
-  //   WEB orders    → "order:{id}"
-  //   API v1 single → "api_order:{id}"   (used by /v1/orders)
-  //   Public v1     → "order:{id}"
-  //   API batch     → "api_batch:{batchCode}" (one txn per batch, not per order)
-  //
-  // Strategy: look for ANY DEBIT txn for this userId referencing order:{id}
-  //           or api_order:{id}.  For batch orders, check api_batch:{batchCode}.
-  //           If none found → mark as missing deduction.
-
-  // Pre-load all DEBIT references for users in scope (to avoid N+1)
+  // ── 2. Pre-load all DEBIT references for users in scope ─────────────────────
   const userIdsInScope = Array.from(new Set(orders.map((o) => o.userId)));
 
   const allDebitRefs = await prisma.walletTransaction.findMany({
@@ -137,7 +128,7 @@ async function main() {
   for (const tx of allDebitRefs) {
     if (!tx.reference) continue;
     if (!debitRefsByUser.has(tx.userId)) debitRefsByUser.set(tx.userId, new Set());
-    debitRefsByUser.get(tx.userId)!.add(tx.reference);
+    debitRefsByUser.get(tx.userId)!.add(tx.reference.trim());
   }
 
   // ── 3. Find orders missing their debit ────────────────────────────────────
@@ -153,20 +144,20 @@ async function main() {
     phoneNumber: string;
     source: string;
     status: string;
+    isSandbox: boolean;
     createdAt: Date;
     batchCode: string | null;
     checkedRefs: string[];
   }
 
   const missing: MissingDeduction[] = [];
-  const batchDebited = new Set<string>(); // track api_batch refs already counted
 
   for (const order of orders) {
     const refs = debitRefsByUser.get(order.userId) ?? new Set<string>();
 
-    const refOrder       = `order:${order.id}`;
-    const refApiOrder    = `api_order:${order.id}`;
-    const refApiBatch    = order.batch?.batchCode ? `api_batch:${order.batch.batchCode}` : null;
+    const refOrder    = `order:${order.id}`;
+    const refApiOrder = `api_order:${order.id}`;
+    const refApiBatch = order.batch?.batchCode ? `api_batch:${order.batch.batchCode}` : null;
 
     const checkedRefs = [refOrder, refApiOrder];
     if (refApiBatch) checkedRefs.push(refApiBatch);
@@ -176,21 +167,20 @@ async function main() {
       refs.has(refApiOrder) ||
       (refApiBatch !== null && refs.has(refApiBatch));
 
-    // For batch-level txns (api_batch:*), the full batch cost is debited once.
-    // We already account per-order amount — don't double-count the batch ref approach.
     if (!hasDebit) {
       missing.push({
         orderId: order.id,
         userId: order.userId,
-        userEmail: order.user.email,
-        userName: order.user.name,
-        currentBalance: order.user.balance,
+        userEmail: order.user?.email || "unknown",
+        userName: order.user?.name || "unknown",
+        currentBalance: order.user?.balance ?? 0,
         amount: order.amount,
         network: order.network,
         gbAmount: order.gbAmount,
         phoneNumber: order.phoneNumber,
         source: order.source,
         status: order.status,
+        isSandbox: order.isSandbox,
         createdAt: order.createdAt,
         batchCode: order.batch?.batchCode ?? null,
         checkedRefs,
@@ -199,7 +189,7 @@ async function main() {
   }
 
   if (missing.length === 0) {
-    console.log("✅ All orders in window have corresponding DEBIT transactions. Nothing to fix.");
+    console.log("✅ All orders in window already have corresponding DEBIT transactions. Nothing to fix.");
     await prisma.$disconnect();
     return;
   }
@@ -221,34 +211,34 @@ async function main() {
   }
 
   // ── 5. Print report ───────────────────────────────────────────────────────
-  console.log(`Found ${missing.length} order(s) with MISSING deductions across ${byUser.size} user(s):`);
+  console.log(`\nFound ${missing.length} order(s) with MISSING deductions across ${byUser.size} user(s):`);
   console.log("─".repeat(80));
 
   for (const [, { user, orders: userOrders }] of Array.from(byUser)) {
     const totalOwed = userOrders.reduce((s, o) => s + o.amount, 0);
     const newBalance = user.currentBalance - totalOwed;
+    const sandboxCount = userOrders.filter((o) => o.isSandbox).length;
 
     console.log(`\nUser    : ${user.userName} <${user.userEmail}> [${user.userId}]`);
-    console.log(`Balance : ${formatGHS(user.currentBalance)}  →  ${formatGHS(newBalance)} (owe: ${formatGHS(totalOwed)})`);
-    console.log(`Orders  :`);
+    console.log(`Balance : ${formatGHS(user.currentBalance)}  →  ${formatGHS(newBalance)} (to deduct: ${formatGHS(totalOwed)})`);
+    console.log(`Orders  : ${userOrders.length} order(s) (${sandboxCount} were placed via API sandbox)`);
 
     for (const o of userOrders) {
       console.log(
-        `   #${o.orderId.toString().padStart(6)}  ${o.network.padEnd(12)} ${o.gbAmount}GB → ${o.phoneNumber.padEnd(14)}  ${formatGHS(o.amount)}  [${o.status}]  ${formatDate(o.createdAt)}`
+        `   #${o.orderId.toString().padStart(6)}  ${o.network.padEnd(10)} ${o.gbAmount}GB → ${o.phoneNumber.padEnd(12)}  ${formatGHS(o.amount)}  [${o.status}] [${o.isSandbox ? "SANDBOX" : "LIVE"}]  ${formatDate(o.createdAt)}`
       );
-      console.log(`            Checked refs: ${o.checkedRefs.join(", ")}`);
     }
   }
 
   console.log("\n" + "─".repeat(80));
 
-  // ── 6. Safety: check if any user's balance would go negative ─────────────
+  // ── 6. Negative balance check ─────────────────────────────────────────────
   const wouldGoNegative: string[] = [];
   for (const [, { user, orders: userOrders }] of Array.from(byUser)) {
     const totalOwed = userOrders.reduce((s, o) => s + o.amount, 0);
     if (user.currentBalance - totalOwed < 0) {
       wouldGoNegative.push(
-        `${user.userName} <${user.userEmail}>: balance ${formatGHS(user.currentBalance)}, owe ${formatGHS(totalOwed)}, would be ${formatGHS(user.currentBalance - totalOwed)}`
+        `${user.userName} <${user.userEmail}>: current ${formatGHS(user.currentBalance)}, owed ${formatGHS(totalOwed)}, balance after: ${formatGHS(user.currentBalance - totalOwed)}`
       );
     }
   }
@@ -256,11 +246,12 @@ async function main() {
   if (wouldGoNegative.length > 0) {
     console.log("\n⚠️  WARNING: The following users would have a NEGATIVE balance after deduction:");
     for (const msg of wouldGoNegative) console.log(`   ${msg}`);
-    console.log("   These users WILL still be deducted (the admin can follow up manually for recovery).");
   }
 
   if (!APPLY) {
-    console.log("\n✅ DRY RUN complete. Re-run with --apply to make changes.");
+    console.log("\n✅ DRY RUN complete. No changes were made to balances or orders.");
+    console.log("   To apply these deductions, run:");
+    console.log("   npx tsx scripts/fix-missing-balance-deductions.ts --apply\n");
     await prisma.$disconnect();
     return;
   }
@@ -273,18 +264,24 @@ async function main() {
 
   for (const [, { user, orders: userOrders }] of Array.from(byUser)) {
     const totalOwed = userOrders.reduce((s, o) => s + o.amount, 0);
+    const orderIds = userOrders.map((o) => o.orderId);
 
     try {
       await prisma.$transaction(async (tx) => {
-        // Deduct from balance (allow going negative — admin can handle recovery)
+        // 1. Deduct balance from user
         await tx.user.update({
           where: { id: user.userId },
           data: { balance: { decrement: totalOwed } },
         });
 
-        // Create itemized DEBIT ledger entries
+        // 2. Mark any sandbox orders as live since they were real data deliveries
+        await tx.order.updateMany({
+          where: { id: { in: orderIds }, isSandbox: true },
+          data: { isSandbox: false },
+        });
+
+        // 3. Create itemized DEBIT ledger entries
         for (const o of userOrders) {
-          // Check one final time inside transaction that txn doesn't already exist
           const existingRef = await tx.walletTransaction.findFirst({
             where: {
               userId: user.userId,
@@ -294,7 +291,7 @@ async function main() {
           });
 
           if (existingRef) {
-            console.log(`   ⚠️  Skipped #${o.orderId} — DEBIT transaction already exists (race avoided)`);
+            console.log(`   ⚠️  Skipped #${o.orderId} — DEBIT transaction already exists`);
             continue;
           }
 
@@ -305,7 +302,7 @@ async function main() {
               amount: o.amount,
               status: "APPROVED",
               reference: `order:${o.orderId}`,
-              note: `[RETROACTIVE DEDUCTION] Data: ${o.network} ${o.gbAmount}GB to ${o.phoneNumber} (Order #${o.orderId}) — deducted via admin fix-missing-balance-deductions script`,
+              note: `Data: ${o.network} ${o.gbAmount}GB to ${o.phoneNumber} (Order #${o.orderId})`,
             },
           });
         }
@@ -316,9 +313,9 @@ async function main() {
         });
 
         console.log(
-          `   ✅ ${user.userName} <${user.userEmail}> — deducted ${formatGHS(totalOwed)} for ${userOrders.length} order(s). New balance: ${formatGHS(updatedUser?.balance ?? 0)}`
+          `   ✅ ${user.userName} <${user.userEmail}>: Deducted ${formatGHS(totalOwed)} across ${userOrders.length} order(s). New balance: ${formatGHS(updatedUser?.balance ?? 0)}`
         );
-      });
+      }, { timeout: 30000 });
 
       successCount++;
     } catch (err) {
@@ -328,7 +325,7 @@ async function main() {
   }
 
   console.log("\n================================================================================");
-  console.log(`Done. ${successCount} user(s) updated, ${failCount} failed.`);
+  console.log(`Finished. ${successCount} user(s) updated, ${failCount} failed.`);
   console.log("================================================================================");
   await prisma.$disconnect();
 }
