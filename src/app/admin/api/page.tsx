@@ -25,6 +25,10 @@ import {
   ExternalLink,
   ShieldAlert,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { PageHeader, StatCard, Spinner, EmptyState } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
@@ -33,6 +37,7 @@ import { Input, Label } from "@/components/ui/input";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type AdminTab =
   | "overview"
@@ -86,6 +91,13 @@ export default function AdminApiManagementPage() {
   // Logs
   const [logs, setLogs] = React.useState<any[]>([]);
   const [logSearch, setLogSearch] = React.useState("");
+  const [logPage, setLogPage] = React.useState(1);
+  const [logLimit, setLogLimit] = React.useState(30);
+  const [logTotal, setLogTotal] = React.useState(0);
+  const [logTotalPages, setLogTotalPages] = React.useState(1);
+  const [logStatusFilter, setLogStatusFilter] = React.useState<string>("ALL");
+  const [logMethodFilter, setLogMethodFilter] = React.useState<string>("ALL");
+  const [logsLoading, setLogsLoading] = React.useState(false);
 
   // Settings
   const [settings, setSettings] = React.useState<any>(null);
@@ -127,11 +139,19 @@ export default function AdminApiManagementPage() {
         const json = await res.json();
         setWebhooksData(json);
       } else if (tab === "logs") {
+        setLogsLoading(true);
         const params = new URLSearchParams();
+        params.set("page", String(logPage));
+        params.set("limit", String(logLimit));
         if (logSearch.trim()) params.set("search", logSearch.trim());
+        if (logStatusFilter !== "ALL") params.set("status", logStatusFilter);
+        if (logMethodFilter !== "ALL") params.set("method", logMethodFilter);
         const res = await fetch(`/api/admin/api/logs?${params.toString()}`);
         const json = await res.json();
         setLogs(json.logs || []);
+        setLogTotal(json.total || 0);
+        setLogTotalPages(Math.max(1, json.totalPages || 1));
+        setLogsLoading(false);
       } else if (tab === "settings" || tab === "ratelimits") {
         const res = await fetch("/api/admin/api/settings");
         const json = await res.json();
@@ -147,7 +167,7 @@ export default function AdminApiManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [orderSourceFilter, orderSearch, logSearch, toast]);
+  }, [orderSourceFilter, orderSearch, logSearch, logPage, logLimit, logStatusFilter, logMethodFilter, toast]);
 
   React.useEffect(() => {
     loadTab(activeTab);
@@ -984,20 +1004,75 @@ export default function AdminApiManagementPage() {
 
           {/* TAB 7: LOGS */}
           {activeTab === "logs" && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search request ID, IP, or user..."
-                    value={logSearch}
-                    onChange={(e) => setLogSearch(e.target.value)}
-                    className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                  />
+                <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                  <div className="relative flex-1 min-w-[200px] max-w-sm">
+                    <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search request ID, IP, or user..."
+                      value={logSearch}
+                      onChange={(e) => {
+                        setLogSearch(e.target.value);
+                        setLogPage(1);
+                      }}
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                    />
+                  </div>
+
+                  {/* Status filter */}
+                  <select
+                    value={logStatusFilter}
+                    onChange={(e) => {
+                      setLogStatusFilter(e.target.value);
+                      setLogPage(1);
+                    }}
+                    className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="200">200 OK</option>
+                    <option value="400">400 Bad Request</option>
+                    <option value="401">401 Unauthorized</option>
+                    <option value="402">402 Insufficient Balance</option>
+                    <option value="404">404 Not Found</option>
+                    <option value="429">429 Rate Limit</option>
+                    <option value="500">500 Server Error</option>
+                  </select>
+
+                  {/* Method filter */}
+                  <select
+                    value={logMethodFilter}
+                    onChange={(e) => {
+                      setLogMethodFilter(e.target.value);
+                      setLogPage(1);
+                    }}
+                    className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    <option value="ALL">All Methods</option>
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                  </select>
+
+                  {/* Page size / limit */}
+                  <select
+                    value={logLimit}
+                    onChange={(e) => {
+                      setLogLimit(Number(e.target.value));
+                      setLogPage(1);
+                    }}
+                    className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    <option value="30">30 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                  </select>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => loadTab("logs")} className="h-9">
-                  <RefreshCw className="h-3.5 w-3.5" /> Refresh Logs
+
+                <Button variant="outline" size="sm" onClick={() => loadTab("logs")} className="h-9 gap-1.5">
+                  <RefreshCw className={cn("h-3.5 w-3.5", logsLoading && "animate-spin")} /> Refresh Logs
                 </Button>
               </div>
 
@@ -1039,8 +1114,80 @@ export default function AdminApiManagementPage() {
                           </td>
                         </tr>
                       ))}
+                      {logs.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400 font-sans">
+                            No API logs found matching current filters.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Pagination Controls */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100 p-4 dark:border-slate-800 text-xs font-sans">
+                  <p className="text-slate-500">
+                    Showing{" "}
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      {logTotal === 0 ? 0 : (logPage - 1) * logLimit + 1}
+                    </span>{" "}
+                    to{" "}
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      {Math.min(logPage * logLimit, logTotal)}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      {logTotal.toLocaleString()}
+                    </span>{" "}
+                    logs
+                  </p>
+
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={logPage <= 1 || logsLoading}
+                      onClick={() => setLogPage(1)}
+                      className="h-8 px-2"
+                      title="First Page"
+                    >
+                      <ChevronsLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={logPage <= 1 || logsLoading}
+                      onClick={() => setLogPage((p) => Math.max(1, p - 1))}
+                      className="h-8 px-2.5 text-xs"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
+                    </Button>
+
+                    <span className="px-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                      Page {logPage} of {logTotalPages}
+                    </span>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={logPage >= logTotalPages || logsLoading}
+                      onClick={() => setLogPage((p) => Math.min(logTotalPages, p + 1))}
+                      className="h-8 px-2.5 text-xs"
+                    >
+                      Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={logPage >= logTotalPages || logsLoading}
+                      onClick={() => setLogPage(logTotalPages)}
+                      className="h-8 px-2"
+                      title="Last Page"
+                    >
+                      <ChevronsRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
