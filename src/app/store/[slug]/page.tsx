@@ -60,16 +60,7 @@ export default async function PublicStorePage({
             >
               Dedicated track page →
             </Link>
-            {storefront.whatsapp && (
-              <a
-                href={`https://wa.me/233${storefront.whatsapp.replace(/^0/, "").replace(/\D/g, "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
-              >
-                Chat on WhatsApp
-              </a>
-            )}
+
           </div>
         </div>
 
@@ -123,16 +114,7 @@ export default async function PublicStorePage({
               <Clock className="h-4 w-4" />
               Track existing order
             </Link>
-            {storefront.whatsapp && (
-              <a
-                href={`https://wa.me/233${storefront.whatsapp.replace(/^0/, "").replace(/\D/g, "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
-              >
-                Chat on WhatsApp
-              </a>
-            )}
+
           </div>
         </div>
       </div>
@@ -209,16 +191,7 @@ export default async function PublicStorePage({
               <Clock className="h-4 w-4 text-yellow-500" />
               Track your order
             </a>
-            {storefront.whatsapp && (
-              <a
-                href={`https://wa.me/233${storefront.whatsapp.replace(/^0/, "").replace(/\D/g, "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-slate-900 shadow-sm ring-1 ring-slate-900/10 transition-colors hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/15"
-              >
-                Chat on WhatsApp
-              </a>
-            )}
+
           </div>
         </div>
 
