@@ -238,8 +238,8 @@ export async function validateAndFilterBatchEntries(
 export function mapApiOrderStatus(status: string, isSandbox = false): string {
   const upper = (status || "").toUpperCase();
   if (isSandbox) {
-    if (upper === "SUCCESS" || upper === "COMPLETED") return "TEST_COMPLETED";
-    return upper;
+    if (upper === "SUCCESS" || upper === "COMPLETED" || upper === "PROCESSED") return "processed";
+    return upper.toLowerCase();
   }
   if (upper === "SUCCESS" || upper === "COMPLETED" || upper === "PROCESSED") return "processed";
   if (upper === "PROCESSING") return "processing";
@@ -603,6 +603,10 @@ export async function handleBatchOrderSubmission({
         }
       }
 
+      const isTest = authContext.isSandbox;
+      const now = new Date();
+      const initialStatus = isTest ? "COMPLETED" : "PENDING";
+
       const orderBatch = await tx.orderBatch.create({
         data: {
           batchCode,
@@ -611,7 +615,7 @@ export async function handleBatchOrderSubmission({
           totalRecipients: validEntries.length,
           totalGb,
           totalAmount: totalCost,
-          status: "PENDING",
+          status: initialStatus,
         },
       });
 
@@ -626,20 +630,21 @@ export async function handleBatchOrderSubmission({
             packageId: entry.packageId,
             gbAmount: entry.gbAmount,
             amount: entry.price,
-            status: "PENDING",
+            status: initialStatus,
             source: "API",
             externalReference: finalRef,
+            providerReference: isTest ? "SANDBOX_SIMULATED" : null,
             apiCredentialId: authContext.credentialId,
             isSandbox: authContext.isSandbox,
-            completedAt: null,
+            completedAt: isTest ? now : null,
           },
         });
 
         await tx.orderStatusHistory.create({
           data: {
             orderId: order.id,
-            status: "PENDING",
-            note: authContext.isSandbox ? "Sandbox batch test order accepted via API" : "Batch order accepted via API",
+            status: initialStatus,
+            note: isTest ? "Sandbox batch test order simulated and completed immediately" : "Batch order accepted via API",
             changedBy: authContext.credentialId ? `api_key:${authContext.credentialId}` : "api",
           },
         });
@@ -701,12 +706,32 @@ export async function handleBatchOrderSubmission({
       totalCount: result.createdOrders.length,
       totalGb,
       amount: totalCost,
-      status: "PENDING",
+      status: authContext.isSandbox ? "processed" : "pending",
       isSandbox: authContext.isSandbox,
       createdAt: result.orderBatch.createdAt,
     },
     result.createdOrders[0]?.id
   ).catch(() => undefined);
+
+  if (authContext.isSandbox) {
+    dispatchWebhookEvent(
+      authContext.userId,
+      "order.completed",
+      {
+        orderId: `API-${result.orderBatch.batchCode}`,
+        batchCode: result.orderBatch.batchCode,
+        reference: finalRef,
+        network: batchNetwork,
+        totalCount: result.createdOrders.length,
+        totalGb,
+        amount: totalCost,
+        status: "processed",
+        isSandbox: true,
+        createdAt: result.orderBatch.createdAt,
+      },
+      result.createdOrders[0]?.id
+    ).catch(() => undefined);
+  }
 
   // 8. Auto-dispatch triggering if provider routing is enabled (LIVE paid orders only)
   if (!authContext.isSandbox) {

@@ -156,9 +156,10 @@ export async function GET(
       }
     }
 
-    const displayStatus = order.isSandbox
-      ? (order.status === "SUCCESS" ? "TEST_COMPLETED" : order.status)
-      : (order.status === "SUCCESS" ? "COMPLETED" : order.status);
+    const displayStatus =
+      order.status === "SUCCESS" || order.status === "COMPLETED" || order.status === "PROCESSED"
+        ? "COMPLETED"
+        : order.status;
 
     const orderData = {
       orderId: `API-${order.id}`,

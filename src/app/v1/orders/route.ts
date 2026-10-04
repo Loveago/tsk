@@ -510,6 +510,10 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        const isTest = authContext.isSandbox;
+        const now = new Date();
+        const initialStatus = isTest ? "COMPLETED" : "PENDING";
+
         const order = await tx.order.create({
           data: {
             userId: authContext.userId,
@@ -518,20 +522,21 @@ export async function POST(request: NextRequest) {
             packageId: pkg!.id,
             gbAmount: pkg!.gbAmount,
             amount: price,
-            status: "PENDING",
+            status: initialStatus,
             source: "API",
             externalReference: reference,
+            providerReference: isTest ? "SANDBOX_SIMULATED" : null,
             apiCredentialId: authContext.credentialId,
             isSandbox: authContext.isSandbox,
-            completedAt: null,
+            completedAt: isTest ? now : null,
           },
         });
 
         await tx.orderStatusHistory.create({
           data: {
             orderId: order.id,
-            status: "PENDING",
-            note: authContext.isSandbox ? "Sandbox test order accepted via API" : "Order accepted via API",
+            status: initialStatus,
+            note: isTest ? "Sandbox test order simulated and completed immediately" : "Order accepted via API",
             changedBy: authContext.credentialId ? `api_key:${authContext.credentialId}` : "api",
           },
         });
@@ -582,7 +587,7 @@ export async function POST(request: NextRequest) {
       throw new ApiError("SERVER_ERROR", "Failed to record order in database.", 500);
     }
 
-    const responseStatus = "PENDING";
+    const responseStatus = authContext.isSandbox ? "processed" : "pending";
 
     // Dispatch order.created webhook event
     dispatchWebhookEvent(
@@ -604,7 +609,29 @@ export async function POST(request: NextRequest) {
       createdOrder.id
     ).catch(() => undefined);
 
-    // If provider API routing is enabled, auto-dispatch paid live orders to provider (sandbox orders are isolated)
+    // If sandbox, asynchronously fire order.completed webhook event for test harnesses
+    if (authContext.isSandbox) {
+      dispatchWebhookEvent(
+        authContext.userId,
+        "order.completed",
+        {
+          orderId: `API-${createdOrder.id}`,
+          reference: createdOrder.externalReference || null,
+          network: createdOrder.network,
+          package: pkg.name,
+          gbAmount: createdOrder.gbAmount,
+          amount: createdOrder.amount,
+          phoneNumber: createdOrder.phoneNumber,
+          status: "processed",
+          isSandbox: true,
+          createdAt: createdOrder.createdAt,
+          completedAt: createdOrder.completedAt,
+        },
+        createdOrder.id
+      ).catch(() => undefined);
+    }
+
+    // If provider API routing is enabled, auto-dispatch paid live orders to provider (sandbox orders NEVER reach dispatcher)
     if (!authContext.isSandbox && !createdOrder.isSandbox) {
       try {
         const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
@@ -642,6 +669,7 @@ export async function POST(request: NextRequest) {
         recipient: createdOrder.phoneNumber,
         amount: createdOrder.amount,
         status: responseStatus,
+        isSandbox: createdOrder.isSandbox,
         createdAt: createdOrder.createdAt.toISOString(),
       },
       requestId,
