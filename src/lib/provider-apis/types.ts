@@ -55,7 +55,8 @@ export interface ClickyfiedFilteredOutEntry {
   number: string;
   allocationGB: number;
   reason?: string;
-  type?: "blocked" | string;
+  type?: "blocked" | "network_code" | "duplicate" | string;
+  filter?: "blocked" | "network_code" | "duplicate" | string;
 }
 
 export interface ProviderDispatchResult {

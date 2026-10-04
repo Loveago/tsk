@@ -140,7 +140,11 @@ export async function POST(
     const totalPesewas = sellingPrice + feePesewas;
 
     try {
-      const origin = getRequestOrigin(request);
+      let origin = getRequestOrigin(request);
+      if (storefront.customDomain) {
+        const proto = process.env.NODE_ENV === "production" ? "https" : "http";
+        origin = `${proto}://${storefront.customDomain}`;
+      }
 
       const authorization = await initializeTransaction({
         email: input.customerEmail,

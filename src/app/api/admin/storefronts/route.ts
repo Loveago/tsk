@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     if (input.action === "APPROVE") {
       // Approve a PENDING application — optionally finalizing the public slug.
-      const pending = await prisma.storefront.findUnique({ where: { userId: input.userId } });
+      const pending = await prisma.storefront.findFirst({ where: { userId: input.userId, isCustomDomain: false } });
       if (!pending || pending.status !== "PENDING") {
         return apiError(404, "No pending application for this user");
       }
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (input.action === "REJECT") {
-      const pending = await prisma.storefront.findUnique({ where: { userId: input.userId } });
+      const pending = await prisma.storefront.findFirst({ where: { userId: input.userId, isCustomDomain: false } });
       if (!pending || pending.status !== "PENDING") {
         return apiError(404, "No pending application for this user");
       }
@@ -86,16 +86,20 @@ export async function POST(request: NextRequest) {
 
       // Default the public store name to the owner's name; the owner can
       // change it later in Storefront Settings (§11).
-      const storefront = await prisma.storefront.upsert({
-        where: { userId: input.userId },
-        update: { status: "ENABLED", slug },
-        create: { userId: input.userId, slug, name: target.name, status: "ENABLED" },
-      });
+      const existingStandard = await prisma.storefront.findFirst({ where: { userId: input.userId, isCustomDomain: false } });
+      const storefront = existingStandard
+        ? await prisma.storefront.update({
+            where: { id: existingStandard.id },
+            data: { status: "ENABLED", slug },
+          })
+        : await prisma.storefront.create({
+            data: { userId: input.userId, slug, name: target.name, status: "ENABLED", isCustomDomain: false },
+          });
       await ensureWallet(input.userId);
       return NextResponse.json({ storefront });
     }
 
-    const existing = await prisma.storefront.findUnique({ where: { userId: input.userId } });
+    const existing = await prisma.storefront.findFirst({ where: { userId: input.userId, isCustomDomain: false } });
     if (!existing) return apiError(404, "This user has no storefront");
 
     if (input.action === "SUSPEND") {

@@ -24,7 +24,9 @@ export default async function AdminStorefrontWithdrawalsPage() {
             id: true,
             name: true,
             email: true,
-            storefront: {
+            storefronts: {
+              where: { isCustomDomain: false },
+              take: 1,
               select: {
                 slug: true,
                 name: true,
@@ -66,9 +68,9 @@ export default async function AdminStorefrontWithdrawalsPage() {
       userId: w.userId,
       userName: w.user.name,
       userEmail: w.user.email,
-      storefrontSlug: w.user.storefront?.slug ?? null,
-      storefrontName: w.user.storefront?.name ?? null,
-      storefrontStatus: w.user.storefront?.status ?? null,
+      storefrontSlug: w.user.storefronts[0]?.slug ?? null,
+      storefrontName: w.user.storefronts[0]?.name ?? null,
+      storefrontStatus: w.user.storefronts[0]?.status ?? null,
       amount: w.amount,
       fee,
       netAmount,

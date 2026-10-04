@@ -64,6 +64,7 @@ interface BatchDetailItem extends BatchItem {
     allocationGb?: number;
     reason?: string;
     type?: string;
+    filter?: string;
   }>;
   parsedRawResponse?: any;
   orders: Array<{
@@ -1187,32 +1188,47 @@ export default function AdminClickyfiedBatchesPage() {
               </div>
             )}
 
-            {/* Blocked / Filtered Out Entries Alert */}
+            {/* Filtered Out / Blocked Entries Alert */}
             {batchDetail.parsedFilteredOut && batchDetail.parsedFilteredOut.length > 0 && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-800 dark:text-amber-200">
                 <div className="flex items-start gap-2.5">
                   <ShieldAlert className="h-5 w-5 shrink-0 text-amber-500 mt-0.5" />
                   <div className="w-full">
                     <strong className="font-bold text-sm">
-                      Blocked Numbers ({batchDetail.parsedFilteredOut.length})
+                      Filtered Out Numbers ({batchDetail.parsedFilteredOut.length})
                     </strong>
-                    <p className="mt-1 text-xs">
-                      The following phone numbers were rejected or filtered out by Clickyfied:
+                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                      The following phone numbers were rejected or filtered out by Clickyfied API:
                     </p>
-                    <div className="mt-2 divide-y divide-amber-500/20 max-h-40 overflow-y-auto rounded-lg border border-amber-500/20 bg-white/40 dark:bg-black/20 p-2">
-                      {batchDetail.parsedFilteredOut.map((fo, idx) => (
-                        <div key={idx} className="py-1 flex items-center justify-between font-mono text-[11px]">
-                          <div>
-                            <span className="font-bold">{fo.number}</span>
-                            {fo.allocationGb && (
-                              <span className="text-slate-500 ml-1.5">({fo.allocationGb} GB)</span>
-                            )}
+                    <div className="mt-2 divide-y divide-amber-500/20 max-h-48 overflow-y-auto rounded-lg border border-amber-500/20 bg-white/40 dark:bg-black/20 p-2 space-y-1">
+                      {batchDetail.parsedFilteredOut.map((fo, idx) => {
+                        const filterKey = (fo.filter || fo.type || "blocked").toLowerCase();
+                        const filterBadgeColor =
+                          filterKey === "network_code"
+                            ? "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800"
+                            : filterKey === "duplicate"
+                            ? "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800"
+                            : "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800";
+
+                        return (
+                          <div key={idx} className="py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 font-mono text-[11px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-slate-900 dark:text-white">{fo.number}</span>
+                              {fo.allocationGb && (
+                                <span className="text-slate-500 dark:text-slate-400">({fo.allocationGb} GB)</span>
+                              )}
+                              <span
+                                className={`rounded px-1.5 py-0.2 text-[10px] font-semibold uppercase border ${filterBadgeColor}`}
+                              >
+                                {fo.filter || fo.type || "filtered"}
+                              </span>
+                            </div>
+                            <span className="text-rose-600 dark:text-rose-400 text-left sm:text-right font-sans font-medium text-xs">
+                              {fo.reason || "Filtered out by provider"}
+                            </span>
                           </div>
-                          <span className="text-rose-600 dark:text-rose-400 text-right">
-                            {fo.reason || "Blocked by provider"}
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

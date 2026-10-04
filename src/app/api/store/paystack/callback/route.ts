@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   let slug = "";
   let outcome: "success" | "failed" = "failed";
   let reference = "";
+  let customDomain: string | null = null;
 
   try {
     reference =
@@ -24,9 +25,10 @@ export async function GET(request: NextRequest) {
     if (reference) {
       const row = await prisma.storefrontOrder.findUnique({
         where: { paymentReference: reference },
-        select: { storefront: { select: { slug: true } }, underlyingOrderId: true },
+        select: { storefront: { select: { slug: true, customDomain: true } }, underlyingOrderId: true },
       });
       slug = row?.storefront.slug ?? "";
+      customDomain = row?.storefront.customDomain ?? null;
 
       if (row) {
         if (row.underlyingOrderId) {
@@ -46,7 +48,22 @@ export async function GET(request: NextRequest) {
   // If outcome was failed but we have a valid order reference and store slug,
   // redirect to the order detail page so the page can perform on-the-fly reconciliation!
   const storefrontDomain = (process.env.STOREFRONT_DOMAIN || "tskdatastore.com").toLowerCase();
+  const adminCustomDomain = (process.env.ADMIN_CUSTOM_DOMAIN || "data-deals.com").toLowerCase();
   const isStorefrontOrigin = origin.toLowerCase().includes(storefrontDomain);
+  const isCustomDomainOrigin = origin.toLowerCase().includes(adminCustomDomain) || (customDomain && origin.toLowerCase().includes(customDomain.toLowerCase()));
+
+  if (customDomain || isCustomDomainOrigin) {
+    const domainHost = customDomain || adminCustomDomain;
+    const proto = process.env.NODE_ENV === "production" ? "https" : "http";
+    const base = `${proto}://${domainHost}`;
+    let target = "/";
+    if (reference) {
+      target = `/order/${encodeURIComponent(reference)}`;
+    } else {
+      target = `/?payment=${outcome}`;
+    }
+    return NextResponse.redirect(new URL(target, base));
+  }
 
   let target: string;
   if (slug && reference) {

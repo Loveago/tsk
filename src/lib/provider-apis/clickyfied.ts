@@ -124,10 +124,17 @@ export class ClickyfiedClient {
           typeof errorMsg === "string" &&
           (errorMsg.toLowerCase().includes("blocked and were filtered out") ||
             errorMsg.toLowerCase().includes("entries are blocked") ||
-            errorMsg.toLowerCase().includes("number is blocked"));
+            errorMsg.toLowerCase().includes("number is blocked") ||
+            errorMsg.toLowerCase().includes("filtered out"));
 
-        if (json?.filteredOutEntries || isBlockedMsg) {
-          err.filteredOutEntries = json?.filteredOutEntries || [];
+        const hasFiltered =
+          (Array.isArray(json?.filteredOutEntries) && json.filteredOutEntries.length > 0) ||
+          isBlockedMsg;
+
+        if (hasFiltered) {
+          err.filteredOutEntries = Array.isArray(json?.filteredOutEntries)
+            ? json.filteredOutEntries
+            : [];
           err.isAllBlocked = true;
         }
 

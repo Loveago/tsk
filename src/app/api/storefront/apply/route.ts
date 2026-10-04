@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     const input = storefrontApplySchema.parse(await request.json());
 
-    const existing = await prisma.storefront.findUnique({ where: { userId: user.id } });
+    const existing = await prisma.storefront.findFirst({ where: { userId: user.id, isCustomDomain: false } });
     if (existing) {
       if (existing.status === "PENDING") {
         return apiError(409, "Your application is already awaiting review");

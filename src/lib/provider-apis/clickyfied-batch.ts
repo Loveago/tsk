@@ -716,19 +716,23 @@ async function submitSingleBatchChunk(
       allocationGb?: number;
       reason: string;
       type: string;
+      filter?: string;
     }> = [];
 
     for (const fo of rawFiltered) {
       const num = fo.number || fo.phone || fo.phoneNumber || "";
       const norm = normalizePhoneLast9(String(num));
       const alloc = typeof fo.allocationGB === "number" ? fo.allocationGB : typeof fo.allocationGb === "number" ? fo.allocationGb : undefined;
+      const type = fo.type || fo.filter || "blocked";
+      const filter = fo.filter || fo.type || "blocked";
       if (norm) {
         parsedFilteredOut.push({
           number: String(num),
           normPhone: norm,
           allocationGb: alloc,
-          reason: fo.reason || "Number is blocked by provider",
-          type: fo.type || "blocked",
+          reason: fo.reason || `Filtered out by provider (${type})`,
+          type,
+          filter,
         });
       }
     }
@@ -809,14 +813,15 @@ async function submitSingleBatchChunk(
       if (matchedFilteredIdx !== -1) {
         claimedFilteredIndices.add(matchedFilteredIdx);
         const filteredItem = parsedFilteredOut[matchedFilteredIdx];
-        const blockReason = filteredItem.reason || "Number is blocked by Clickyfied";
-        const failureReason = `Blocked by provider: ${blockReason}`;
+        const filterType = filteredItem.type || filteredItem.filter || "blocked";
+        const filterReason = filteredItem.reason || `Filtered out by provider (${filterType})`;
+        const failureReason = `Filtered out by provider: ${filterReason}`;
 
         await prisma.order.update({
           where: { id: order.id },
           data: {
             status: "FAILED",
-            providerReference: `CLICKYFIED:${batchOrderId}:BLOCKED`,
+            providerReference: `CLICKYFIED:${batchOrderId}:FILTERED:${filterType.toUpperCase()}`,
             externalReference: batchCode,
             failureReason,
           },
@@ -832,19 +837,21 @@ async function submitSingleBatchChunk(
           },
         });
 
-        // Record number as rejected in our verification system so future attempts are blocked
-        try {
-          const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
-          await recordUnverifiedMtnNumber({ number: order.phoneNumber });
-          const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
-          await prisma.blockedMtnNumber.updateMany({
-            where: { normalizedNumber: canonical },
-            data: { status: "REJECTED" },
-          });
-          await prisma.acceptedMtnNumber.deleteMany({
-            where: { normalizedNumber: canonical },
-          });
-        } catch {}
+        // Record number as rejected in our verification system so future attempts are blocked (only if not a transient duplicate)
+        if (filterType !== "duplicate") {
+          try {
+            const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
+            await recordUnverifiedMtnNumber({ number: order.phoneNumber });
+            const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
+            await prisma.blockedMtnNumber.updateMany({
+              where: { normalizedNumber: canonical },
+              data: { status: "REJECTED" },
+            });
+            await prisma.acceptedMtnNumber.deleteMany({
+              where: { normalizedNumber: canonical },
+            });
+          } catch {}
+        }
 
         continue;
       }
@@ -1107,50 +1114,63 @@ async function submitSingleBatchChunk(
     }
 
     // If ALL submitted entries were genuinely blocked and filtered out by Clickyfied (HTTP 400 with blocked list)
+    const errFilteredOutEntries: ClickyfiedFilteredOutEntry[] = Array.isArray(batchErr?.filteredOutEntries)
+      ? batchErr.filteredOutEntries
+      : [];
     const isAllBlocked =
       batchErr?.isAllBlocked ||
-      (Array.isArray(batchErr?.filteredOutEntries) && batchErr.filteredOutEntries.length > 0) ||
+      errFilteredOutEntries.length > 0 ||
       (typeof batchErr?.message === "string" &&
         (batchErr.message.toLowerCase().includes("all submitted entries are blocked") ||
-          batchErr.message.toLowerCase().includes("entries are blocked and were filtered out")));
+          batchErr.message.toLowerCase().includes("entries are blocked and were filtered out") ||
+          batchErr.message.toLowerCase().includes("filtered out")));
 
     if (isAllBlocked) {
-      console.warn(`[ClickyfiedBatch] All orders in ${groupLabel} (${batchCode}) were blocked by Clickyfied:`, batchErr.message);
-      const failReason = `Blocked by provider: ${batchErr.message || "All entries were blocked by provider"}`;
-
-      await prisma.order.updateMany({
-        where: { id: { in: targetOrderIds } },
-        data: {
-          status: "FAILED",
-          providerReference: `CLICKYFIED:BLOCKED`,
-          externalReference: batchCode,
-          failureReason: failReason,
-        },
-      });
-
-      await prisma.orderStatusHistory.createMany({
-        data: targetOrders.map((o) => ({
-          orderId: o.id,
-          status: "FAILED",
-          previousStatus: "PENDING",
-          note: failReason,
-          changedBy: actorLabel,
-        })),
-      });
+      console.warn(`[ClickyfiedBatch] Orders in ${groupLabel} (${batchCode}) were filtered out by Clickyfied:`, batchErr.message);
+      const generalFailReason = `Filtered out by provider: ${batchErr.message || "All entries were filtered out by provider"}`;
 
       for (const o of targetOrders) {
-        try {
-          const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
-          await recordUnverifiedMtnNumber({ number: o.phoneNumber });
-          const canonical = normalizeGhanaPhoneNumber(o.phoneNumber);
-          await prisma.blockedMtnNumber.updateMany({
-            where: { normalizedNumber: canonical },
-            data: { status: "REJECTED" },
-          });
-          await prisma.acceptedMtnNumber.deleteMany({
-            where: { normalizedNumber: canonical },
-          });
-        } catch {}
+        const phoneNorm = normalizePhoneLast9(o.phoneNumber);
+        const matched = errFilteredOutEntries.find((fo) => normalizePhoneLast9(fo.number) === phoneNorm);
+        const filterType = matched?.type || matched?.filter || "blocked";
+        const specificReason = matched?.reason
+          ? `Filtered out by provider: ${matched.reason}`
+          : generalFailReason;
+
+        await prisma.order.update({
+          where: { id: o.id },
+          data: {
+            status: "FAILED",
+            providerReference: `CLICKYFIED:FILTERED:${filterType.toUpperCase()}`,
+            externalReference: batchCode,
+            failureReason: specificReason,
+          },
+        });
+
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: o.id,
+            status: "FAILED",
+            previousStatus: "PENDING",
+            note: specificReason,
+            changedBy: actorLabel,
+          },
+        });
+
+        if (filterType !== "duplicate") {
+          try {
+            const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
+            await recordUnverifiedMtnNumber({ number: o.phoneNumber });
+            const canonical = normalizeGhanaPhoneNumber(o.phoneNumber);
+            await prisma.blockedMtnNumber.updateMany({
+              where: { normalizedNumber: canonical },
+              data: { status: "REJECTED" },
+            });
+            await prisma.acceptedMtnNumber.deleteMany({
+              where: { normalizedNumber: canonical },
+            });
+          } catch {}
+        }
       }
 
       try {
@@ -1160,8 +1180,8 @@ async function submitSingleBatchChunk(
             status: "FAILED",
             failedCount: targetOrders.length,
             pendingCount: 0,
-            errorMessage: failReason,
-            rawFilteredOut: (batchErr as any)?.filteredOutEntries ? JSON.stringify((batchErr as any).filteredOutEntries) : null,
+            errorMessage: generalFailReason,
+            rawFilteredOut: errFilteredOutEntries.length > 0 ? JSON.stringify(errFilteredOutEntries) : null,
             lastSyncedAt: new Date(),
           },
         });
@@ -1173,7 +1193,7 @@ async function submitSingleBatchChunk(
         batchOrderId: "",
         dispatchedCount: 0,
         totalGb: 0,
-        error: failReason,
+        error: generalFailReason,
       };
     }
 
@@ -2132,19 +2152,23 @@ export async function syncClickyfiedBatchStatus(
     allocationGb?: number;
     reason: string;
     type: string;
+    filter?: string;
   }> = [];
 
   for (const fo of rawFiltered) {
     const num = fo.number || fo.phone || fo.phoneNumber || "";
     const norm = normalizePhoneLast9(String(num));
     const alloc = typeof fo.allocationGB === "number" ? fo.allocationGB : typeof fo.allocationGb === "number" ? fo.allocationGb : undefined;
+    const type = fo.type || fo.filter || "blocked";
+    const filter = fo.filter || fo.type || "blocked";
     if (norm) {
       parsedFilteredOut.push({
         number: String(num),
         normPhone: norm,
         allocationGb: alloc,
-        reason: fo.reason || "Number is blocked by provider",
-        type: fo.type || "blocked",
+        reason: fo.reason || `Filtered out by provider (${type})`,
+        type,
+        filter,
       });
     }
   }
@@ -2227,12 +2251,14 @@ export async function syncClickyfiedBatchStatus(
         (fo) => fo.normPhone === phoneNorm
       );
       if (matchedFiltered) {
-        const failReason = `Blocked by provider: ${matchedFiltered.reason || "Number blocked"}`;
+        const filterType = matchedFiltered.type || matchedFiltered.filter || "blocked";
+        const filterReason = matchedFiltered.reason || `Filtered out by provider (${filterType})`;
+        const failReason = `Filtered out by provider: ${filterReason}`;
         await prisma.order.update({
           where: { id: order.id },
           data: {
             status: "FAILED",
-            providerReference: `CLICKYFIED:${canonicalId}:BLOCKED`,
+            providerReference: `CLICKYFIED:${canonicalId}:FILTERED:${filterType.toUpperCase()}`,
             failureReason: failReason,
           },
         });

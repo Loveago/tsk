@@ -16,17 +16,73 @@ const ADMIN_ONLY_PREFIXES = [
 ];
 
 const STOREFRONT_DOMAIN = (process.env.STOREFRONT_DOMAIN || "tskdatastore.com").toLowerCase();
+const ADMIN_CUSTOM_DOMAIN = (process.env.ADMIN_CUSTOM_DOMAIN || "data-deals.com").toLowerCase();
 const MAIN_DOMAIN = (process.env.MAIN_DOMAIN || "tsk05.net").toLowerCase();
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const rawHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || "";
   const host = rawHost.split(":")[0].toLowerCase();
+  const isCustomDomain = host === ADMIN_CUSTOM_DOMAIN || host === `www.${ADMIN_CUSTOM_DOMAIN}`;
   const isStorefrontDomain = host === STOREFRONT_DOMAIN || host === `www.${STOREFRONT_DOMAIN}`;
   const isLocalhost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
 
   // ---------------------------------------------------------------------------
-  // 1. STOREFRONT DOMAIN ROUTING (tskdatastore.com)
+  // 1. DEDICATED ADMIN CUSTOM DOMAIN ROUTING (data-deals.com)
+  // ---------------------------------------------------------------------------
+  if (isCustomDomain) {
+    // Block admin and dashboard routes on custom domain, redirecting to main platform login
+    if (pathname.startsWith("/admin") || pathname.startsWith("/dashboard")) {
+      return NextResponse.redirect(`https://${MAIN_DOMAIN}/login`);
+    }
+
+    // Serve dedicated storefront favicon and app icons
+    if (pathname === "/favicon.ico" || pathname === "/icon.svg" || pathname === "/apple-icon.png") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/store/icon.svg";
+      return NextResponse.rewrite(url);
+    }
+
+    // Allow API endpoints, internal assets, and static files to execute directly
+    if (
+      pathname.startsWith("/api") ||
+      pathname.startsWith("/_next") ||
+      pathname.includes(".")
+    ) {
+      return NextResponse.next();
+    }
+
+    // Normalize direct visits to /store or /store/data-deals to clean URLs
+    if (pathname === "/store" || pathname === "/store/" || pathname === "/store/data-deals" || pathname === "/store/data-deals/") {
+      const cleanUrl = request.nextUrl.clone();
+      cleanUrl.pathname = "/";
+      return NextResponse.redirect(cleanUrl);
+    }
+    if (pathname.startsWith("/store/data-deals/")) {
+      const cleanPath = pathname.replace(/^\/store\/data-deals/, "");
+      const cleanUrl = request.nextUrl.clone();
+      cleanUrl.pathname = cleanPath || "/";
+      return NextResponse.redirect(cleanUrl);
+    }
+
+    // Root of custom domain -> /store/data-deals
+    if (pathname === "/" || pathname === "") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/store/data-deals";
+      return NextResponse.rewrite(url);
+    }
+
+    // Rewrite clean paths:
+    // /[network] -> /store/data-deals/[network]
+    // /track -> /store/data-deals/track
+    // /order/:ref -> /store/data-deals/order/:ref
+    const url = request.nextUrl.clone();
+    url.pathname = `/store/data-deals${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. STOREFRONT DOMAIN ROUTING (tskdatastore.com)
   // ---------------------------------------------------------------------------
   if (isStorefrontDomain) {
     // Prevent access to management dashboard & admin panel on the storefront domain

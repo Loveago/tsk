@@ -26,6 +26,7 @@ TABLE OF CONTENTS
 3. Step 3: Update Database Schema (Prisma DB Push)
 4. Step 4: Redeploy the Project on Vercel
 5. Step 5: Verify How the Two Domains Interact
+6. Step 6: Testing data-deals.com (Custom Admin Storefront) on Vercel
 
 
 ================================================================================
@@ -123,3 +124,95 @@ STEP 5: VERIFY HOW THE TWO DOMAINS INTERACT
    • Open `https://my-storefront.vercel.app/admin` -> Instantly redirects to
      `https://my-portal.vercel.app/login` for security!
 ================================================================================
+
+
+================================================================================
+STEP 6: TESTING WITH A FREE VERCEL DOMAIN (NO DNS / NO DATA-DEALS.COM NEEDED)
+================================================================================
+You DO NOT need to touch `data-deals.com` or alter any DNS records to test the
+custom storefront. You can test everything 100% free right inside Vercel using
+a custom `.vercel.app` domain alias!
+
+Here is the exact step-by-step walkthrough:
+
+--------------------------------------------------------------------------------
+1. ADD A FREE VERCEL SUBDOMAIN ALIAS
+--------------------------------------------------------------------------------
+1. Go to your **Vercel Project Dashboard** (https://vercel.com).
+2. Click on **Settings** -> **Domains**.
+3. In the input box, type any unique name ending in `.vercel.app`.
+   Example:
+   `datadeals-test.vercel.app`   (or `my-datadeals.vercel.app`)
+4. Click **Add**.
+   • Vercel will instantly generate the domain and issue a free SSL certificate.
+   • No DNS setup is required at all! It is active immediately.
+
+--------------------------------------------------------------------------------
+2. CONFIGURE THE ENVIRONMENT VARIABLE
+--------------------------------------------------------------------------------
+Tell your Next.js application that this new domain is the custom store host:
+
+1. In the same project on Vercel, go to **Settings** -> **Environment Variables**.
+2. Add a new variable:
+   • **Key**: `ADMIN_CUSTOM_DOMAIN`
+   • **Value**: `datadeals-test.vercel.app` (use the exact name you added in step 1, without https://)
+   • **Environments**: Check all (Production, Preview, Development)
+3. Click **Save**.
+
+--------------------------------------------------------------------------------
+3. REDEPLOY TO APPLY THE ENVIRONMENT VARIABLE
+--------------------------------------------------------------------------------
+Environment variables only take effect on new deployments:
+
+1. Go to the **Deployments** tab in Vercel.
+2. Find your latest deployment, click the **three dots (...)** on the right.
+3. Click **Redeploy**.
+4. (Optional but recommended) Uncheck "Use existing Build Cache" so it builds fresh.
+5. Wait ~1-2 minutes for the deployment to finish.
+
+--------------------------------------------------------------------------------
+4. HOW TO TEST & VERIFY
+--------------------------------------------------------------------------------
+Once the redeploy finishes, open your browser and test the URLs:
+
+1. **Root Storefront (Clean URL)**:
+   • Visit: `https://datadeals-test.vercel.app/`
+   • Result: Loads your Data Deals store directly — no `/store/...` or slug in the address bar!
+
+2. **Network Purchasing Pages**:
+   • Visit: `https://datadeals-test.vercel.app/mtn`
+   • Visit: `https://datadeals-test.vercel.app/telecel`
+   • Visit: `https://datadeals-test.vercel.app/airteltigo`
+   • Result: Direct access to bundle selection with custom pricing.
+
+3. **Order Tracking**:
+   • Visit: `https://datadeals-test.vercel.app/track`
+   • Result: Customer order lookup page works seamlessly.
+
+4. **Security Protection Check**:
+   • Visit: `https://datadeals-test.vercel.app/admin` or `https://datadeals-test.vercel.app/dashboard`
+   • Result: Instantly blocked and safely redirected to your main portal login! Customers can never access admin pages through the store domain.
+
+5. **Admin Management & Dedicated Wallet Test**:
+   • Open your main admin portal (e.g., `https://my-portal.vercel.app/admin` or `https://tsk05.net/admin`).
+   • Click the **data-deals Store** link in the navigation menu (`/admin/custom-storefront`).
+   • Check that the dedicated wallet balance, revenue, and profit cards display properly.
+   • Edit a price or banner notice under "Settings & Branding" -> click Save.
+   • Refresh `https://datadeals-test.vercel.app/` -> the changes appear instantly!
+
+--------------------------------------------------------------------------------
+5. WHEN YOU ARE READY TO LAUNCH ON DATA-DEALS.COM (LATER)
+--------------------------------------------------------------------------------
+Whenever you are satisfied with testing and ready to switch to `data-deals.com`:
+
+• **If launching on Vercel**:
+  1. In **Settings** -> **Domains**, add `data-deals.com` and `www.data-deals.com`.
+  2. In your DNS manager, point the A record `@` to `76.76.21.21` and CNAME `www` to `cname.vercel-dns.com`.
+  3. In **Settings** -> **Environment Variables**, change `ADMIN_CUSTOM_DOMAIN` to `data-deals.com` (or remove it, as `data-deals.com` is already the default).
+  4. Redeploy.
+
+• **If launching on VPS (Nginx)**:
+  1. Follow the step-by-step Nginx + Certbot guide in `vps.txt` (Section 14).
+  2. Point your DNS A record to your VPS IP address.
+================================================================================
+

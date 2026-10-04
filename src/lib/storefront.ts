@@ -153,9 +153,14 @@ export const RESERVED_SLUGS = new Set([
 // ---------------------------------------------------------------------------
 
 export async function getStorefrontForUser(userId: string) {
-  return prisma.storefront.findUnique({
-    where: { userId },
+  return prisma.storefront.findFirst({
+    where: { userId, isCustomDomain: false },
+    orderBy: { createdAt: "asc" },
   });
+}
+
+export async function getPrimaryStorefront(userId: string) {
+  return getStorefrontForUser(userId);
 }
 
 export async function getEnabledStorefrontBySlug(slug: string) {
@@ -168,7 +173,10 @@ export async function getEnabledStorefrontBySlug(slug: string) {
  * their orders/wallet (§6); write surfaces must check `status === "ENABLED"`.
  */
 export async function requireStorefront(userId: string) {
-  const storefront = await prisma.storefront.findUnique({ where: { userId } });
+  const storefront = await prisma.storefront.findFirst({
+    where: { userId, isCustomDomain: false },
+    orderBy: { createdAt: "asc" },
+  });
   if (!storefront || !isOwnedStorefrontStatus(storefront.status)) {
     throw new AuthError("You do not have storefront access", 404);
   }
@@ -190,6 +198,102 @@ export async function requireActiveStorefront(userId: string): Promise<
   if (!isOwnedStorefrontStatus(storefront.status)) {
     redirect("/dashboard/storefront/pending");
   }
+  return storefront;
+}
+
+/**
+ * Ensures the dedicated admin custom-domain storefront exists for 'data-deals.com'.
+ * Finds the primary admin user and provisions/seeds the storefront and products if missing.
+ */
+export async function ensureAdminCustomStorefront(domain = process.env.ADMIN_CUSTOM_DOMAIN || "data-deals.com") {
+  const customDomain = domain.toLowerCase().trim();
+  const slug = "data-deals";
+
+  // Find admin user
+  const admin = await prisma.user.findFirst({
+    where: { role: "ADMIN", status: "ACTIVE" },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (!admin) {
+    throw new Error("No active ADMIN user found to assign custom-domain storefront");
+  }
+
+  // Find or create the Storefront record
+  let storefront = await prisma.storefront.findFirst({
+    where: {
+      OR: [
+        { customDomain },
+        { slug },
+      ],
+    },
+  });
+
+  if (!storefront) {
+    storefront = await prisma.storefront.create({
+      data: {
+        userId: admin.id,
+        slug,
+        customDomain,
+        isCustomDomain: true,
+        name: "Data Deals",
+        description: "Best data deals and instant bundle delivery across all networks in Ghana.",
+        status: "ENABLED",
+        isActive: true,
+        contactText: "Chat with us for instant support",
+        whatsappLabel: "Need help?",
+        notice: "⚡ Welcome to Data Deals! Fast and reliable bundle delivery 24/7.",
+      },
+    });
+  } else {
+    // Ensure flags and domain match
+    if (storefront.customDomain !== customDomain || !storefront.isCustomDomain || storefront.userId !== admin.id) {
+      storefront = await prisma.storefront.update({
+        where: { id: storefront.id },
+        data: {
+          customDomain,
+          isCustomDomain: true,
+          userId: admin.id,
+        },
+      });
+    }
+  }
+
+  // Ensure owner has a wallet
+  await ensureWallet(admin.id);
+
+  // Check if active packages exist and seed products if storefront has none
+  const existingProductCount = await prisma.storefrontProduct.count({
+    where: { storefrontId: storefront.id },
+  });
+
+  if (existingProductCount === 0) {
+    const activePackages = await prisma.dataPackage.findMany({
+      where: { active: true },
+    });
+
+    if (activePackages.length > 0) {
+      const { resolveUserWholesalePrice } = await import("@/lib/orders");
+      const seededData = await Promise.all(
+        activePackages.map(async (pkg) => {
+          const cost = await resolveUserWholesalePrice(admin, pkg);
+          const sellingPrice = Math.max(100, Math.round((cost > 0 ? cost + 2 : (pkg.retailPriceGHS ?? 5)) * 100));
+          return {
+            storefrontId: storefront.id,
+            packageId: pkg.id,
+            sellingPrice,
+            isActive: true,
+          };
+        })
+      );
+
+      await prisma.storefrontProduct.createMany({
+        data: seededData,
+        skipDuplicates: true,
+      });
+    }
+  }
+
   return storefront;
 }
 

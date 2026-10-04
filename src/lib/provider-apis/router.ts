@@ -7,7 +7,7 @@ import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_U
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
 import { GhconnectClient, DEFAULT_GHCONNECT_BASE_URL, formatGhconnectPhone } from "./ghconnect";
 import { BigwinTelecelClient, DEFAULT_BIGWIN_TELECEL_API_KEY, DEFAULT_BIGWIN_TELECEL_BASE_URL } from "./bigwin-telecel";
-import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig, GhconnectConfig, BigwinTelecelConfig } from "./types";
+import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig, GhconnectConfig, BigwinTelecelConfig, ClickyfiedFilteredOutEntry } from "./types";
 
 /**
  * Standard Ghanaian network keys supported in routing
@@ -498,21 +498,22 @@ export async function dispatchOrder(
       const rawStatus = rawAny?.order?.status || submitRes.status || rawAny?.status;
       const mappedStatus = mapClickyfiedStatus(rawStatus, summary);
 
-      // Check if Clickyfied filtered out entries due to blocked numbers
+      // Check if Clickyfied filtered out entries due to blocked/network/duplicate numbers
       const filteredOutList =
         submitRes.filteredOutEntries ||
         rawAny?.order?.filteredOutEntries ||
         rawAny?.filteredOutEntries ||
         [];
       const isFilteredOut = filteredOutList.length > 0;
-      const filteredReason = isFilteredOut
-        ? filteredOutList[0]?.reason || "Number is blocked by provider"
+      const filteredItem = isFilteredOut ? filteredOutList[0] : null;
+      const filteredReason = filteredItem
+        ? filteredItem.reason || (filteredItem.type ? `Filtered out (${filteredItem.type})` : "Number filtered out by provider")
         : null;
 
-      // Check if Clickyfied accepted it with errors, rejected, or filtered out as blocked
+      // Check if Clickyfied accepted it with errors, rejected, or filtered out
       const hasErrors = mappedStatus === "FAILED" || (summary?.error ?? 0) > 0 || isFilteredOut;
       const errorDetail = isFilteredOut
-        ? `Blocked by provider: ${filteredReason}`
+        ? `Filtered out by provider: ${filteredReason}`
         : hasErrors
         ? rawAny?.message ||
           rawAny?.error ||
@@ -521,18 +522,22 @@ export async function dispatchOrder(
         : null;
 
       if (isFilteredOut) {
-        try {
-          const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
-          await recordUnverifiedMtnNumber({ number: order.phoneNumber });
-          const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
-          await prisma.blockedMtnNumber.updateMany({
-            where: { normalizedNumber: canonical },
-            data: { status: "REJECTED" },
-          });
-          await prisma.acceptedMtnNumber.deleteMany({
-            where: { normalizedNumber: canonical },
-          });
-        } catch {}
+        const filterType = filteredItem?.type || filteredItem?.filter || "blocked";
+        // Only mark on permanent blacklist if actually blocked or invalid network code, not duplicate pending order
+        if (filterType !== "duplicate") {
+          try {
+            const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
+            await recordUnverifiedMtnNumber({ number: order.phoneNumber });
+            const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
+            await prisma.blockedMtnNumber.updateMany({
+              where: { normalizedNumber: canonical },
+              data: { status: "REJECTED" },
+            });
+            await prisma.acceptedMtnNumber.deleteMany({
+              where: { normalizedNumber: canonical },
+            });
+          } catch {}
+        }
       }
 
       await prisma.order.update({
@@ -604,14 +609,24 @@ export async function dispatchOrder(
     } catch (err: any) {
       const durationMs = Date.now() - clickyfiedStartTime;
       const rawErrMsg = err?.message || "Failed to dispatch order";
+      const errFilteredList: ClickyfiedFilteredOutEntry[] = Array.isArray(err?.filteredOutEntries)
+        ? err.filteredOutEntries
+        : [];
+      const matchedErrFiltered = errFilteredList.length > 0 ? errFilteredList[0] : null;
+
       const isBlocked =
         err?.isAllBlocked ||
+        errFilteredList.length > 0 ||
         (typeof rawErrMsg === "string" &&
           (rawErrMsg.toLowerCase().includes("all submitted entries are blocked") ||
             rawErrMsg.toLowerCase().includes("number is blocked") ||
-            rawErrMsg.toLowerCase().includes("entries are blocked and were filtered out")));
+            rawErrMsg.toLowerCase().includes("entries are blocked and were filtered out") ||
+            rawErrMsg.toLowerCase().includes("filtered out")));
 
-      const errMsg = isBlocked
+      const filterReason = matchedErrFiltered?.reason;
+      const errMsg = filterReason
+        ? `Filtered out by provider: ${filterReason}`
+        : isBlocked
         ? `Blocked by provider: ${rawErrMsg}`
         : sanitizeCustomerFacingText(rawErrMsg) || "Delivery processing failed";
 
@@ -624,18 +639,21 @@ export async function dispatchOrder(
       });
 
       if (isBlocked) {
-        try {
-          const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
-          await recordUnverifiedMtnNumber({ number: order.phoneNumber });
-          const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
-          await prisma.blockedMtnNumber.updateMany({
-            where: { normalizedNumber: canonical },
-            data: { status: "REJECTED" },
-          });
-          await prisma.acceptedMtnNumber.deleteMany({
-            where: { normalizedNumber: canonical },
-          });
-        } catch {}
+        const filterType = matchedErrFiltered?.type || matchedErrFiltered?.filter;
+        if (filterType !== "duplicate") {
+          try {
+            const { recordUnverifiedMtnNumber } = await import("../mtn-verification");
+            await recordUnverifiedMtnNumber({ number: order.phoneNumber });
+            const canonical = normalizeGhanaPhoneNumber(order.phoneNumber);
+            await prisma.blockedMtnNumber.updateMany({
+              where: { normalizedNumber: canonical },
+              data: { status: "REJECTED" },
+            });
+            await prisma.acceptedMtnNumber.deleteMany({
+              where: { normalizedNumber: canonical },
+            });
+          } catch {}
+        }
       }
 
       await recordOrderApiLog({

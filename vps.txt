@@ -24,6 +24,7 @@ TABLE OF CONTENTS
 11. Step 10: Configure Paystack Webhooks & Callbacks
 12. Step 11: Verification & Live Testing
 13. Step 12: 1-Click Update Script & Maintenance Commands
+14. Step 13: Configuring data-deals.com (Custom Admin Storefront Domain)
 
 
 ================================================================================
@@ -380,4 +381,97 @@ Helpful maintenance commands:
 • Check Nginx error:    sudo tail -f /var/log/nginx/error.log
 • PostgreSQL console:   sudo -u postgres psql -d tskconnect_db
 • Database backup:      pg_dump -U tsk_user -h 127.0.0.1 tskconnect_db > ~/tsk_backup_$(date +%F).sql
+================================================================================
+
+
+================================================================================
+14. CONFIGURING DATA-DEALS.COM (CUSTOM ADMIN STOREFRONT DOMAIN)
+================================================================================
+data-deals.com is dedicated exclusively to the admin's custom-domain storefront.
+It points to the SAME VPS IP address as tsk05.net and tskdatastore.com.
+
+Our Next.js middleware (src/middleware.ts) automatically intercepts any requests
+with Host: data-deals.com or www.data-deals.com and rewrites them directly to the
+dedicated store pages without requiring any slug in the URL:
+  • https://data-deals.com/           -> /store/data-deals
+  • https://data-deals.com/mtn        -> /store/data-deals/mtn
+  • https://data-deals.com/telecel    -> /store/data-deals/telecel
+  • https://data-deals.com/airteltigo -> /store/data-deals/airteltigo
+  • https://data-deals.com/track      -> /store/data-deals/track
+  • https://data-deals.com/order/:ref -> /store/data-deals/order/:ref
+  • Admin/Dashboard on this domain is blocked & redirected to https://tsk05.net/login
+
+Follow these 4 steps to set up data-deals.com on your VPS:
+
+--- [ STEP A: DNS SETUP ] ---
+In your domain registrar for data-deals.com (Namecheap, Cloudflare, GoDaddy, etc.):
+| Type  | Host / Name | Value / Destination | TTL          |
+| :---- | :---------- | :------------------ | :----------- |
+| A     | @           | <YOUR_VPS_IP>       | Auto / 1 min |
+| CNAME | www         | data-deals.com      | Auto / 1 min |
+
+--- [ STEP B: CREATE NGINX CONFIGURATION ] ---
+SSH into your VPS and create the Nginx site configuration file:
+sudo nano /etc/nginx/sites-available/data-deals.com
+
+Paste the following configuration:
+
+server {
+    listen 80;
+    server_name data-deals.com www.data-deals.com;
+
+    client_max_body_size 50M;
+
+    # Gzip Compression
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+    }
+}
+
+Save and exit (Ctrl+O, Enter, Ctrl+X in nano).
+
+--- [ STEP C: ENABLE NGINX SITE & RELOAD ] ---
+sudo ln -sf /etc/nginx/sites-available/data-deals.com /etc/nginx/sites-enabled/
+
+# Test Nginx syntax
+sudo nginx -t
+
+# Reload Nginx
+sudo systemctl reload nginx
+
+--- [ STEP D: ISSUE SSL CERTIFICATE (HTTPS) ] ---
+Run Certbot to generate the free SSL certificate for data-deals.com and www.data-deals.com:
+
+sudo certbot --nginx -d data-deals.com -d www.data-deals.com --non-interactive --agree-tos -m admin@tsk05.net --redirect
+
+# Test automatic SSL renewal
+sudo certbot renew --dry-run
+
+--- [ STEP E: VERIFICATION VIA CURL ] ---
+Run these checks on the VPS to verify:
+# 1. Test data-deals root
+curl -I -H "Host: data-deals.com" http://127.0.0.1:3000/
+# Expected: HTTP 200
+
+# 2. Test admin protection redirect
+curl -I -H "Host: data-deals.com" http://127.0.0.1:3000/admin
+# Expected: HTTP 307/308 redirect to https://tsk05.net/login
+
+# 3. Test bundle page rewrite
+curl -I -H "Host: data-deals.com" http://127.0.0.1:3000/mtn
+# Expected: HTTP 200
 ================================================================================

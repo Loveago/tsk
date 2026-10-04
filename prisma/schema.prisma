@@ -31,7 +31,7 @@ model User {
   orderBatches   OrderBatch[]
   exportBatches  ExportBatch[]
   deliveryReports DeliveryReport[]
-  storefront     Storefront?
+  storefronts    Storefront[]
   storefrontWallet StorefrontWallet?
   storefrontWithdrawals StorefrontWithdrawal[]
   apiApplication ApiApplication?
@@ -406,9 +406,11 @@ model WalletTransaction {
 /// "Storefront Access" setting (NOT_ENABLED | ENABLED | SUSPENDED).
 model Storefront {
   id          String   @id @default(cuid())
-  userId      String   @unique
+  userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   slug        String   @unique
+  customDomain String? @unique
+  isCustomDomain Boolean @default(false)
   name        String
   description String?
   logoUrl     String?
@@ -435,7 +437,9 @@ model Storefront {
   products    StorefrontProduct[]
   orders      StorefrontOrder[]
 
+  @@index([userId])
   @@index([status])
+  @@index([customDomain])
 }
 
 /// Reseller retail price for an existing master DataPackage (§7-§11).
