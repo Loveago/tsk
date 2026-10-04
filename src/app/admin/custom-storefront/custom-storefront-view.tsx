@@ -27,6 +27,10 @@ import {
   ShieldCheck,
   ChevronRight,
   RotateCcw,
+  Power,
+  PauseCircle,
+  Share2,
+  Lock,
 } from "lucide-react";
 import { useToast } from "@/components/toast";
 
@@ -112,6 +116,13 @@ export function CustomStorefrontView({
     pendingCommission: 0,
   });
 
+  const [networkSettings, setNetworkSettings] = React.useState({
+    mtn: true,
+    telecel: true,
+    airteltigo: true,
+  });
+  const [togglingNetwork, setTogglingNetwork] = React.useState<string | null>(null);
+
   const [loading, setLoading] = React.useState(true);
   const [savingSettings, setSavingSettings] = React.useState(false);
   const [copiedLink, setCopiedLink] = React.useState(false);
@@ -136,6 +147,7 @@ export function CustomStorefrontView({
   const [pricingInputs, setPricingInputs] = React.useState<Record<string, string>>({});
   const [selectedNetwork, setSelectedNetwork] = React.useState<string>("ALL");
   const [savingPackageId, setSavingPackageId] = React.useState<string | null>(null);
+  const [togglingPackageId, setTogglingPackageId] = React.useState<string | null>(null);
   const [bulkMarkup, setBulkMarkup] = React.useState<string>("2.00");
   const [bulkApplying, setBulkApplying] = React.useState(false);
 
@@ -159,6 +171,9 @@ export function CustomStorefrontView({
       setProducts(data.products);
       setPackages(data.packages);
       setStats(data.stats);
+      if (data.networkSettings) {
+        setNetworkSettings(data.networkSettings);
+      }
 
       const priceMap: Record<string, string> = {};
       data.products.forEach((p: ProductItem) => {
@@ -192,11 +207,7 @@ export function CustomStorefrontView({
     }
   }, []);
 
-  React.useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Fetch orders when orders tab is activated
+  // Fetch orders
   const fetchOrders = React.useCallback(async () => {
     try {
       setOrdersLoading(true);
@@ -213,13 +224,96 @@ export function CustomStorefrontView({
     } finally {
       setOrdersLoading(false);
     }
-  }, [orderStatusFilter, orderQuery]);
+  }, [orderStatusFilter, orderQuery, toast]);
+
+  React.useEffect(() => {
+    fetchData();
+    fetchOrders();
+  }, [fetchData, fetchOrders]);
 
   React.useEffect(() => {
     if (activeTab === "orders") {
       fetchOrders();
     }
   }, [activeTab, fetchOrders]);
+
+  // Network master pause switches (MTN, Telecel, AirtelTigo)
+  async function handleToggleNetwork(net: "mtn" | "telecel" | "airteltigo") {
+    const keyMap = {
+      mtn: "network_mtn_enabled",
+      telecel: "network_telecel_enabled",
+      airteltigo: "network_airteltigo_enabled",
+    };
+    const currentVal = networkSettings[net];
+    const nextVal = !currentVal;
+    const settingKey = keyMap[net];
+
+    setTogglingNetwork(net);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [settingKey]: nextVal ? "true" : "false" }),
+      });
+      if (!res.ok) throw new Error("Failed to update network setting");
+      setNetworkSettings((prev) => ({ ...prev, [net]: nextVal }));
+      toast(
+        nextVal
+          ? `${net.toUpperCase()} ordering enabled across all stores`
+          : `${net.toUpperCase()} ordering paused across all storefronts and API`,
+        "success"
+      );
+    } catch {
+      toast(`Failed to update ${net.toUpperCase()} status`, "error");
+    } finally {
+      setTogglingNetwork(null);
+    }
+  }
+
+  // Toggle individual bundle listing in this custom store
+  async function handleToggleProductActive(packageId: string, currentActive: boolean) {
+    const rawVal = pricingInputs[packageId];
+    const numVal = parseFloat(rawVal) || 0;
+    const nextActive = !currentActive;
+
+    setTogglingPackageId(packageId);
+    try {
+      const res = await fetch("/api/admin/custom-storefront", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          packageId,
+          sellingPrice: numVal > 0 ? numVal : undefined,
+          isActive: nextActive,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update bundle status");
+
+      setProducts((prev) => {
+        const next = prev.filter((p) => p.packageId !== packageId);
+        if (data.product) {
+          const pkg = packages.find((k) => k.id === packageId);
+          next.push({
+            id: data.product.id,
+            packageId: data.product.packageId,
+            network: pkg?.network || "",
+            gbAmount: pkg?.gbAmount || 0,
+            packageName: pkg?.name || "",
+            sellingPrice: data.product.sellingPrice / 100,
+            cost: pkg?.cost || 0,
+            isActive: data.product.isActive,
+          });
+        }
+        return next;
+      });
+      toast(nextActive ? "Bundle listed on store" : "Bundle hidden from store", "success");
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "Failed to toggle bundle", "error");
+    } finally {
+      setTogglingPackageId(null);
+    }
+  }
 
   async function copyLink() {
     try {
@@ -557,16 +651,223 @@ export function CustomStorefrontView({
               </div>
             </div>
           </div>
+
+          {/* Recent Orders Overview */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Recent Sales Activity
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Latest customer orders placed on {customDomain}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("orders");
+                  fetchOrders();
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+              >
+                <span>View all {stats.totalOrders} orders</span>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 dark:border-slate-800">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-800/50">
+                    <tr>
+                      <th className="px-4 py-3">Order Ref</th>
+                      <th className="px-4 py-3">Customer Phone</th>
+                      <th className="px-4 py-3">Bundle</th>
+                      <th className="px-4 py-3">Amount</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {orders.slice(0, 5).map((o) => (
+                      <tr key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900 dark:text-white">
+                          {o.code}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-300">
+                          {o.customerPhone}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-md border px-1.5 py-0.5 text-[10px] font-black ${
+                              NETWORK_BADGES[o.network] || "bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            {o.network} {o.gbAmount}GB
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900 dark:text-white">
+                          GHS {(o.sellingPrice / 100).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              o.status === "COMPLETED"
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                : o.status === "PROCESSING"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300"
+                                : o.status === "PENDING"
+                                ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                                : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                            }`}
+                          >
+                            {o.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs text-slate-500">
+                          {new Date(o.createdAt).toLocaleDateString("en-GH", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                    {orders.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-xs text-slate-400">
+                          No orders placed yet on {customDomain}.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
       {/* TAB 2: PRODUCTS & RETAIL PRICING */}
       {activeTab === "products" && (
         <div className="space-y-6">
+          {/* Network Operational Controls Card */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Store & Network Availability Controls</h2>
+                <p className="text-xs text-slate-500">
+                  Enable or pause networks across {customDomain} and the platform. If a network is paused, it automatically displays maintenance notices.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {/* MTN Toggle */}
+              <div
+                className={`flex items-center justify-between rounded-xl border p-3.5 transition-all ${
+                  networkSettings.mtn
+                    ? "border-amber-200 bg-amber-50/60 dark:border-amber-500/20 dark:bg-amber-500/5"
+                    : "border-red-200 bg-red-50/70 dark:border-red-500/20 dark:bg-red-500/10"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-400 text-xs font-black text-slate-950 shadow-xs">
+                    MTN
+                  </span>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">MTN Network</p>
+                    <p className={`text-[11px] font-semibold ${networkSettings.mtn ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                      {networkSettings.mtn ? "● Active" : "■ Paused"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={togglingNetwork === "mtn"}
+                  onClick={() => handleToggleNetwork("mtn")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all shadow-xs ${
+                    networkSettings.mtn
+                      ? "bg-amber-600 text-white hover:bg-amber-700"
+                      : "bg-emerald-600 text-white hover:bg-emerald-700"
+                  } disabled:opacity-50`}
+                >
+                  {togglingNetwork === "mtn" ? "Saving..." : networkSettings.mtn ? "Pause Network" : "Enable Network"}
+                </button>
+              </div>
+
+              {/* Telecel Toggle */}
+              <div
+                className={`flex items-center justify-between rounded-xl border p-3.5 transition-all ${
+                  networkSettings.telecel
+                    ? "border-red-200 bg-red-50/50 dark:border-red-500/20 dark:bg-red-500/5"
+                    : "border-red-200 bg-red-50/70 dark:border-red-500/20 dark:bg-red-500/10"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-xs font-black text-white shadow-xs">
+                    TEL
+                  </span>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Telecel Network</p>
+                    <p className={`text-[11px] font-semibold ${networkSettings.telecel ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                      {networkSettings.telecel ? "● Active" : "■ Paused"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={togglingNetwork === "telecel"}
+                  onClick={() => handleToggleNetwork("telecel")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all shadow-xs ${
+                    networkSettings.telecel
+                      ? "bg-red-600 text-white hover:bg-red-700"
+                      : "bg-emerald-600 text-white hover:bg-emerald-700"
+                  } disabled:opacity-50`}
+                >
+                  {togglingNetwork === "telecel" ? "Saving..." : networkSettings.telecel ? "Pause Network" : "Enable Network"}
+                </button>
+              </div>
+
+              {/* AirtelTigo Toggle */}
+              <div
+                className={`flex items-center justify-between rounded-xl border p-3.5 transition-all ${
+                  networkSettings.airteltigo
+                    ? "border-blue-200 bg-blue-50/50 dark:border-blue-500/20 dark:bg-blue-500/5"
+                    : "border-red-200 bg-red-50/70 dark:border-red-500/20 dark:bg-red-500/10"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-black text-white shadow-xs">
+                    AT
+                  </span>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">AirtelTigo Network</p>
+                    <p className={`text-[11px] font-semibold ${networkSettings.airteltigo ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                      {networkSettings.airteltigo ? "● Active" : "■ Paused"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={togglingNetwork === "airteltigo"}
+                  onClick={() => handleToggleNetwork("airteltigo")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all shadow-xs ${
+                    networkSettings.airteltigo
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "bg-emerald-600 text-white hover:bg-emerald-700"
+                  } disabled:opacity-50`}
+                >
+                  {togglingNetwork === "airteltigo" ? "Saving..." : networkSettings.airteltigo ? "Pause Network" : "Enable Network"}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                Retail Pricing for {customDomain}
+                Retail Pricing & Products for {customDomain}
               </h2>
               <p className="text-sm text-slate-500">
                 Set customer selling prices exclusively for this storefront. Packages without a custom price use default markup.
@@ -629,7 +930,8 @@ export function CustomStorefrontView({
                     <th className="px-6 py-4">Wholesale Cost</th>
                     <th className="px-6 py-4">Store Selling Price</th>
                     <th className="px-6 py-4">Retail Margin</th>
-                    <th className="px-6 py-4 text-right">Action</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -638,6 +940,9 @@ export function CustomStorefrontView({
                     const priceNum = parseFloat(priceStr) || 0;
                     const margin = priceNum - pkg.cost;
                     const isSaving = savingPackageId === pkg.id;
+                    const isToggling = togglingPackageId === pkg.id;
+                    const productRecord = products.find((p) => p.packageId === pkg.id);
+                    const isProductActive = productRecord ? productRecord.isActive : true;
 
                     return (
                       <tr key={pkg.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
@@ -686,23 +991,60 @@ export function CustomStorefrontView({
                             +{margin.toFixed(2)} GHS
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right">
-                          <button
-                            type="button"
-                            disabled={isSaving}
-                            onClick={() => handleSavePrice(pkg.id)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-700"
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                              isProductActive
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                            }`}
                           >
-                            {isSaving && <Loader2 className="h-3 w-3 animate-spin" />}
-                            Save
-                          </button>
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                isProductActive ? "bg-emerald-500" : "bg-slate-400"
+                              }`}
+                            />
+                            {isProductActive ? "Active" : "Hidden"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={isToggling}
+                              onClick={() => handleToggleProductActive(pkg.id, isProductActive)}
+                              className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all border ${
+                                isProductActive
+                                  ? "border-slate-200 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                                  : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              } disabled:opacity-50`}
+                              title={isProductActive ? "Hide bundle from storefront" : "Show bundle on storefront"}
+                            >
+                              {isToggling ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Power className="h-3 w-3" />
+                              )}
+                              <span>{isProductActive ? "Hide" : "Show"}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isSaving}
+                              onClick={() => handleSavePrice(pkg.id)}
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-700"
+                            >
+                              {isSaving && <Loader2 className="h-3 w-3 animate-spin" />}
+                              Save
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
                   {filteredPackages.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-500">
+                      <td colSpan={6} className="py-8 text-center text-slate-500">
                         No packages found for this network.
                       </td>
                     </tr>

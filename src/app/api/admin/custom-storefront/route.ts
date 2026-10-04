@@ -40,38 +40,62 @@ export async function GET() {
     const storefront = await ensureAdminCustomStorefront();
     const { resolveUserWholesalePrice } = await import("@/lib/orders");
 
-    const [products, allPackages, totalOrders, completedOrders, pendingOrders, revenueAgg, pendingAgg] =
-      await Promise.all([
-        prisma.storefrontProduct.findMany({
-          where: { storefrontId: storefront.id },
-          include: { dataPackage: true },
-          orderBy: [
-            { dataPackage: { network: "asc" } },
-            { dataPackage: { gbAmount: "asc" } },
-          ],
-        }),
-        prisma.dataPackage.findMany({
-          where: { active: true },
-          orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
-        }),
-        prisma.storefrontOrder.count({
-          where: { storefrontId: storefront.id },
-        }),
-        prisma.storefrontOrder.count({
-          where: { storefrontId: storefront.id, status: "COMPLETED" },
-        }),
-        prisma.storefrontOrder.count({
-          where: { storefrontId: storefront.id, status: "PENDING" },
-        }),
-        prisma.storefrontOrder.aggregate({
-          where: { storefrontId: storefront.id, status: { in: ["COMPLETED", "PROCESSING"] } },
-          _sum: { sellingPrice: true, commission: true },
-        }),
-        prisma.storefrontOrder.aggregate({
-          where: { storefrontId: storefront.id, status: "PENDING" },
-          _sum: { commission: true },
-        }),
-      ]);
+    const [
+      products,
+      allPackages,
+      totalOrders,
+      completedOrders,
+      pendingOrders,
+      revenueAgg,
+      pendingAgg,
+      rawNetworkSettings,
+    ] = await Promise.all([
+      prisma.storefrontProduct.findMany({
+        where: { storefrontId: storefront.id },
+        include: { dataPackage: true },
+        orderBy: [
+          { dataPackage: { network: "asc" } },
+          { dataPackage: { gbAmount: "asc" } },
+        ],
+      }),
+      prisma.dataPackage.findMany({
+        where: { active: true },
+        orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
+      }),
+      prisma.storefrontOrder.count({
+        where: { storefrontId: storefront.id },
+      }),
+      prisma.storefrontOrder.count({
+        where: { storefrontId: storefront.id, status: "COMPLETED" },
+      }),
+      prisma.storefrontOrder.count({
+        where: { storefrontId: storefront.id, status: "PENDING" },
+      }),
+      prisma.storefrontOrder.aggregate({
+        where: { storefrontId: storefront.id, status: { in: ["COMPLETED", "PROCESSING"] } },
+        _sum: { sellingPrice: true, commission: true },
+      }),
+      prisma.storefrontOrder.aggregate({
+        where: { storefrontId: storefront.id, status: "PENDING" },
+        _sum: { commission: true },
+      }),
+      prisma.systemSetting.findMany({
+        where: {
+          key: {
+            in: ["network_mtn_enabled", "network_telecel_enabled", "network_airteltigo_enabled"],
+          },
+        },
+      }),
+    ]);
+
+    const sysSettingsMap: Record<string, string> = {};
+    for (const s of rawNetworkSettings) sysSettingsMap[s.key] = s.value;
+
+    const networkSettings = {
+      mtn: sysSettingsMap.network_mtn_enabled !== "false",
+      telecel: sysSettingsMap.network_telecel_enabled !== "false",
+      airteltigo: sysSettingsMap.network_airteltigo_enabled !== "false",
+    };
 
     const formattedPackages = await Promise.all(
       allPackages.map(async (pkg) => ({
@@ -98,6 +122,7 @@ export async function GET() {
         isActive: p.isActive,
       })),
       packages: formattedPackages,
+      networkSettings,
       stats: {
         totalOrders,
         completedOrders,

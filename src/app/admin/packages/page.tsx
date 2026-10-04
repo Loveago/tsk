@@ -20,6 +20,12 @@ export default function AdminPackagesPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<AdminPackage | null>(null);
   const [customCategories, setCustomCategories] = React.useState<string[]>([]);
+  const [networkSettings, setNetworkSettings] = React.useState({
+    mtn: true,
+    telecel: true,
+    airteltigo: true,
+  });
+  const [togglingNetwork, setTogglingNetwork] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -30,11 +36,18 @@ export default function AdminPackagesPage() {
     const pkgJson = await pkgRes.json();
     const setJson = await setRes.json();
     setPackages(pkgJson.packages ?? []);
-    if (setJson.settings?.custom_package_categories) {
-      try {
-        const parsed = JSON.parse(setJson.settings.custom_package_categories);
-        if (Array.isArray(parsed)) setCustomCategories(parsed);
-      } catch {}
+    if (setJson.settings) {
+      setNetworkSettings({
+        mtn: setJson.settings.network_mtn_enabled !== "false",
+        telecel: setJson.settings.network_telecel_enabled !== "false",
+        airteltigo: setJson.settings.network_airteltigo_enabled !== "false",
+      });
+      if (setJson.settings.custom_package_categories) {
+        try {
+          const parsed = JSON.parse(setJson.settings.custom_package_categories);
+          if (Array.isArray(parsed)) setCustomCategories(parsed);
+        } catch {}
+      }
     }
     setLoading(false);
   }, []);
@@ -42,6 +55,38 @@ export default function AdminPackagesPage() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  const toggleNetwork = async (net: "mtn" | "telecel" | "airteltigo") => {
+    const keyMap = {
+      mtn: "network_mtn_enabled",
+      telecel: "network_telecel_enabled",
+      airteltigo: "network_airteltigo_enabled",
+    };
+    const currentVal = networkSettings[net];
+    const nextVal = !currentVal;
+    const settingKey = keyMap[net];
+
+    setTogglingNetwork(net);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [settingKey]: nextVal ? "true" : "false" }),
+      });
+      if (!res.ok) throw new Error("Failed to update network setting");
+      setNetworkSettings((prev) => ({ ...prev, [net]: nextVal }));
+      toast(
+        nextVal
+          ? `${net.toUpperCase()} ordering enabled`
+          : `${net.toUpperCase()} ordering paused across all stores, API, and dashboards`,
+        "success"
+      );
+    } catch {
+      toast(`Failed to update ${net.toUpperCase()} status`, "error");
+    } finally {
+      setTogglingNetwork(null);
+    }
+  };
 
   const allCategories = React.useMemo(() => {
     const set = new Set([...DEFAULT_NETWORKS, ...customCategories]);
@@ -88,8 +133,8 @@ export default function AdminPackagesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Packages"
-        description="Manage the data bundle catalogue"
+        title="Packages & Products"
+        description="Manage the data bundle catalogue, individual bundle availability, and network pause switches"
         actions={
           <div className="flex items-center gap-2">
             <Link href="/admin/pricing">
@@ -108,6 +153,119 @@ export default function AdminPackagesPage() {
           </div>
         }
       />
+
+      {/* Network Operational Controls Card */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-[#0d1526]">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Network Availability Controls</h2>
+            <p className="text-xs text-slate-500">
+              Instantly enable or pause ordering for an entire network across API, Dashboards, and Storefronts.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* MTN Toggle */}
+          <div
+            className={`flex items-center justify-between rounded-xl border p-3.5 transition-all ${
+              networkSettings.mtn
+                ? "border-amber-200 bg-amber-50/60 dark:border-amber-500/20 dark:bg-amber-500/5"
+                : "border-red-200 bg-red-50/70 dark:border-red-500/20 dark:bg-red-500/10"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-400 text-xs font-black text-slate-950 shadow-xs">
+                MTN
+              </span>
+              <div>
+                <p className="text-xs font-bold text-slate-900 dark:text-white">MTN Network</p>
+                <p className={`text-[11px] font-semibold ${networkSettings.mtn ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                  {networkSettings.mtn ? "● Active" : "■ Paused"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={togglingNetwork === "mtn"}
+              onClick={() => toggleNetwork("mtn")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all shadow-xs ${
+                networkSettings.mtn
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              } disabled:opacity-50`}
+            >
+              {togglingNetwork === "mtn" ? "Saving..." : networkSettings.mtn ? "Pause Network" : "Enable Network"}
+            </button>
+          </div>
+
+          {/* Telecel Toggle */}
+          <div
+            className={`flex items-center justify-between rounded-xl border p-3.5 transition-all ${
+              networkSettings.telecel
+                ? "border-red-200 bg-red-50/50 dark:border-red-500/20 dark:bg-red-500/5"
+                : "border-red-200 bg-red-50/70 dark:border-red-500/20 dark:bg-red-500/10"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-xs font-black text-white shadow-xs">
+                TEL
+              </span>
+              <div>
+                <p className="text-xs font-bold text-slate-900 dark:text-white">Telecel Network</p>
+                <p className={`text-[11px] font-semibold ${networkSettings.telecel ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                  {networkSettings.telecel ? "● Active" : "■ Paused"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={togglingNetwork === "telecel"}
+              onClick={() => toggleNetwork("telecel")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all shadow-xs ${
+                networkSettings.telecel
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              } disabled:opacity-50`}
+            >
+              {togglingNetwork === "telecel" ? "Saving..." : networkSettings.telecel ? "Pause Network" : "Enable Network"}
+            </button>
+          </div>
+
+          {/* AirtelTigo Toggle */}
+          <div
+            className={`flex items-center justify-between rounded-xl border p-3.5 transition-all ${
+              networkSettings.airteltigo
+                ? "border-blue-200 bg-blue-50/50 dark:border-blue-500/20 dark:bg-blue-500/5"
+                : "border-red-200 bg-red-50/70 dark:border-red-500/20 dark:bg-red-500/10"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-black text-white shadow-xs">
+                AT
+              </span>
+              <div>
+                <p className="text-xs font-bold text-slate-900 dark:text-white">AirtelTigo Network</p>
+                <p className={`text-[11px] font-semibold ${networkSettings.airteltigo ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                  {networkSettings.airteltigo ? "● Active" : "■ Paused"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={togglingNetwork === "airteltigo"}
+              onClick={() => toggleNetwork("airteltigo")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all shadow-xs ${
+                networkSettings.airteltigo
+                  ? "bg-blue-600 text-white hover:bg-blue-700"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              } disabled:opacity-50`}
+            >
+              {togglingNetwork === "airteltigo" ? "Saving..." : networkSettings.airteltigo ? "Pause Network" : "Enable Network"}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <ScrollableTabs
         tabs={[

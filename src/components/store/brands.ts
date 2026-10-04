@@ -21,11 +21,17 @@ export function networkBySlug(slug: string): NetworkProvider | null {
 }
 
 export function networkHref(storeSlug: string, network: NetworkProvider): string {
+  if (storeSlug === "data-deals") {
+    return `/${NETWORK_BRANDS[network].slug}`;
+  }
   return `/${storeSlug}/${NETWORK_BRANDS[network].slug}`;
 }
 
 export function storeHref(storeSlug: string, subpath: string = ""): string {
   const cleanSub = subpath ? (subpath.startsWith("/") ? subpath : `/${subpath}`) : "";
+  if (storeSlug === "data-deals") {
+    return cleanSub ? cleanSub : "/";
+  }
   return `/${storeSlug}${cleanSub}`;
 }
 

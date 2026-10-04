@@ -52,14 +52,27 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // Normalize direct visits to /store or /store/data-deals to clean URLs
-    if (pathname === "/store" || pathname === "/store/" || pathname === "/store/data-deals" || pathname === "/store/data-deals/") {
+    // Normalize visits containing the slug (e.g. /data-deals/mtn, /data-deals, /store/data-deals/mtn)
+    if (
+      pathname === "/store" ||
+      pathname === "/store/" ||
+      pathname === "/store/data-deals" ||
+      pathname === "/store/data-deals/" ||
+      pathname === "/data-deals" ||
+      pathname === "/data-deals/"
+    ) {
       const cleanUrl = request.nextUrl.clone();
       cleanUrl.pathname = "/";
       return NextResponse.redirect(cleanUrl);
     }
     if (pathname.startsWith("/store/data-deals/")) {
       const cleanPath = pathname.replace(/^\/store\/data-deals/, "");
+      const cleanUrl = request.nextUrl.clone();
+      cleanUrl.pathname = cleanPath || "/";
+      return NextResponse.redirect(cleanUrl);
+    }
+    if (pathname.startsWith("/data-deals/")) {
+      const cleanPath = pathname.replace(/^\/data-deals/, "");
       const cleanUrl = request.nextUrl.clone();
       cleanUrl.pathname = cleanPath || "/";
       return NextResponse.redirect(cleanUrl);
