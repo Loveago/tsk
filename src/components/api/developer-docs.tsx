@@ -855,13 +855,13 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
         </p>
 
         <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/50 p-4 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
-          <p className="font-semibold">🔗 Multi-Key Order Correlation for E-Commerce & WooCommerce</p>
+          <p className="font-semibold">🔗 Multi-Key Order Correlation</p>
           <p className="mt-1">
             Every webhook delivery provides stable identifiers so your listener can reliably correlate events back to your original orders:
           </p>
           <ul className="mt-2 list-disc pl-4 space-y-1">
             <li>
-              <code className="rounded bg-emerald-100/70 px-1 py-0.5 font-mono dark:bg-emerald-900/50">reference</code>: Your original client or shop reference (e.g. <code className="font-mono">WC-294283</code> or <code className="font-mono">SHOP-ORD-10001</code>). Strictly preserved from creation through completion.
+              <code className="rounded bg-emerald-100/70 px-1 py-0.5 font-mono dark:bg-emerald-900/50">reference</code>: Your original client or external reference (e.g. <code className="font-mono">ORD-10001</code>). Strictly preserved from creation through completion.
             </li>
             <li>
               <code className="rounded bg-emerald-100/70 px-1 py-0.5 font-mono dark:bg-emerald-900/50">batchCode</code> & <code className="rounded bg-emerald-100/70 px-1 py-0.5 font-mono dark:bg-emerald-900/50">batchOrderId</code>: For batch orders, preserves the batch code (<code className="font-mono">CF-BATCH-001696</code>) and creation order ID (<code className="font-mono">API-CF-BATCH-001696</code>).
@@ -880,7 +880,7 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
   "timestamp": "2026-10-06T07:15:00.000Z",
   "data": {
     "orderId": "API-46551",
-    "reference": "WC-294283",
+    "reference": "ORD-10001",
     "batchCode": "CF-BATCH-001696",
     "batchOrderId": "API-CF-BATCH-001696",
     "network": "MTN",

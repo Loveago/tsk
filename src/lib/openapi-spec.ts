@@ -225,7 +225,7 @@ export const openApiSpec = {
             type: "object",
             properties: {
               orderId: { type: "string", example: "API-46551", description: "Individual order ID" },
-              reference: { type: "string", example: "WC-294283", description: "Client/shop external reference preserved from order creation" },
+              reference: { type: "string", example: "ORD-10001", description: "Client external reference preserved from order creation" },
               batchCode: { type: "string", example: "CF-BATCH-001696", nullable: true, description: "Parent batch code if submitted as a batch" },
               batchOrderId: { type: "string", example: "API-CF-BATCH-001696", nullable: true, description: "Parent batch order ID matching initial batch order.created event" },
               network: { type: "string", example: "MTN" },
