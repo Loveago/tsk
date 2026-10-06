@@ -3,13 +3,43 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { fromPesewas } from "@/lib/storefront";
 import { AdminStorefrontPanel } from "./admin-panel";
-import { Store, Banknote, AlertCircle } from "lucide-react";
+import { Store, Banknote, Wallet, AlertCircle, Clock, ShoppingBag } from "lucide-react";
 
 export default async function AdminStorefrontsPage() {
   await requireAdmin();
-  const [storefronts, users, withdrawals, applications, storefrontEnabledSetting] = await Promise.all([
+  const [
+    storefronts,
+    users,
+    withdrawals,
+    applications,
+    storefrontEnabledSetting,
+    allWallets,
+    approvedWdAgg,
+  ] = await Promise.all([
     prisma.storefront.findMany({
-      include: { user: { select: { name: true, email: true } } },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            storefrontWallet: {
+              select: {
+                id: true,
+                balance: true,
+                pendingBalance: true,
+              },
+            },
+            storefrontWithdrawals: {
+              select: {
+                amount: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     }),
     prisma.user.findMany({
@@ -28,10 +58,20 @@ export default async function AdminStorefrontsPage() {
       orderBy: { updatedAt: "asc" },
     }),
     prisma.systemSetting.findUnique({ where: { key: "storefront_feature_enabled" } }),
+    prisma.storefrontWallet.findMany(),
+    prisma.storefrontWithdrawal.aggregate({
+      where: { status: "APPROVED" },
+      _sum: { amount: true },
+    }),
   ]);
 
   const storefrontUserIds = new Set(storefronts.map((s) => s.userId));
   const candidates = users.filter((u) => !storefrontUserIds.has(u.id));
+
+  const totalBalanceP = allWallets.reduce((s, w) => s + w.balance, 0);
+  const totalPendingP = allWallets.reduce((s, w) => s + w.pendingBalance, 0);
+  const totalWithdrawnP = approvedWdAgg._sum.amount ?? 0;
+  const totalLifetimeP = totalBalanceP + totalPendingP + totalWithdrawnP;
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -39,7 +79,7 @@ export default async function AdminStorefrontsPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Storefronts</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Enable reseller storefronts, set their public address, and review withdrawal requests.
+            Enable reseller storefronts, set their public address, track commission wallets, and review withdrawal requests.
           </p>
         </div>
 
@@ -51,6 +91,13 @@ export default async function AdminStorefrontsPage() {
           >
             <Store className="h-4 w-4" />
             <span>Storefronts &amp; Resellers</span>
+          </Link>
+          <Link
+            href="/admin/storefronts/wallets"
+            className="flex items-center gap-2 border-b-2 border-transparent px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            <Wallet className="h-4 w-4" />
+            <span>Storefront Wallets</span>
           </Link>
           <Link
             href="/admin/storefronts/withdrawals"
@@ -66,6 +113,61 @@ export default async function AdminStorefrontsPage() {
           </Link>
         </div>
       </header>
+
+      {/* Wallet Overview Summary Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">Withdrawable Balance</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+              <Wallet className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+            GHS {fromPesewas(totalBalanceP).toFixed(2)}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">In reseller storefront wallets</p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">In-Flight Pending</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+              <Clock className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
+            GHS {fromPesewas(totalPendingP).toFixed(2)}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Commissions awaiting completion</p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">Paid Out to Date</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300">
+              <Banknote className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+            GHS {fromPesewas(totalWithdrawnP).toFixed(2)}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Approved MoMo withdrawals</p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#0d1526]">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-xs font-semibold uppercase tracking-wider">Lifetime Reseller Earnings</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400">
+              <ShoppingBag className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight text-violet-600 dark:text-violet-400">
+            GHS {fromPesewas(totalLifetimeP).toFixed(2)}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Total earned across all stores</p>
+        </div>
+      </div>
 
       {/* Alert Banner for pending withdrawals */}
       {withdrawals.length > 0 && (
@@ -93,15 +195,34 @@ export default async function AdminStorefrontsPage() {
       )}
 
       <AdminStorefrontPanel
-        storefronts={storefronts.map((s) => ({
-          id: s.id,
-          userId: s.userId,
-          slug: s.slug,
-          name: s.name,
-          status: s.status,
-          isActive: s.isActive,
-          owner: `${s.user.name} (${s.user.email})`,
-        }))}
+        storefronts={storefronts.map((s) => {
+          const balP = s.user.storefrontWallet?.balance ?? 0;
+          const pendP = s.user.storefrontWallet?.pendingBalance ?? 0;
+          const approvedWd = s.user.storefrontWithdrawals
+            .filter((w) => w.status === "APPROVED")
+            .reduce((sum, w) => sum + w.amount, 0);
+          const pendingWd = s.user.storefrontWithdrawals
+            .filter((w) => w.status === "PENDING")
+            .reduce((sum, w) => sum + w.amount, 0);
+
+          return {
+            id: s.id,
+            userId: s.userId,
+            slug: s.slug,
+            name: s.name,
+            status: s.status,
+            isActive: s.isActive,
+            owner: `${s.user.name} (${s.user.email})`,
+            userName: s.user.name,
+            userEmail: s.user.email,
+            userPhone: s.user.phone,
+            balance: fromPesewas(balP),
+            pendingBalance: fromPesewas(pendP),
+            totalWithdrawn: fromPesewas(approvedWd),
+            pendingWithdrawn: fromPesewas(pendingWd),
+            lifetimeEarned: fromPesewas(balP + pendP + approvedWd),
+          };
+        })}
         candidates={candidates.map((u) => ({ id: u.id, label: `${u.name} (${u.email})` }))}
         pendingWithdrawals={withdrawals.map((w) => ({
           id: w.id,

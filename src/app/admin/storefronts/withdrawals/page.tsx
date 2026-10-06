@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { fromPesewas } from "@/lib/storefront";
 import { AdminWithdrawalsView } from "@/components/admin/admin-withdrawals-view";
-import { Store, Banknote } from "lucide-react";
+import { Store, Banknote, Wallet } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -126,6 +126,13 @@ export default async function AdminStorefrontWithdrawalsPage() {
           >
             <Store className="h-4 w-4" />
             <span>Storefronts &amp; Resellers</span>
+          </Link>
+          <Link
+            href="/admin/storefronts/wallets"
+            className="flex items-center gap-2 border-b-2 border-transparent px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            <Wallet className="h-4 w-4" />
+            <span>Storefront Wallets</span>
           </Link>
           <Link
             href="/admin/storefronts/withdrawals"

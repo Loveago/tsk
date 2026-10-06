@@ -1,7 +1,19 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  Wallet,
+  ExternalLink,
+  ArrowUpRight,
+  Clock,
+  Store,
+  AlertCircle,
+  FileSpreadsheet,
+} from "lucide-react";
+import { Sheet } from "@/components/ui/sheet";
+import { Spinner } from "@/components/shared";
 
 interface StorefrontRow {
   id: string;
@@ -11,11 +23,21 @@ interface StorefrontRow {
   status: string;
   isActive?: boolean;
   owner: string;
+  userName?: string;
+  userEmail?: string;
+  userPhone?: string | null;
+  balance?: number;
+  pendingBalance?: number;
+  totalWithdrawn?: number;
+  pendingWithdrawn?: number;
+  lifetimeEarned?: number;
 }
+
 interface Candidate {
   id: string;
   label: string;
 }
+
 interface WithdrawalRow {
   id: string;
   owner: string;
@@ -25,6 +47,7 @@ interface WithdrawalRow {
   accountName: string;
   reference: string;
 }
+
 interface ApplicationRow {
   id: string;
   userId: string;
@@ -37,6 +60,122 @@ interface ApplicationRow {
   rejectionNote: string | null;
   requestedAt: string;
 }
+
+interface DetailUserWallet {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    status: string;
+    createdAt: string;
+  };
+  storefront: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    isActive: boolean;
+    phone: string | null;
+    whatsapp: string | null;
+  } | null;
+  wallet: {
+    id: string | null;
+    balance: number;
+    pendingBalance: number;
+    balanceGHS: number;
+    pendingBalanceGHS: number;
+    totalWithdrawn: number;
+    totalWithdrawnGHS: number;
+    pendingWithdrawals: number;
+    pendingWithdrawalsGHS: number;
+    lifetimeEarned: number;
+    lifetimeEarnedGHS: number;
+  };
+  transactions: Array<{
+    id: string;
+    type: string;
+    amount: number;
+    amountGHS: number;
+    balanceBefore: number;
+    balanceAfter: number;
+    balanceBeforeGHS: number;
+    balanceAfterGHS: number;
+    pendingBefore: number | null;
+    pendingAfter: number | null;
+    pendingBeforeGHS: number | null;
+    pendingAfterGHS: number | null;
+    reference: string | null;
+    description: string | null;
+    createdAt: string;
+  }>;
+  withdrawals: Array<{
+    id: string;
+    seq: number;
+    reference: string;
+    amount: number;
+    amountGHS: number;
+    fee: number;
+    feeGHS: number;
+    netAmount: number;
+    netAmountGHS: number;
+    network: string;
+    momoNumber: string;
+    accountName: string;
+    status: string;
+    note: string | null;
+    adminNote: string | null;
+    requestedAt: string;
+    processedAt: string | null;
+  }>;
+  recentOrders: Array<{
+    id: string;
+    seq: number;
+    orderCode: string;
+    customerPhone: string;
+    customerEmail: string | null;
+    sellingPrice: number;
+    sellingPriceGHS: number;
+    productCost: number;
+    productCostGHS: number;
+    commission: number;
+    commissionGHS: number;
+    status: string;
+    commissionState: string;
+    paymentReference: string;
+    packageName: string;
+    network: string;
+    dataAmount: number;
+    createdAt: string;
+  }>;
+}
+
+const TYPE_STYLES: Record<string, { label: string; badge: string }> = {
+  COMMISSION: {
+    label: "Commission Earned",
+    badge: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 border-amber-200 dark:border-amber-500/30",
+  },
+  COMMISSION_RELEASE: {
+    label: "Commission Released",
+    badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30",
+  },
+  COMMISSION_REVERSAL: {
+    label: "Commission Reversal",
+    badge: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300 border-red-200 dark:border-red-500/30",
+  },
+  WITHDRAWAL: {
+    label: "MoMo Withdrawal",
+    badge: "bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300 border-rose-200 dark:border-rose-500/30",
+  },
+  WITHDRAWAL_REVERSAL: {
+    label: "Withdrawal Reversal",
+    badge: "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300 border-sky-200 dark:border-sky-500/30",
+  },
+  ADJUSTMENT: {
+    label: "Admin Adjustment",
+    badge: "bg-purple-100 text-purple-800 dark:bg-purple-500/15 dark:text-purple-300 border-purple-200 dark:border-purple-500/30",
+  },
+};
 
 export function AdminStorefrontPanel({
   storefronts,
@@ -61,6 +200,28 @@ export function AdminStorefrontPanel({
   const [approveSlugs, setApproveSlugs] = React.useState<Record<string, string>>({});
   const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
+
+  // Quick Wallet Inspector Sheet State
+  const [inspectUserId, setInspectUserId] = React.useState<string | null>(null);
+  const [inspectLoading, setInspectLoading] = React.useState(false);
+  const [inspectDetail, setInspectDetail] = React.useState<DetailUserWallet | null>(null);
+  const [inspectTab, setInspectTab] = React.useState<"ledger" | "withdrawals" | "orders">("ledger");
+
+  async function openWalletDrawer(targetUserId: string) {
+    setInspectUserId(targetUserId);
+    setInspectLoading(true);
+    setInspectTab("ledger");
+    try {
+      const res = await fetch(`/api/admin/storefront-wallets?userId=${encodeURIComponent(targetUserId)}`);
+      if (!res.ok) throw new Error("Failed to load storefront wallet");
+      const data = await res.json();
+      setInspectDetail(data);
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Failed to load wallet" });
+    } finally {
+      setInspectLoading(false);
+    }
+  }
 
   async function toggleMasterStorefronts() {
     setTogglingMaster(true);
@@ -300,65 +461,113 @@ export function AdminStorefrontPanel({
         </button>
       </form>
 
-      {/* Storefront list */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0d1526]">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-white/5">
-            <tr>
-              <th className="px-4 py-2">Owner</th>
-              <th className="px-4 py-2">Store</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {storefronts.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500">No storefronts yet</td></tr>
-            )}
-            {storefronts.map((s) => (
-              <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800">
-                <td className="px-4 py-2">{s.owner}</td>
-                <td className="px-4 py-2">
-                  <a
-                    href={`https://${storefrontDomain}/${s.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-semibold text-violet-600 hover:underline dark:text-violet-400"
-                  >
-                    {storefrontDomain}/{s.slug}
-                  </a>
-                  <span className="ml-2 text-slate-400">{s.name}</span>
-                </td>
-                <td className="px-4 py-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s.status === "ENABLED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : s.status === "SUSPENDED" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" : s.status === "PENDING" ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" : s.status === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-slate-100 text-slate-500 dark:bg-white/10"}`}>
-                      {s.status}
-                    </span>
-                    {s.status === "ENABLED" && s.isActive === false && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-                        Paused by user
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-2">
-                  {s.status === "ENABLED" ? (
-                    <button onClick={() => setStatus(s, "SUSPEND")} disabled={busy} className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50">
-                      Suspend
-                    </button>
-                  ) : s.status === "SUSPENDED" ? (
-                    <button onClick={() => setStatus(s, "REVOKE")} disabled={busy} className="rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50">
-                      Revoke
-                    </button>
-                  ) : (
-                    <span className="text-xs text-slate-400">—</span>
-                  )}
-                </td>
+      {/* Storefront list with Wallets */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Storefronts &amp; Reseller Wallets ({storefronts.length})
+          </h2>
+          <Link
+            href="/admin/storefronts/wallets"
+            className="flex items-center gap-1.5 text-xs font-bold text-brand-600 hover:underline dark:text-brand-400"
+          >
+            <Wallet className="h-3.5 w-3.5" />
+            <span>Open Dedicated Wallets Tracker &amp; Ledger →</span>
+          </Link>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0d1526]">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-white/5">
+              <tr>
+                <th className="px-4 py-3">Owner</th>
+                <th className="px-4 py-3">Store</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Available Wallet</th>
+                <th className="px-4 py-3 text-right">In-Flight Pending</th>
+                <th className="px-4 py-3 text-right">Lifetime Earned</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {storefronts.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-500">No storefronts yet</td></tr>
+              )}
+              {storefronts.map((s) => (
+                <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/60 dark:hover:bg-white/[0.02]">
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => openWalletDrawer(s.userId)}
+                      className="font-bold text-slate-900 hover:text-brand-600 hover:underline dark:text-white dark:hover:text-brand-400 text-left"
+                    >
+                      {s.userName || s.owner}
+                    </button>
+                    <p className="text-xs text-slate-400">{s.userEmail || s.owner}</p>
+                    {s.userPhone && <p className="text-[11px] text-slate-400">{s.userPhone}</p>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <a
+                      href={`https://${storefrontDomain}/${s.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-violet-600 hover:underline dark:text-violet-400 inline-flex items-center gap-1"
+                    >
+                      <span>/{s.slug}</span>
+                      <ExternalLink className="h-3 w-3 opacity-70" />
+                    </a>
+                    <span className="ml-2 text-slate-400 text-xs">{s.name}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s.status === "ENABLED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : s.status === "SUSPENDED" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" : s.status === "PENDING" ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" : s.status === "REJECTED" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-slate-100 text-slate-500 dark:bg-white/10"}`}>
+                        {s.status}
+                      </span>
+                      {s.status === "ENABLED" && s.isActive === false && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                          Paused by user
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    GHS {(s.balance ?? 0).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-amber-600 dark:text-amber-400">
+                    GHS {(s.pendingBalance ?? 0).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 dark:text-white">
+                    GHS {(s.lifetimeEarned ?? 0).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openWalletDrawer(s.userId)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <Wallet className="h-3 w-3 text-brand-600 dark:text-brand-400" />
+                        <span>Track Wallet</span>
+                      </button>
+                      {s.status === "ENABLED" ? (
+                        <button onClick={() => setStatus(s, "SUSPEND")} disabled={busy} className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50">
+                          Suspend
+                        </button>
+                      ) : s.status === "SUSPENDED" ? (
+                        <button onClick={() => setStatus(s, "REVOKE")} disabled={busy} className="rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50">
+                          Revoke
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Pending withdrawals */}
       <section>
@@ -398,6 +607,356 @@ export function AdminStorefrontPanel({
           ))}
         </div>
       </section>
+
+      {/* Slide-over Inspector Sheet for Storefront Wallet */}
+      <Sheet
+        open={!!inspectUserId}
+        onClose={() => {
+          setInspectUserId(null);
+          setInspectDetail(null);
+        }}
+        title={
+          inspectDetail ? (
+            <div className="flex items-center gap-2">
+              <Wallet className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+              <span>{inspectDetail.user.name}&apos;s Storefront Wallet</span>
+            </div>
+          ) : (
+            "Storefront Wallet Details"
+          )
+        }
+        description={
+          inspectDetail ? (
+            <span>
+              {inspectDetail.user.email} {inspectDetail.user.phone ? `· ${inspectDetail.user.phone}` : ""}
+              {inspectDetail.storefront ? ` · Store: /${inspectDetail.storefront.slug}` : ""}
+            </span>
+          ) : undefined
+        }
+        className="max-w-3xl"
+      >
+        {inspectLoading && (
+          <div className="flex h-64 items-center justify-center">
+            <Spinner className="h-8 w-8 text-brand-600" />
+          </div>
+        )}
+
+        {!inspectLoading && inspectDetail && (
+          <div className="space-y-6">
+            {/* Quick Balances Grid */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5 dark:border-emerald-500/20 dark:bg-emerald-500/5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                  Available (Withdrawable)
+                </span>
+                <p className="mt-1 text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                  GHS {inspectDetail.wallet.balanceGHS.toFixed(2)}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 dark:border-amber-500/20 dark:bg-amber-500/5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                  In-Flight Pending
+                </span>
+                <p className="mt-1 text-lg font-bold text-amber-700 dark:text-amber-400">
+                  GHS {inspectDetail.wallet.pendingBalanceGHS.toFixed(2)}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 dark:border-slate-800 dark:bg-white/5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Total Paid Out
+                </span>
+                <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
+                  GHS {inspectDetail.wallet.totalWithdrawnGHS.toFixed(2)}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-500/20 dark:bg-violet-500/5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+                  Lifetime Earnings
+                </span>
+                <p className="mt-1 text-lg font-bold text-violet-700 dark:text-violet-400">
+                  GHS {inspectDetail.wallet.lifetimeEarnedGHS.toFixed(2)}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Actions & Store Info */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-[#0d1526]">
+              <div>
+                <p className="text-xs text-slate-500">
+                  Manage this reseller&apos;s full ledger history, adjust balances, and export data in the dedicated section.
+                </p>
+              </div>
+              <Link
+                href="/admin/storefronts/wallets"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-brand-500"
+              >
+                <span>Open Full Wallets Tracker</span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
+            {/* Detail Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setInspectTab("ledger")}
+                className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-bold transition ${
+                  inspectTab === "ledger"
+                    ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                }`}
+              >
+                <span>Ledger Transactions</span>
+                <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                  {inspectDetail.transactions.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setInspectTab("withdrawals")}
+                className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-bold transition ${
+                  inspectTab === "withdrawals"
+                    ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                }`}
+              >
+                <span>Withdrawals</span>
+                <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                  {inspectDetail.withdrawals.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setInspectTab("orders")}
+                className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-bold transition ${
+                  inspectTab === "orders"
+                    ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                    : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                }`}
+              >
+                <span>Recent Orders</span>
+                <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                  {inspectDetail.recentOrders.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Tab 1: Ledger */}
+            {inspectTab === "ledger" && (
+              <div className="space-y-3">
+                {inspectDetail.transactions.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                    No transactions recorded for this wallet yet.
+                  </p>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs dark:border-slate-800 dark:bg-[#0d1526]">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-white/5">
+                          <tr>
+                            <th className="px-3.5 py-2.5">Date &amp; Time</th>
+                            <th className="px-3.5 py-2.5">Type</th>
+                            <th className="px-3.5 py-2.5 text-right">Amount</th>
+                            <th className="px-3.5 py-2.5 text-right">Balance After</th>
+                            <th className="px-3.5 py-2.5">Reference &amp; Note</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                          {inspectDetail.transactions.map((t) => {
+                            const isPositive = t.amount >= 0;
+                            const typeMeta = TYPE_STYLES[t.type] || {
+                              label: t.type,
+                              badge: "bg-slate-100 text-slate-700",
+                            };
+                            return (
+                              <tr key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                                <td className="px-3.5 py-2.5 whitespace-nowrap text-slate-500">
+                                  {new Date(t.createdAt).toLocaleString("en-GB", {
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                  })}
+                                </td>
+                                <td className="px-3.5 py-2.5 whitespace-nowrap">
+                                  <span
+                                    className={`inline-block rounded-full border px-2 py-0.5 text-[9px] font-bold ${typeMeta.badge}`}
+                                  >
+                                    {typeMeta.label}
+                                  </span>
+                                </td>
+                                <td className="px-3.5 py-2.5 text-right whitespace-nowrap font-mono font-bold">
+                                  <span
+                                    className={
+                                      isPositive
+                                        ? "text-emerald-600 dark:text-emerald-400"
+                                        : "text-rose-600 dark:text-rose-400"
+                                    }
+                                  >
+                                    {isPositive ? "+" : "−"}GHS {Math.abs(t.amountGHS).toFixed(2)}
+                                  </span>
+                                </td>
+                                <td className="px-3.5 py-2.5 text-right whitespace-nowrap font-mono text-slate-700 dark:text-slate-300">
+                                  <div>GHS {t.balanceAfterGHS.toFixed(2)}</div>
+                                  {t.pendingAfterGHS !== null && (
+                                    <div className="text-[10px] text-amber-600 dark:text-amber-400">
+                                      pending: GHS {t.pendingAfterGHS.toFixed(2)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-300">
+                                  {t.description && <div>{t.description}</div>}
+                                  {t.reference && (
+                                    <div className="font-mono text-[10px] text-slate-400">
+                                      Ref: {t.reference}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: Withdrawals */}
+            {inspectTab === "withdrawals" && (
+              <div className="space-y-3">
+                {inspectDetail.withdrawals.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                    No withdrawals requested by this user.
+                  </p>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs dark:border-slate-800 dark:bg-[#0d1526]">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-white/5">
+                          <tr>
+                            <th className="px-3.5 py-2.5">Requested At</th>
+                            <th className="px-3.5 py-2.5">Ref / Seq</th>
+                            <th className="px-3.5 py-2.5">MoMo Destination</th>
+                            <th className="px-3.5 py-2.5 text-right">Net Payout</th>
+                            <th className="px-3.5 py-2.5">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                          {inspectDetail.withdrawals.map((w) => (
+                            <tr key={w.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                              <td className="px-3.5 py-2.5 whitespace-nowrap text-slate-500">
+                                {new Date(w.requestedAt).toLocaleString("en-GB", {
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                })}
+                              </td>
+                              <td className="px-3.5 py-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                                {w.reference}
+                              </td>
+                              <td className="px-3.5 py-2.5">
+                                <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {w.network} · {w.momoNumber}
+                                </div>
+                                <div className="text-[10px] text-slate-400">{w.accountName}</div>
+                              </td>
+                              <td className="px-3.5 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                GHS {w.netAmountGHS.toFixed(2)}
+                              </td>
+                              <td className="px-3.5 py-2.5">
+                                <span
+                                  className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                                    w.status === "APPROVED"
+                                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+                                      : w.status === "PENDING"
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                                      : "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300"
+                                  }`}
+                                >
+                                  {w.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 3: Orders */}
+            {inspectTab === "orders" && (
+              <div className="space-y-3">
+                {inspectDetail.recentOrders.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                    No orders recorded for this storefront yet.
+                  </p>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs dark:border-slate-800 dark:bg-[#0d1526]">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-white/5">
+                          <tr>
+                            <th className="px-3.5 py-2.5">Order / Date</th>
+                            <th className="px-3.5 py-2.5">Package</th>
+                            <th className="px-3.5 py-2.5">Buyer</th>
+                            <th className="px-3.5 py-2.5 text-right">Profit</th>
+                            <th className="px-3.5 py-2.5">Commission State</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                          {inspectDetail.recentOrders.map((o) => (
+                            <tr key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                              <td className="px-3.5 py-2.5">
+                                <div className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                  {o.orderCode}
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                  {new Date(o.createdAt).toLocaleString("en-GB", {
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                  })}
+                                </div>
+                              </td>
+                              <td className="px-3.5 py-2.5">
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {o.network} {o.packageName}
+                                </span>
+                              </td>
+                              <td className="px-3.5 py-2.5 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                                {o.customerPhone}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                +GHS {o.commissionGHS.toFixed(2)}
+                              </td>
+                              <td className="px-3.5 py-2.5">
+                                <span
+                                  className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                                    o.commissionState === "AVAILABLE"
+                                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+                                      : o.commissionState === "PENDING"
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                                      : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400"
+                                  }`}
+                                >
+                                  {o.commissionState}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Sheet>
     </div>
   );
 }

@@ -114,6 +114,7 @@ export const adminNav: NavItem[] = [
   { href: "/admin/chat", label: "Support Chat", icon: MessageSquare },
   { href: "/admin/users/signup-codes", label: "Signup Codes", icon: Ticket },
   { href: "/admin/storefronts", label: "Storefronts", icon: Store, badge: true },
+  { href: "/admin/storefronts/wallets", label: "Storefront Wallets", icon: Wallet },
   { href: "/admin/custom-storefront", label: "data-deals Store", icon: Globe },
   { href: "/admin/storefronts/withdrawals", label: "Withdrawals", icon: Banknote, badge: true },
   { href: "/admin/packages", label: "Packages", icon: Package },
