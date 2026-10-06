@@ -596,6 +596,8 @@ export async function POST(request: NextRequest) {
       {
         orderId: `API-${createdOrder.id}`,
         reference: createdOrder.externalReference || null,
+        batchCode: null,
+        batchOrderId: null,
         network: createdOrder.network,
         package: pkg.name,
         gbAmount: createdOrder.gbAmount,
@@ -617,6 +619,8 @@ export async function POST(request: NextRequest) {
         {
           orderId: `API-${createdOrder.id}`,
           reference: createdOrder.externalReference || null,
+          batchCode: null,
+          batchOrderId: null,
           network: createdOrder.network,
           package: pkg.name,
           gbAmount: createdOrder.gbAmount,

@@ -166,6 +166,8 @@ export const openApiSpec = {
         type: "object",
         properties: {
           orderId: { type: "string", example: "API-839201" },
+          batchCode: { type: "string", example: "CF-BATCH-000185", nullable: true },
+          batchOrderId: { type: "string", example: "API-CF-BATCH-000185", nullable: true },
           reference: { type: "string", example: "SHOP-ORD-10001" },
           network: { type: "string", example: "MTN" },
           package: { type: "string", example: "1GB" },
@@ -211,6 +213,31 @@ export const openApiSpec = {
           },
           active: { type: "boolean", default: true },
           rotateSecret: { type: "boolean", default: false },
+        },
+      },
+      WebhookEventPayload: {
+        type: "object",
+        description: "Payload delivered to your webhook URL on order lifecycle events",
+        properties: {
+          event: { type: "string", example: "order.completed", enum: ["order.created", "order.processing", "order.completed", "order.failed", "order.cancelled"] },
+          timestamp: { type: "string", format: "date-time" },
+          data: {
+            type: "object",
+            properties: {
+              orderId: { type: "string", example: "API-46551", description: "Individual order ID" },
+              reference: { type: "string", example: "WC-294283", description: "Client/shop external reference preserved from order creation" },
+              batchCode: { type: "string", example: "CF-BATCH-001696", nullable: true, description: "Parent batch code if submitted as a batch" },
+              batchOrderId: { type: "string", example: "API-CF-BATCH-001696", nullable: true, description: "Parent batch order ID matching initial batch order.created event" },
+              network: { type: "string", example: "MTN" },
+              gbAmount: { type: "number", example: 1 },
+              amount: { type: "number", example: 3.5 },
+              phoneNumber: { type: "string", example: "0241234567" },
+              status: { type: "string", example: "COMPLETED" },
+              failureReason: { type: "string", nullable: true, example: null },
+              createdAt: { type: "string", format: "date-time" },
+              completedAt: { type: "string", format: "date-time", nullable: true },
+            },
+          },
         },
       },
       NumberVerifyRequest: {

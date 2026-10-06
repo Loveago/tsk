@@ -22,9 +22,12 @@ export async function POST() {
       data: {
         orderId: "API-TEST0001",
         reference: "SHOP-TEST-REF",
+        batchCode: "CF-BATCH-TEST01",
+        batchOrderId: "API-CF-BATCH-TEST01",
         network: "MTN",
         package: "1GB",
         recipient: "0241234567",
+        phoneNumber: "0241234567",
         amount: 3.8,
         status: "COMPLETED",
         createdAt: new Date().toISOString(),

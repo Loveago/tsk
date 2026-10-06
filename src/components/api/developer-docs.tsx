@@ -847,6 +847,56 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
         </div>
       </div>
 
+      {/* Webhook Events & Order Correlation */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h3 className="text-base font-bold">Webhook Events & Order Correlation</h3>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          When automated orders transition status (e.g. accepted, processing, completed, or failed), Tskconnect dispatches real-time webhook events to your configured endpoint URL.
+        </p>
+
+        <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/50 p-4 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
+          <p className="font-semibold">🔗 Multi-Key Order Correlation for E-Commerce & WooCommerce</p>
+          <p className="mt-1">
+            Every webhook delivery provides stable identifiers so your listener can reliably correlate events back to your original orders:
+          </p>
+          <ul className="mt-2 list-disc pl-4 space-y-1">
+            <li>
+              <code className="rounded bg-emerald-100/70 px-1 py-0.5 font-mono dark:bg-emerald-900/50">reference</code>: Your original client or shop reference (e.g. <code className="font-mono">WC-294283</code> or <code className="font-mono">SHOP-ORD-10001</code>). Strictly preserved from creation through completion.
+            </li>
+            <li>
+              <code className="rounded bg-emerald-100/70 px-1 py-0.5 font-mono dark:bg-emerald-900/50">batchCode</code> & <code className="rounded bg-emerald-100/70 px-1 py-0.5 font-mono dark:bg-emerald-900/50">batchOrderId</code>: For batch orders, preserves the batch code (<code className="font-mono">CF-BATCH-001696</code>) and creation order ID (<code className="font-mono">API-CF-BATCH-001696</code>).
+            </li>
+            <li>
+              <code className="rounded bg-emerald-100/70 px-1 py-0.5 font-mono dark:bg-emerald-900/50">orderId</code>: The individual line item order ID (e.g. <code className="font-mono">API-46551</code>).
+            </li>
+          </ul>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-slate-500">Example Webhook Payload (<code className="font-mono text-emerald-600 dark:text-emerald-400">order.completed</code>):</p>
+          <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+{`{
+  "event": "order.completed",
+  "timestamp": "2026-10-06T07:15:00.000Z",
+  "data": {
+    "orderId": "API-46551",
+    "reference": "WC-294283",
+    "batchCode": "CF-BATCH-001696",
+    "batchOrderId": "API-CF-BATCH-001696",
+    "network": "MTN",
+    "gbAmount": 1,
+    "amount": 3.50,
+    "phoneNumber": "0241234567",
+    "status": "COMPLETED",
+    "failureReason": null,
+    "createdAt": "2026-10-06T07:10:00.000Z",
+    "completedAt": "2026-10-06T07:15:00.000Z"
+  }
+}`}
+          </pre>
+        </div>
+      </div>
+
       {/* Error Codes Reference */}
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h3 className="text-base font-bold">Standardized Error Codes</h3>

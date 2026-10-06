@@ -1228,7 +1228,6 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
       data: {
         status: "PENDING",
         providerReference: "CLICKYFIED_MANUAL_HOLD:STRANDED",
-        externalReference: null,
         failureReason: "Self-healing: Reverted stranded order from PROCESSING to PENDING (missing valid Clickyfied order reference). Held for manual fulfillment.",
       },
     });

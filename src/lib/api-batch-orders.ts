@@ -701,6 +701,7 @@ export async function handleBatchOrderSubmission({
     {
       orderId: `API-${result.orderBatch.batchCode}`,
       batchCode: result.orderBatch.batchCode,
+      batchOrderId: `API-${result.orderBatch.batchCode}`,
       reference: finalRef,
       network: batchNetwork,
       totalCount: result.createdOrders.length,
@@ -720,6 +721,7 @@ export async function handleBatchOrderSubmission({
       {
         orderId: `API-${result.orderBatch.batchCode}`,
         batchCode: result.orderBatch.batchCode,
+        batchOrderId: `API-${result.orderBatch.batchCode}`,
         reference: finalRef,
         network: batchNetwork,
         totalCount: result.createdOrders.length,

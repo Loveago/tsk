@@ -394,14 +394,24 @@ export async function getNextClickyfiedBatchCode(): Promise<string> {
   });
   let seq = parseInt(setting?.value || "0", 10);
   if (seq === 0) {
-    const lastOrder = await prisma.order.findFirst({
-      where: { externalReference: { startsWith: "CF-BATCH-" } },
-      orderBy: { id: "desc" },
-      select: { externalReference: true },
+    const lastBatch = await prisma.clickyfiedBatch.findFirst({
+      orderBy: { createdAt: "desc" },
+      select: { batchCode: true },
     });
-    if (lastOrder?.externalReference) {
-      const match = lastOrder.externalReference.match(/CF-BATCH-(\d+)/i);
+    if (lastBatch?.batchCode) {
+      const match = lastBatch.batchCode.match(/CF-BATCH-(\d+)/i);
       if (match) seq = parseInt(match[1], 10);
+    }
+    if (seq === 0) {
+      const lastOrder = await prisma.order.findFirst({
+        where: { externalReference: { startsWith: "CF-BATCH-" } },
+        orderBy: { id: "desc" },
+        select: { externalReference: true },
+      });
+      if (lastOrder?.externalReference) {
+        const match = lastOrder.externalReference.match(/CF-BATCH-(\d+)/i);
+        if (match) seq = parseInt(match[1], 10);
+      }
     }
   }
   seq += 1;
@@ -495,7 +505,6 @@ async function submitSingleBatchChunk(
     data: {
       status: "PROCESSING",
       providerReference: claimToken,
-      externalReference: batchCode,
     },
   });
 
@@ -510,7 +519,6 @@ async function submitSingleBatchChunk(
         data: {
           status: "PENDING",
           providerReference: null,
-          externalReference: null,
         },
       }).catch(() => {});
     }
@@ -617,7 +625,6 @@ async function submitSingleBatchChunk(
               data: {
                 status: "PENDING",
                 providerReference: `CLICKYFIED_INFLIGHT_HOLD:${batchCode}`,
-                externalReference: batchCode,
                 clickyfiedBatchId: null,
                 failureReason: "Recipient currently has in-flight order on Clickyfied. Held back from batch.",
               },
@@ -823,7 +830,6 @@ async function submitSingleBatchChunk(
           data: {
             status: "FAILED",
             providerReference: `CLICKYFIED:${batchOrderId}:FILTERED:${filterType.toUpperCase()}`,
-            externalReference: batchCode,
             failureReason,
           },
         });
@@ -882,7 +888,6 @@ async function submitSingleBatchChunk(
           data: {
             status: "PENDING",
             providerReference: `CLICKYFIED_MANUAL_HOLD:${batchCode}`,
-            externalReference: batchCode,
             clickyfiedBatchId: null,
             failureReason: `Excluded by provider from batch #${batchCode} (${batchOrderId}). Held in PENDING for manual fulfillment only.`,
           },
@@ -926,7 +931,6 @@ async function submitSingleBatchChunk(
         data: {
           status: targetStatus,
           providerReference: orderProviderRef,
-          externalReference: batchCode,
           failureReason: targetStatus === "FAILED" ? `Failed to deliver: ${rawStatus}` : null,
         },
       });
@@ -1075,7 +1079,6 @@ async function submitSingleBatchChunk(
         data: {
           status: "PENDING",
           providerReference: `CLICKYFIED_MANUAL_HOLD:${batchCode}`,
-          externalReference: batchCode,
           clickyfiedBatchId: null,
           failureReason: `Clickyfied is locked/halted: ${batchErr?.message || "Unavailable"}. Restored to PENDING for manual fulfillment only.`,
         },
@@ -1143,7 +1146,6 @@ async function submitSingleBatchChunk(
           data: {
             status: "FAILED",
             providerReference: `CLICKYFIED:FILTERED:${filterType.toUpperCase()}`,
-            externalReference: batchCode,
             failureReason: specificReason,
           },
         });
@@ -1211,7 +1213,6 @@ async function submitSingleBatchChunk(
         data: {
           status: "PENDING",
           providerReference: `CLICKYFIED_MANUAL_HOLD:${batchCode}`,
-          externalReference: batchCode,
           clickyfiedBatchId: null,
           failureReason: `${failReason}. Restored to PENDING for manual fulfillment only.`,
         },
@@ -1275,7 +1276,6 @@ async function submitSingleBatchChunk(
         data: {
           status: "PROCESSING",
           providerReference: `CLICKYFIED:${verifiedOrderId}`,
-          externalReference: batchCode,
         },
       });
 
@@ -1322,7 +1322,6 @@ async function submitSingleBatchChunk(
       data: {
         status: "PENDING",
         providerReference: `CLICKYFIED_MANUAL_HOLD:${batchCode}`,
-        externalReference: batchCode,
         clickyfiedBatchId: null,
         failureReason: `${timeoutMsg}. Restored to PENDING for manual fulfillment only.`,
       },
@@ -2281,7 +2280,6 @@ export async function syncClickyfiedBatchStatus(
           data: {
             status: "PENDING",
             providerReference: null,
-            externalReference: null,
             clickyfiedBatchId: null,
             failureReason: `Not found on Clickyfied in batch #${batch.batchCode} (${canonicalId}). Restored to pending queue.`,
           },
@@ -2426,7 +2424,6 @@ export async function retryClickyfiedBatchFailedOrders(
     data: {
       status: "PENDING",
       providerReference: null,
-      externalReference: null,
       failureReason: null,
       clickyfiedBatchId: null,
     },
@@ -2530,6 +2527,7 @@ export async function reconcileFailedClickyfiedOrders(
       externalReference: true,
       failureReason: true,
       clickyfiedBatchId: true,
+      clickyfiedBatch: { select: { batchCode: true } },
       batchId: true,
       createdAt: true,
     },
@@ -2552,6 +2550,9 @@ export async function reconcileFailedClickyfiedOrders(
   // Group failed orders by batch reference if available
   const batchQueryKeys = new Set<string>();
   for (const o of failedOrders) {
+    if (o.clickyfiedBatch?.batchCode) {
+      batchQueryKeys.add(o.clickyfiedBatch.batchCode);
+    }
     if (o.externalReference && o.externalReference.startsWith("CF-BATCH-")) {
       batchQueryKeys.add(o.externalReference);
     }
@@ -2594,9 +2595,9 @@ export async function reconcileFailedClickyfiedOrders(
     let matchedCanonicalId: string | null = null;
 
     // 1. Try matching from pre-fetched batch data
-    const batchKey = ord.externalReference?.startsWith("CF-BATCH-")
-      ? ord.externalReference
-      : ord.providerReference?.replace("CLICKYFIED:", "").split(":")[0];
+    const batchKey = ord.clickyfiedBatch?.batchCode
+      || (ord.externalReference?.startsWith("CF-BATCH-") ? ord.externalReference : null)
+      || ord.providerReference?.replace("CLICKYFIED:", "").split(":")[0];
 
     if (batchKey && batchEntriesMap.has(batchKey)) {
       const { canonicalId, entries } = batchEntriesMap.get(batchKey)!;
@@ -2780,7 +2781,12 @@ export async function resendClickyfiedBatch(
   let targetOrders = batch.orders;
   if (targetOrders.length === 0 && batch.batchCode) {
     targetOrders = await prisma.order.findMany({
-      where: { externalReference: batch.batchCode },
+      where: {
+        OR: [
+          { clickyfiedBatchId: batch.id },
+          { externalReference: batch.batchCode },
+        ],
+      },
     });
   }
 
@@ -2828,7 +2834,6 @@ export async function resendClickyfiedBatch(
     data: {
       status: "PENDING",
       providerReference: null,
-      externalReference: null,
     },
   });
 
@@ -2934,7 +2939,6 @@ export async function reconcileStrandedClickyfiedBatches(
               data: {
                 status: "PENDING",
                 providerReference: `CLICKYFIED_MANUAL_HOLD:${b.batchCode}`,
-                externalReference: b.batchCode,
                 clickyfiedBatchId: null,
                 failureReason: `Batch #${b.batchCode} not found on Clickyfied: restored to PENDING for manual fulfillment only.`,
               },
@@ -2970,7 +2974,6 @@ export async function reconcileStrandedClickyfiedBatches(
           data: {
             status: "PENDING",
             providerReference: null,
-            externalReference: null,
             clickyfiedBatchId: null,
             failureReason: `Reconciled from unconfirmed batch #${b.batchCode}: restored to pending queue.`,
           },
@@ -3033,7 +3036,6 @@ export async function reconcileStrandedClickyfiedBatches(
       data: {
         status: "PENDING",
         providerReference: null,
-        externalReference: null,
         clickyfiedBatchId: null,
         failureReason: "Restored to pending queue: unconfirmed provider claim",
       },

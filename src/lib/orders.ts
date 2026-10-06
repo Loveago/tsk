@@ -461,7 +461,12 @@ export async function changeOrderStatus(
   actor: Actor,
   opts: { force?: boolean; skipBatchRecompute?: boolean } = {}
 ): Promise<{ changed: boolean; override?: boolean }> {
-  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      batch: { select: { batchCode: true } },
+    },
+  });
   if (!order) throw new Error("Order not found");
 
   const target = normalizeOrderStatus(next);
@@ -608,6 +613,8 @@ export async function changeOrderStatus(
       {
         orderId: `API-${order.id}`,
         reference: order.externalReference || null,
+        batchCode: order.batch?.batchCode || null,
+        batchOrderId: order.batch?.batchCode ? `API-${order.batch.batchCode}` : null,
         network: order.network,
         gbAmount: order.gbAmount,
         amount: order.amount,
