@@ -124,25 +124,30 @@ export const batchActionSchema = z.object({
   force: z.boolean().optional(),
 });
 
-export const exportOrdersSchema = z.object({
-  network: z.enum(NETWORKS as [string, ...string[]]),
-  orderIds: z.array(z.coerce.number().int().positive()).optional(),
-  batchIds: z.array(z.string()).optional(),
-  userId: z.string().optional().or(z.literal("")),
-  packageId: z.string().optional().or(z.literal("")),
-  from: z.string().optional().or(z.literal("")),
-  to: z.string().optional().or(z.literal("")),
-  isReexport: z.boolean().optional(),
-  reason: z.string().max(300).optional().or(z.literal("")),
-  /** Status to move exported orders into. Defaults to PROCESSING when omitted. */
-  targetStatus: z.enum(ORDER_STATUSES as [string, ...string[]]).optional(),
-  /** Exact volume filter in MB (overrides min/max when set). */
-  volumeExactMb: z.coerce.number().positive().optional(),
-  /** Minimum volume filter in MB (inclusive). */
-  volumeMinMb: z.coerce.number().positive().optional(),
-  /** Maximum volume filter in MB (inclusive). */
-  volumeMaxMb: z.coerce.number().positive().optional(),
-});
+export const exportOrdersSchema = z
+  .object({
+    network: z.enum(NETWORKS as [string, ...string[]]).optional(),
+    orderIds: z.array(z.coerce.number().int().positive()).optional(),
+    batchIds: z.array(z.string()).optional(),
+    userId: z.string().optional().or(z.literal("")),
+    packageId: z.string().optional().or(z.literal("")),
+    from: z.string().optional().or(z.literal("")),
+    to: z.string().optional().or(z.literal("")),
+    isReexport: z.boolean().optional(),
+    reason: z.string().max(300).optional().or(z.literal("")),
+    /** Status to move exported orders into. Defaults to PROCESSING when omitted. */
+    targetStatus: z.enum(ORDER_STATUSES as [string, ...string[]]).optional(),
+    /** Exact volume filter in MB (overrides min/max when set). */
+    volumeExactMb: z.coerce.number().positive().optional(),
+    /** Minimum volume filter in MB (inclusive). */
+    volumeMinMb: z.coerce.number().positive().optional(),
+    /** Maximum volume filter in MB (inclusive). */
+    volumeMaxMb: z.coerce.number().positive().optional(),
+  })
+  .refine(
+    (data) => Boolean(data.network || (data.orderIds && data.orderIds.length > 0) || (data.batchIds && data.batchIds.length > 0)),
+    { message: "Network is required unless specific order IDs or batch IDs are provided", path: ["network"] }
+  );
 
 export const deliveryReportActionSchema = z.object({
   reportId: z.string().min(1),

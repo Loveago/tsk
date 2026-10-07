@@ -549,7 +549,7 @@ export async function POST(request: NextRequest) {
               amount: price,
               status: "APPROVED",
               reference: `api_order:${order.id}`,
-              note: `API Order API-${order.id} (${pkg!.name})`,
+              note: `API Order API-${order.id} (${pkg!.name}) · ${order.phoneNumber}`,
             },
           });
         }

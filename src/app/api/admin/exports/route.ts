@@ -5,7 +5,7 @@ import { exportOrdersSchema } from "@/lib/validation";
 import { exportOrdersToExcel } from "@/lib/order-export";
 import { computeExportStatusFromCounts } from "@/lib/orders";
 import { quickDateRange } from "@/lib/batches";
-import { handleRouteError } from "@/lib/api-helpers";
+import { handleRouteError, apiError } from "@/lib/api-helpers";
 
 /** Export history list (§29). */
 export async function GET(request: NextRequest) {
@@ -104,8 +104,72 @@ export async function POST(request: NextRequest) {
     const actor = await requireStaff();
     const input = exportOrdersSchema.parse(await request.json());
 
+    // If network was not specified, but specific orderIds or batchIds were provided,
+    // determine the network(s) of the matching orders and export each network.
+    if (!input.network && (input.orderIds?.length || input.batchIds?.length)) {
+      const orderWhere: Record<string, unknown> = { isSandbox: false };
+      if (input.orderIds?.length) orderWhere.id = { in: input.orderIds };
+      if (input.batchIds?.length) orderWhere.batchId = { in: input.batchIds };
+
+      const matchingOrders = await prisma.order.findMany({
+        where: orderWhere,
+        select: { id: true, network: true },
+      });
+
+      if (matchingOrders.length === 0) {
+        return apiError(400, "No eligible orders found for the selected items.");
+      }
+
+      const networkGroups = new Map<string, number[]>();
+      for (const o of matchingOrders) {
+        if (!networkGroups.has(o.network)) networkGroups.set(o.network, []);
+        networkGroups.get(o.network)!.push(o.id);
+      }
+
+      const results = [];
+      for (const [net, ids] of networkGroups.entries()) {
+        const res = await exportOrdersToExcel({
+          network: net,
+          actor: { id: actor.id, label: actor.email },
+          orderIds: ids,
+          isReexport: input.isReexport,
+          reason: input.reason || undefined,
+          targetStatus: input.targetStatus || "PROCESSING",
+        });
+        results.push({
+          exportBatchId: res.exportBatchId,
+          exportCode: res.exportCode,
+          network: net,
+          count: res.count,
+          totalGb: res.totalGb,
+          totalAmount: res.totalAmount,
+          fileName: res.fileName,
+          fileBase64: res.buffer.toString("base64"),
+        });
+      }
+
+      if (results.length === 1) {
+        return NextResponse.json({
+          ...results[0],
+          exports: results,
+        });
+      }
+
+      return NextResponse.json({
+        exportBatchId: results[0].exportBatchId,
+        exportCode: results.map((r) => r.exportCode).join(", "),
+        count: results.reduce((sum, r) => sum + r.count, 0),
+        totalGb: results.reduce((sum, r) => sum + r.totalGb, 0),
+        totalAmount: results.reduce((sum, r) => sum + r.totalAmount, 0),
+        fileName: results.map((r) => r.fileName).join(", "),
+        fileBase64: results[0].fileBase64,
+        exports: results,
+      });
+    }
+
+    // Default flow when network is provided
     const result = await exportOrdersToExcel({
-      network: input.network,
+      network: input.network!,
       actor: { id: actor.id, label: actor.email },
       orderIds: input.orderIds,
       batchIds: input.batchIds,
@@ -129,6 +193,18 @@ export async function POST(request: NextRequest) {
       totalAmount: result.totalAmount,
       fileName: result.fileName,
       fileBase64: result.buffer.toString("base64"),
+      exports: [
+        {
+          exportBatchId: result.exportBatchId,
+          exportCode: result.exportCode,
+          network: input.network!,
+          count: result.count,
+          totalGb: result.totalGb,
+          totalAmount: result.totalAmount,
+          fileName: result.fileName,
+          fileBase64: result.buffer.toString("base64"),
+        },
+      ],
     });
   } catch (err) {
     return handleRouteError(err);

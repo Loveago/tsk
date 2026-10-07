@@ -78,6 +78,10 @@ interface WalletTxItem {
   balanceBefore?: number;
   balanceAfter?: number;
   sendClaim?: { id: string; transactionReference: string; senderPhone: string; status: string } | null;
+  recipientPhone?: string | null;
+  orderId?: number | null;
+  orderNetwork?: string | null;
+  orderGbAmount?: number | null;
 }
 
 interface PeriodStats {
@@ -347,6 +351,7 @@ export default function AdminWalletsPage() {
       "Type",
       "Amount (GHS)",
       "Reason / Note",
+      "Recipient Phone",
       "Balance Before (GHS)",
       "Balance After (GHS)",
       "Status",
@@ -358,6 +363,7 @@ export default function AdminWalletsPage() {
       tx.type,
       tx.amount.toFixed(2),
       `"${(tx.note || "").replace(/"/g, '""')}"`,
+      `"${tx.recipientPhone || ""}"`,
       typeof tx.balanceBefore === "number" ? tx.balanceBefore.toFixed(2) : "",
       typeof tx.balanceAfter === "number" ? tx.balanceAfter.toFixed(2) : "",
       tx.status,
@@ -873,9 +879,11 @@ export default function AdminWalletsPage() {
                                     >
                                       {isCredit ? "CREDIT" : "DEBIT"}
                                     </span>
-                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                                      {tx.type}
-                                    </span>
+                                    {tx.type !== "DEBIT" && tx.type !== "CREDIT" && (
+                                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                        {tx.type}
+                                      </span>
+                                    )}
                                     {isMtn && (
                                       <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900 dark:bg-amber-400/20 dark:text-amber-300">
                                         MTN
@@ -893,11 +901,34 @@ export default function AdminWalletsPage() {
                                     )}
                                     <StatusBadge status={tx.status} />
                                   </div>
-                                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                    {tx.note || (tx.reference ? `Ref: ${tx.reference}` : tx.type)}
-                                  </p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                      {tx.note || (tx.reference ? `Ref: ${tx.reference}` : tx.type)}
+                                    </p>
+                                    {tx.recipientPhone && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          navigator.clipboard.writeText(tx.recipientPhone!);
+                                          toast(`Copied ${tx.recipientPhone}`, "success");
+                                        }}
+                                        className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700/80 px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700/80 transition cursor-pointer group shadow-2xs"
+                                        title="Click to copy recipient phone"
+                                      >
+                                        <Phone className="h-3 w-3 text-brand-600 dark:text-brand-400 group-hover:scale-110 transition-transform" />
+                                        <span>{tx.recipientPhone}</span>
+                                        <Copy className="h-2.5 w-2.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200" />
+                                      </button>
+                                    )}
+                                  </div>
                                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                                     {tx.reference && <span>Ref: {tx.reference}</span>}
+                                    {tx.recipientPhone && !tx.note?.includes(tx.recipientPhone) && (
+                                      <span>
+                                        · Recipient: <span className="font-mono text-slate-700 dark:text-slate-300">{tx.recipientPhone}</span>
+                                      </span>
+                                    )}
                                     <span>· {formatDateTime(tx.createdAt)}</span>
                                   </div>
                                 </div>

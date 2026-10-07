@@ -21,6 +21,16 @@ export function QueueList({
 }) {
   const [copied, setCopied] = React.useState(false);
 
+  const totalGb = React.useMemo(() => {
+    const sum = lines.reduce((acc, l) => acc + (Number(l.gbAmount) || 0), 0);
+    return Math.round(sum * 100) / 100;
+  }, [lines]);
+
+  const totalPrice = React.useMemo(() => {
+    const sum = lines.reduce((acc, l) => acc + (Number(l.price) || 0), 0);
+    return Math.round(sum * 100) / 100;
+  }, [lines]);
+
   const copyAll = async () => {
     if (!lines.length) return;
     const text = lines.map((l) => `${l.phoneNumber} ${l.gbAmount}gb`).join("\n");
@@ -47,13 +57,26 @@ export function QueueList({
 
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/5">
-        <h2 className="flex items-center gap-2 text-sm font-bold">
-          <ShoppingBag className="h-4 w-4 text-brand-500" /> Order Queue
-          <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[11px] font-bold text-brand-600 dark:text-brand-400">
-            {lines.length}
-          </span>
-        </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-white/5">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+            <ShoppingBag className="h-4 w-4 text-brand-500" /> Order Queue
+            <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[11px] font-bold text-brand-600 dark:text-brand-400">
+              {lines.length}
+            </span>
+          </h2>
+          {lines.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-bold text-violet-700 border border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30">
+                <span className="text-[10px] font-semibold text-violet-500 dark:text-violet-400">Total:</span>
+                <span className="font-extrabold">{totalGb} GB</span>
+              </span>
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30">
+                {formatGHS(totalPrice)}
+              </span>
+            </div>
+          )}
+        </div>
         {lines.length > 0 && (
           <div className="flex items-center gap-3">
             <button

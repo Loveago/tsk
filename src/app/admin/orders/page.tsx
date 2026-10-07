@@ -13,7 +13,8 @@ import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import Link from "next/link";
-import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2 } from "lucide-react";
+import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet } from "lucide-react";
+import { downloadBase64 } from "@/components/batches/batch-ui";
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import { OrderDateFilter, getTodayRange, type DateFilterValue } from "@/components/orders/order-date-filter";
@@ -82,6 +83,7 @@ export default function AdminOrdersPage() {
   const [selectedOrderIds, setSelectedOrderIds] = React.useState<Set<number>>(new Set());
   const [dispatchingToApi, setDispatchingToApi] = React.useState(false);
   const [bulkUpdatingStatus, setBulkUpdatingStatus] = React.useState(false);
+  const [exportingToExcel, setExportingToExcel] = React.useState(false);
 
   // ── storefront orders state ──────────────────────────────────
   const [sfOrders, setSfOrders] = React.useState<StorefrontOrderRow[]>([]);
@@ -288,6 +290,96 @@ export default function AdminOrdersPage() {
       toast("Error during provider API dispatch", "error");
     } finally {
       setDispatchingToApi(false);
+    }
+  };
+
+  const handleBulkExportToExcel = async () => {
+    if (selectedOrderIds.size === 0 || exportingToExcel || bulkUpdatingStatus || dispatchingToApi) return;
+    try {
+      setExportingToExcel(true);
+      const orderIds = Array.from(selectedOrderIds);
+      const res = await fetch("/api/admin/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderIds,
+          targetStatus: "PROCESSING",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to export orders to Excel", "error");
+        return;
+      }
+
+      if (json.exports && Array.isArray(json.exports) && json.exports.length > 0) {
+        for (const exp of json.exports) {
+          if (exp.fileName && exp.fileBase64) {
+            downloadBase64(exp.fileName, exp.fileBase64);
+          }
+        }
+      } else if (json.fileName && json.fileBase64) {
+        downloadBase64(json.fileName, json.fileBase64);
+      }
+
+      const count = json.count ?? orderIds.length;
+      const exportCodes = json.exportCode ? ` (${json.exportCode})` : "";
+      toast(
+        `Exported ${count} order(s) to Excel${exportCodes} — moved to Processing. Saved to Exported Files.`,
+        "success"
+      );
+
+      setSelectedOrderIds(new Set());
+      await load();
+    } catch (err: any) {
+      toast(err?.message || "Failed to export orders to Excel", "error");
+    } finally {
+      setExportingToExcel(false);
+    }
+  };
+
+  const handleBulkBatchExportToExcel = async () => {
+    if (selectedBatchIds.size === 0 || exportingToExcel || bulkUpdatingStatus) return;
+    try {
+      setExportingToExcel(true);
+      const batchIds = Array.from(selectedBatchIds);
+      const res = await fetch("/api/admin/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batchIds,
+          targetStatus: "PROCESSING",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to export batches to Excel", "error");
+        return;
+      }
+
+      if (json.exports && Array.isArray(json.exports) && json.exports.length > 0) {
+        for (const exp of json.exports) {
+          if (exp.fileName && exp.fileBase64) {
+            downloadBase64(exp.fileName, exp.fileBase64);
+          }
+        }
+      } else if (json.fileName && json.fileBase64) {
+        downloadBase64(json.fileName, json.fileBase64);
+      }
+
+      const count = json.count ?? batchIds.length;
+      const exportCodes = json.exportCode ? ` (${json.exportCode})` : "";
+      toast(
+        `Exported batch orders to Excel (${count} order(s))${exportCodes} — moved to Processing. Saved to Exported Files.`,
+        "success"
+      );
+
+      setSelectedBatchIds(new Set());
+      await load();
+    } catch (err: any) {
+      toast(err?.message || "Failed to export batches to Excel", "error");
+    } finally {
+      setExportingToExcel(false);
     }
   };
 
@@ -600,22 +692,42 @@ export default function AdminOrdersPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200">
           <span>{selectedBatchIds.size} batch(es) selected</span>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("Pending")}>
+            <Button size="sm" variant="outline" disabled={bulkUpdatingStatus || exportingToExcel} onClick={() => handleBulkBatchStatus("Pending")}>
               Pending
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("Processing")}>
+            <Button size="sm" variant="outline" disabled={bulkUpdatingStatus || exportingToExcel} onClick={() => handleBulkBatchStatus("Processing")}>
               Processing
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("Processed")}>
+            <Button size="sm" variant="outline" disabled={bulkUpdatingStatus || exportingToExcel} onClick={() => handleBulkBatchStatus("Processed")}>
               Processed
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulkBatchStatus("Refund")}>
+            <Button size="sm" variant="outline" disabled={bulkUpdatingStatus || exportingToExcel} onClick={() => handleBulkBatchStatus("Refund")}>
               Refund
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUpdatingStatus || exportingToExcel}
+              onClick={handleBulkBatchExportToExcel}
+              className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-400 dark:hover:bg-emerald-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              {exportingToExcel ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+                  <span>Exporting...</span>
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Export to Excel</span>
+                </>
+              )}
             </Button>
             <button
               type="button"
+              disabled={bulkUpdatingStatus || exportingToExcel}
               onClick={() => setSelectedBatchIds(new Set())}
-              className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Clear
             </button>
@@ -633,7 +745,7 @@ export default function AdminOrdersPage() {
               return selectedOrderIds.size < currentList.length ? (
                 <button
                   type="button"
-                  disabled={dispatchingToApi || bulkUpdatingStatus}
+                  disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
                   onClick={() => setSelectedOrderIds(new Set(currentList.map((o) => o.id)))}
                   className="underline hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -646,7 +758,7 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
               onClick={() => handleBulkSingleOrderStatus("Pending")}
             >
               Pending
@@ -654,7 +766,7 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
               onClick={() => handleBulkSingleOrderStatus("Processing")}
             >
               Processing
@@ -662,7 +774,7 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
               onClick={() => handleBulkSingleOrderStatus("Processed")}
             >
               Processed
@@ -670,17 +782,36 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
               onClick={() => handleBulkSingleOrderStatus("Refund")}
             >
               Refund
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+              onClick={handleBulkExportToExcel}
+              className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-400 dark:hover:bg-emerald-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              {exportingToExcel ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+                  <span>Exporting...</span>
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Export to Excel</span>
+                </>
+              )}
+            </Button>
+            <Button
+              size="sm"
               variant="default"
-              disabled={dispatchingToApi || bulkUpdatingStatus}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
               onClick={handleBulkDispatchToApi}
-              className="bg-brand-600 hover:bg-brand-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+              className="bg-brand-600 hover:bg-brand-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5 cursor-pointer"
             >
               {dispatchingToApi ? (
                 <>
@@ -693,7 +824,7 @@ export default function AdminOrdersPage() {
             </Button>
             <button
               type="button"
-              disabled={dispatchingToApi || bulkUpdatingStatus}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
               onClick={() => setSelectedOrderIds(new Set())}
               className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >

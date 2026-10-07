@@ -186,7 +186,11 @@ export function BatchDetailSheet({
         open={open}
         onClose={onClose}
         title={b ? <span className="font-mono">{b.batchCode}</span> : "Batch"}
-        description={b ? `${b.network} · created ${formatDateTime(b.createdAt)}` : undefined}
+        description={
+          b
+            ? `${b.network} · ${b.totalGb} GB · ${detail?.stats.total || b.totalRecipients} orders · created ${formatDateTime(b.createdAt)}`
+            : undefined
+        }
       >
         {loading || !detail || !b ? (
           <div className="flex justify-center py-12">
@@ -248,7 +252,7 @@ export function BatchDetailSheet({
             <div className="rounded-xl border border-slate-100 dark:border-white/5">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5 text-xs dark:border-white/5">
                 <span className="font-semibold text-slate-500">
-                  Recipients {selected.size > 0 && `· ${selected.size} selected`}
+                  Recipients ({b.totalGb} GB total) {selected.size > 0 && `· ${selected.size} selected`}
                 </span>
                 <button
                   className="underline-offset-2 hover:underline"

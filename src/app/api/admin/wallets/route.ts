@@ -237,6 +237,47 @@ export async function GET(request: NextRequest) {
         else if (d < 0) periodDebits += Math.abs(d);
       }
 
+      // Helper to extract order ID from transaction reference or note
+      const extractOrderIdFromTx = (tx: { reference?: string | null; note?: string | null }): number | null => {
+        if (tx.reference) {
+          const refMatch = tx.reference.match(/(?:api_order:|order:|REF-ORDER-|order-)(\d+)/i);
+          if (refMatch && refMatch[1]) {
+            const id = parseInt(refMatch[1], 10);
+            if (!isNaN(id) && id > 0) return id;
+          }
+        }
+        if (tx.note) {
+          const noteMatch = tx.note.match(/(?:API Order API-|Order\s*#)(\d+)/i);
+          if (noteMatch && noteMatch[1]) {
+            const id = parseInt(noteMatch[1], 10);
+            if (!isNaN(id) && id > 0) return id;
+          }
+        }
+        return null;
+      };
+
+      const extractPhoneFromNote = (note?: string | null): string | null => {
+        if (!note) return null;
+        const match = note.match(/(?:(?:\+?233)|0)[25]\d{8}/);
+        return match ? match[0] : null;
+      };
+
+      // If search query is provided, find any orders for this user matching the phone number
+      let matchingOrderIds: Set<number> | null = null;
+      if (txQuery) {
+        const matchedOrders = await prisma.order.findMany({
+          where: {
+            userId,
+            phoneNumber: { contains: txQuery },
+          },
+          select: { id: true },
+          take: 1000,
+        });
+        if (matchedOrders.length > 0) {
+          matchingOrderIds = new Set(matchedOrders.map((o) => o.id));
+        }
+      }
+
       // Filter by type, status, and search query
       const filteredTxs = [...periodTxs].reverse().filter((tx) => {
         if (txType && tx.type !== txType) return false;
@@ -247,13 +288,52 @@ export async function GET(request: NextRequest) {
           const matchType = tx.type.toLowerCase().includes(txQuery);
           const matchAmount = String(tx.amount).includes(txQuery);
           const matchSender = tx.sendClaim?.senderPhone?.toLowerCase().includes(txQuery);
-          if (!matchNote && !matchRef && !matchType && !matchAmount && !matchSender) return false;
+          const orderId = extractOrderIdFromTx(tx);
+          const matchOrderPhone = orderId ? matchingOrderIds?.has(orderId) : false;
+          if (!matchNote && !matchRef && !matchType && !matchAmount && !matchSender && !matchOrderPhone) return false;
         }
         return true;
       });
 
       const txTotal = filteredTxs.length;
-      const transactions = filteredTxs.slice((txPage - 1) * txPageSize, txPage * txPageSize);
+      const paginatedTxs = filteredTxs.slice((txPage - 1) * txPageSize, txPage * txPageSize);
+
+      // Collect order IDs to fetch recipient phone numbers in bulk
+      const orderIdsToFetch = Array.from(
+        new Set(
+          paginatedTxs
+            .map((tx) => extractOrderIdFromTx(tx))
+            .filter((id): id is number => id !== null)
+        )
+      );
+
+      const ordersMap = new Map<number, { phoneNumber: string; network: string; gbAmount: number; status: string }>();
+      if (orderIdsToFetch.length > 0) {
+        const foundOrders = await prisma.order.findMany({
+          where: { id: { in: orderIdsToFetch } },
+          select: { id: true, phoneNumber: true, network: true, gbAmount: true, status: true },
+        });
+        for (const fo of foundOrders) {
+          ordersMap.set(fo.id, fo);
+        }
+      }
+
+      const transactions = paginatedTxs.map((tx) => {
+        const orderId = extractOrderIdFromTx(tx);
+        const order = orderId ? ordersMap.get(orderId) : null;
+        const recipientPhone =
+          order?.phoneNumber ||
+          extractPhoneFromNote(tx.note) ||
+          (tx.sendClaim?.senderPhone ?? null);
+
+        return {
+          ...tx,
+          orderId: orderId ?? null,
+          recipientPhone: recipientPhone ?? null,
+          orderNetwork: order?.network ?? null,
+          orderGbAmount: order?.gbAmount ?? null,
+        };
+      });
 
       // Pagination for orders activity
       const orderPage = Math.max(1, Number(searchParams.get("orderPage") ?? 1));

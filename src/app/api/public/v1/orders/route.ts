@@ -166,7 +166,14 @@ export async function POST(request: NextRequest) {
         });
 
         await tx.walletTransaction.create({
-          data: { userId, type: "DEBIT", amount, status: "APPROVED", reference: `order:${createdOrder.id}` },
+          data: {
+            userId,
+            type: "DEBIT",
+            amount,
+            status: "APPROVED",
+            reference: `order:${createdOrder.id}`,
+            note: `API Order #${createdOrder.id} (${pkg.network} ${pkg.gbAmount}GB) · ${input.phoneNumber}`,
+          },
         });
 
         await tx.orderStatusHistory.create({
