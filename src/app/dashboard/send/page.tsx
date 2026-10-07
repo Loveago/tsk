@@ -1042,10 +1042,50 @@ export default function SendOrderPage() {
       </div>
 
       {lines.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-600 to-violet-600 p-3.5 sm:p-4 text-white shadow-md shadow-blue-600/20">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 backdrop-blur">
+              <Send className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-bold">
+                Ready to Send ({lines.length} order{lines.length === 1 ? "" : "s"})
+              </p>
+              <p className="text-xs text-blue-100">
+                Total: <span className="font-semibold">{Math.round(lines.reduce((s, l) => s + (Number(l.gbAmount) || 0), 0) * 100) / 100} GB</span> · Total cost: <span className="font-semibold">{formatGHS(total)}</span>
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={
+              submitting ||
+              !submissionEnabled ||
+              isHalted ||
+              lines.some((l) => networkStatus[l.network] === false)
+            }
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-6 text-sm font-bold text-blue-700 shadow-md transition hover:bg-blue-50 disabled:opacity-60 cursor-pointer"
+          >
+            <Send className="h-4 w-4" />
+            {submitting ? "Sending…" : `Send ${lines.length} order${lines.length === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      )}
+
+      {lines.length > 0 && (
         <QueueList
           lines={lines}
           onRemove={(i) => setLines((ls) => ls.filter((_, j) => j !== i))}
           onClear={() => setLines([])}
+          onSubmit={submit}
+          submitting={submitting}
+          isSubmitDisabled={
+            submitting ||
+            !submissionEnabled ||
+            isHalted ||
+            lines.some((l) => networkStatus[l.network] === false)
+          }
         />
       )}
 

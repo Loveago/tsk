@@ -14,10 +14,16 @@ export function QueueList({
   lines,
   onRemove,
   onClear,
+  onSubmit,
+  submitting,
+  isSubmitDisabled,
 }: {
   lines: Line[];
   onRemove: (i: number) => void;
   onClear: () => void;
+  onSubmit?: () => void;
+  submitting?: boolean;
+  isSubmitDisabled?: boolean;
 }) {
   const [copied, setCopied] = React.useState(false);
 
@@ -78,11 +84,22 @@ export function QueueList({
           )}
         </div>
         {lines.length > 0 && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {onSubmit && (
+              <button
+                onClick={onSubmit}
+                disabled={submitting || isSubmitDisabled}
+                type="button"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-3.5 text-xs font-bold shadow-xs transition hover:shadow disabled:opacity-50 cursor-pointer"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>{submitting ? "Sending…" : `Send ${lines.length} order${lines.length === 1 ? "" : "s"}`}</span>
+              </button>
+            )}
             <button
               onClick={copyAll}
               type="button"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white cursor-pointer"
             >
               {copied ? (
                 <>
