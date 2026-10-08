@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { formatGHS, formatDateTime, sanitizeCustomerRefundNote } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { FileWarning } from "lucide-react";
+import { Clock, FileWarning } from "lucide-react";
+import { Spinner } from "@/components/shared";
 import {
   ReportWindowBanner,
   type ReportWindowInfo,
@@ -73,6 +74,12 @@ export function OrderDetailDialog({
   const handleDirectReport = async () => {
     if (!order) return;
     setSubmitting(true);
+    // Optimistically update immediately so the button turns to "Under Review" right away
+    setLocalReport({
+      id: "",
+      seq: 0,
+      status: "UNDER_REVIEW",
+    });
     try {
       const res = await fetch("/api/reports/not-received", {
         method: "POST",
@@ -81,6 +88,7 @@ export function OrderDetailDialog({
       });
       const json = await res.json();
       if (!res.ok) {
+        setLocalReport(null);
         alert(json.error ?? "Failed to file report");
         return;
       }
@@ -88,9 +96,11 @@ export function OrderDetailDialog({
         id: json.report?.id ?? json.id ?? "",
         seq: json.report?.seq ?? 0,
         status: "UNDER_REVIEW",
+        code: json.report?.code,
       });
       onOrderChanged?.();
     } catch {
+      setLocalReport(null);
       alert("Error filing report");
     } finally {
       setSubmitting(false);
@@ -131,17 +141,23 @@ export function OrderDetailDialog({
                     onClick={handleDirectReport}
                   >
                     <FileWarning className="h-3.5 w-3.5" />
-                    {submitting ? "Sending Report…" : "Report Not Received"}
+                    Report Not Received
                   </Button>
                 )}
                 {report && (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-amber-300 text-amber-700 dark:border-amber-500/30 dark:text-amber-400"
-                    onClick={() => setViewReportId(report.id)}
+                    disabled={!report.id}
+                    className="border-violet-200 bg-violet-50 text-violet-700 hover:opacity-80 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-400 disabled:opacity-80"
+                    onClick={() => { if (report.id) setViewReportId(report.id); }}
                   >
-                    Under Review · View Report {report.code ? `(${report.code})` : ""}
+                    {submitting ? (
+                      <Spinner className="h-3.5 w-3.5 mr-1" />
+                    ) : (
+                      <Clock className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    Under Review{report.code ? ` · View Report (${report.code})` : (report.id ? " · View Report" : "")}
                   </Button>
                 )}
               </div>

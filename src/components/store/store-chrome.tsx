@@ -340,10 +340,17 @@ export function StoreChrome(props: StoreChromeProps) {
             </div>
           </div>
 
-          <div className="mt-10 flex flex-col gap-2 border-t border-slate-100 pt-6 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+          <div className="mt-10 flex flex-col gap-3 border-t border-slate-100 pt-6 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
             <p>
               {name} © {new Date().getFullYear()}
             </p>
+            <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-400">
+              <Link href="/terms" className="hover:text-slate-700 dark:hover:text-slate-200 transition">Terms</Link>
+              <span>·</span>
+              <Link href="/privacy" className="hover:text-slate-700 dark:hover:text-slate-200 transition">Privacy</Link>
+              <span>·</span>
+              <Link href="/refund" className="hover:text-slate-700 dark:hover:text-slate-200 transition">Refunds</Link>
+            </div>
             <p>Secure Mobile Money checkout</p>
           </div>
         </div>

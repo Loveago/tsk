@@ -43,10 +43,14 @@ export async function middleware(request: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // Allow API endpoints, internal assets, and static files to execute directly
+    // Allow API endpoints, internal assets, static files, and legal policies to execute directly
     if (
       pathname.startsWith("/api") ||
       pathname.startsWith("/_next") ||
+      pathname.startsWith("/terms") ||
+      pathname.startsWith("/privacy") ||
+      pathname.startsWith("/refund") ||
+      pathname.startsWith("/legal") ||
       pathname.includes(".")
     ) {
       return NextResponse.next();
@@ -110,10 +114,14 @@ export async function middleware(request: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // Allow API endpoints, internal assets, and static files to execute directly
+    // Allow API endpoints, internal assets, static files, and legal policies to execute directly
     if (
       pathname.startsWith("/api") ||
       pathname.startsWith("/_next") ||
+      pathname.startsWith("/terms") ||
+      pathname.startsWith("/privacy") ||
+      pathname.startsWith("/refund") ||
+      pathname.startsWith("/legal") ||
       pathname.includes(".")
     ) {
       return NextResponse.next();

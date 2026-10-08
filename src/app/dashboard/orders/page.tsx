@@ -233,6 +233,46 @@ export default function OrdersPage() {
 
   const directReportOrder = async (order: { id: number }) => {
     setSubmittingReportId(order.id);
+
+    // Optimistically update immediately so the button turns to "Under Review" right away
+    const optimisticReport = { id: "", status: "UNDER_REVIEW" };
+    setSingleOrders((prev) =>
+      prev.map((o) =>
+        o.id === order.id
+          ? {
+              ...o,
+              _hasReportedLocally: true,
+              deliveryReports: [optimisticReport],
+            }
+          : o
+      )
+    );
+    setApiOrders((prev) =>
+      prev.map((o) =>
+        o.id === order.id
+          ? {
+              ...o,
+              _hasReportedLocally: true,
+              deliveryReports: [optimisticReport],
+            }
+          : o
+      )
+    );
+    if (detail) {
+      setDetail({
+        ...detail,
+        orders: detail.orders.map((o) =>
+          o.id === order.id
+            ? {
+                ...o,
+                _hasReportedLocally: true,
+                deliveryReports: [optimisticReport],
+              }
+            : o
+        ),
+      });
+    }
+
     try {
       const res = await fetch("/api/reports/not-received", {
         method: "POST",
@@ -241,40 +281,67 @@ export default function OrdersPage() {
       });
       const json = await res.json();
       if (!res.ok) {
+        // Revert optimistic update
+        const revert = (o: any) =>
+          o.id === order.id
+            ? {
+                ...o,
+                _hasReportedLocally: false,
+                deliveryReports: [],
+              }
+            : o;
+        setSingleOrders((prev) => prev.map(revert));
+        setApiOrders((prev) => prev.map(revert));
+        if (detail) {
+          setDetail({
+            ...detail,
+            orders: detail.orders.map(revert),
+          });
+        }
         toast(json.error ?? "Failed to file report", "error");
         return;
       }
       toast("Report submitted — our team will investigate", "success");
 
-      // Update local state in single orders
-      setSingleOrders((prev) =>
-        prev.map((o) =>
-          o.id === order.id
-            ? {
-                ...o,
-                _hasReportedLocally: true,
-                deliveryReports: [{ id: json.report?.id ?? json.id ?? "", status: "UNDER_REVIEW" }],
-              }
-            : o
-        )
-      );
+      const serverReport = {
+        id: json.report?.id ?? json.id ?? "",
+        seq: json.report?.seq ?? json.seq,
+        status: "UNDER_REVIEW",
+      };
 
-      // Update local state in batch detail if open
+      // Update with server report ID
+      setSingleOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, deliveryReports: [serverReport] } : o))
+      );
+      setApiOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, deliveryReports: [serverReport] } : o))
+      );
       if (detail) {
         setDetail({
           ...detail,
           orders: detail.orders.map((o) =>
-            o.id === order.id
-              ? {
-                  ...o,
-                  _hasReportedLocally: true,
-                  deliveryReports: [{ id: json.report?.id ?? json.id ?? "", status: "UNDER_REVIEW" }],
-                }
-              : o
+            o.id === order.id ? { ...o, deliveryReports: [serverReport] } : o
           ),
         });
       }
     } catch {
+      // Revert optimistic update on catch
+      const revert = (o: any) =>
+        o.id === order.id
+          ? {
+              ...o,
+              _hasReportedLocally: false,
+              deliveryReports: [],
+            }
+          : o;
+      setSingleOrders((prev) => prev.map(revert));
+      setApiOrders((prev) => prev.map(revert));
+      if (detail) {
+        setDetail({
+          ...detail,
+          orders: detail.orders.map(revert),
+        });
+      }
       toast("Error submitting report", "error");
     } finally {
       setSubmittingReportId(null);
@@ -333,7 +400,7 @@ export default function OrdersPage() {
           }`}
           title={rep.id ? "Click to view review status and delivery proof" : "Under Review"}
         >
-          <Clock className="h-3 w-3" />
+          {isSubmitting ? <Spinner className="h-3 w-3 mr-0.5" /> : <Clock className="h-3 w-3" />}
           <span>{badgeText}</span>
           {hasProof && <Eye className="h-3 w-3 ml-0.5" />}
         </button>
@@ -350,12 +417,8 @@ export default function OrdersPage() {
         onClick={() => directReportOrder(o)}
         disabled={isSubmitting}
       >
-        {isSubmitting ? (
-          <Spinner className="h-3.5 w-3.5 mr-1" />
-        ) : (
-          <FileWarning className="h-3.5 w-3.5 mr-1" />
-        )}
-        {isSubmitting ? "Submitting…" : "Report"}
+        <FileWarning className="h-3.5 w-3.5 mr-1" />
+        Report
       </Button>
     );
   };

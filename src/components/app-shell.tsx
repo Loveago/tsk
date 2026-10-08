@@ -503,6 +503,13 @@ export function AppShell({
       <footer className="mt-4 border-t border-slate-200/70 py-4 text-center text-xs text-slate-400 dark:border-white/5 space-y-2">
         <div className={cn("mx-auto px-4", navMode === "sidebar" ? "max-w-[1600px]" : "max-w-[1440px]")}>
           <div>{footerText || "Tskconnect © 2026"}</div>
+          <div className="flex justify-center items-center gap-3 text-[11px] mt-1 text-slate-400">
+            <Link href="/terms" className="hover:underline hover:text-slate-600 dark:hover:text-slate-200">Terms of Service</Link>
+            <span>·</span>
+            <Link href="/privacy" className="hover:underline hover:text-slate-600 dark:hover:text-slate-200">Privacy Policy</Link>
+            <span>·</span>
+            <Link href="/refund" className="hover:underline hover:text-slate-600 dark:hover:text-slate-200">Refund Policy</Link>
+          </div>
           <div className="flex justify-center gap-4 text-[11px] mt-1">
             {supportPhone && <span>Support: {supportPhone}</span>}
             {supportTelegram && <span>Telegram: {supportTelegram}</span>}

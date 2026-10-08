@@ -142,7 +142,14 @@ export function NotReceivedReportFormDialog({
             Cancel
           </Button>
           <Button size="sm" onClick={submit} disabled={busy}>
-            {busy ? <Spinner className="h-3.5 w-3.5" /> : "Submit report"}
+            {busy ? (
+              <>
+                <Spinner className="h-3.5 w-3.5 mr-1" />
+                Under Review…
+              </>
+            ) : (
+              "Submit report"
+            )}
           </Button>
         </div>
       </div>

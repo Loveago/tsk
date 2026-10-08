@@ -22,7 +22,15 @@ export function AuthShell({
         )}
         <div className="mt-6">{children}</div>
       </div>
-      <p className="mt-6 text-xs text-slate-400">Tskconnect © 2026</p>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5 text-xs text-slate-400">
+        <span>Tskconnect © 2026</span>
+        <span>·</span>
+        <Link href="/terms" className="hover:underline">Terms</Link>
+        <span>·</span>
+        <Link href="/privacy" className="hover:underline">Privacy</Link>
+        <span>·</span>
+        <Link href="/refund" className="hover:underline">Refund Policy</Link>
+      </div>
     </div>
   );
 }

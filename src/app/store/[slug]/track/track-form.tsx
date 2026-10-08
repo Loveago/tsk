@@ -311,7 +311,11 @@ export function TrackForm({ slug }: { slug: string }) {
           }`}
           title={rep?.id ? "Click to view review status and delivery proof" : "Under Review"}
         >
-          <Clock className="h-3 w-3 shrink-0" />
+          {isSubmitting ? (
+            <RefreshCw className="h-3 w-3 shrink-0 animate-spin" />
+          ) : (
+            <Clock className="h-3 w-3 shrink-0" />
+          )}
           <span>{badgeText}</span>
           {rep?.hasProof && <Eye className="h-3 w-3 ml-0.5 shrink-0" />}
         </button>

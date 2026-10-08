@@ -393,7 +393,16 @@ export function DeveloperApplicationCard({
                   className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="terms" className="text-xs text-slate-600 dark:text-slate-400">
-                  I agree to the Tskconnect Developer API Terms of Service and understand that automated order fulfillment will debit from my account balance.
+                  I agree to the Tskconnect Developer API{" "}
+                  <a
+                    href="/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-yellow-600 dark:text-yellow-400 underline font-semibold hover:opacity-80"
+                  >
+                    Terms of Service
+                  </a>{" "}
+                  and understand that automated order fulfillment will debit from my account balance.
                 </label>
               </div>
 
