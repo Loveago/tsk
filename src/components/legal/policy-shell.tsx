@@ -143,12 +143,12 @@ export function PolicyShell({
                 <span>WhatsApp / Phone</span>
               </div>
               <a
-                href="https://wa.me/233243721334"
+                href="https://wa.me/233551234567"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white hover:underline"
               >
-                +233 24 372 1334
+                +233 55 123 4567
               </a>
             </div>
 

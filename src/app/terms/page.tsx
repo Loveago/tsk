@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PolicyShell } from "@/components/legal/policy-shell";
-import { CheckCircle2, Shield, AlertTriangle, Scale, Lock, Users, Store, Zap } from "lucide-react";
+import { CheckCircle2, Shield, AlertTriangle, Scale, Lock, Users, Store, Zap, Phone } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Terms of Service — Tskconnect",
@@ -189,6 +189,23 @@ export default function TermsOfServicePage() {
         <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
           To the maximum extent permitted by Ghanaian law, Tskconnect.com will not be liable for any indirect, incidental, or consequential damages resulting from network delays or operator-level errors. These Terms are governed by and construed in accordance with the laws of the Republic of Ghana.
         </p>
+      </section>
+
+      {/* Section 9 */}
+      <section className="mb-8 space-y-3">
+        <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white">
+          <Phone className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0" />
+          <span>9. Contact &amp; Inquiries</span>
+        </h2>
+        <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+          For inquiries regarding these Terms or support with your account and orders, please reach out to us:
+        </p>
+        <ul className="space-y-1.5 list-none pl-0 text-slate-700 dark:text-slate-300 text-sm">
+          <li><strong>Entity:</strong> Tskconnect</li>
+          <li><strong>WhatsApp / Phone:</strong> <a href="https://wa.me/233551234567">+233 55 123 4567</a></li>
+          <li><strong>Support Email:</strong> <a href="mailto:support@tskconnect.com">support@tskconnect.com</a></li>
+          <li><strong>Operating Hours:</strong> 5:00 AM – 11:59 PM GMT, Monday – Sunday</li>
+        </ul>
       </section>
     </PolicyShell>
   );

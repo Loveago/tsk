@@ -158,7 +158,7 @@ export default function RefundPolicyPage() {
         </p>
         <ul className="space-y-1.5 list-none pl-0 text-slate-700 dark:text-slate-300 text-sm">
           <li><strong>Support Email:</strong> <a href="mailto:support@tskconnect.com">support@tskconnect.com</a></li>
-          <li><strong>WhatsApp / Phone:</strong> <a href="https://wa.me/233243721334">+233 24 372 1334</a></li>
+          <li><strong>WhatsApp / Phone:</strong> <a href="https://wa.me/233551234567">+233 55 123 4567</a></li>
           <li><strong>Operating Hours:</strong> 5:00 AM – 11:59 PM GMT, Monday – Sunday</li>
         </ul>
       </section>
