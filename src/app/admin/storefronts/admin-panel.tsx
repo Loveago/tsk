@@ -206,11 +206,13 @@ export function AdminStorefrontPanel({
   const [inspectLoading, setInspectLoading] = React.useState(false);
   const [inspectDetail, setInspectDetail] = React.useState<DetailUserWallet | null>(null);
   const [inspectTab, setInspectTab] = React.useState<"ledger" | "withdrawals" | "orders">("ledger");
+  const [orderSearch, setOrderSearch] = React.useState("");
 
   async function openWalletDrawer(targetUserId: string) {
     setInspectUserId(targetUserId);
     setInspectLoading(true);
     setInspectTab("ledger");
+    setOrderSearch("");
     try {
       const res = await fetch(`/api/admin/storefront-wallets?userId=${encodeURIComponent(targetUserId)}`);
       if (!res.ok) throw new Error("Failed to load storefront wallet");
@@ -890,68 +892,128 @@ export function AdminStorefrontPanel({
             {/* Tab 3: Orders */}
             {inspectTab === "orders" && (
               <div className="space-y-3">
-                {inspectDetail.recentOrders.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
-                    No orders recorded for this storefront yet.
-                  </p>
-                ) : (
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs dark:border-slate-800 dark:bg-[#0d1526]">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-white/5">
-                          <tr>
-                            <th className="px-3.5 py-2.5">Order / Date</th>
-                            <th className="px-3.5 py-2.5">Package</th>
-                            <th className="px-3.5 py-2.5">Buyer</th>
-                            <th className="px-3.5 py-2.5 text-right">Profit</th>
-                            <th className="px-3.5 py-2.5">Commission State</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                          {inspectDetail.recentOrders.map((o) => (
-                            <tr key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
-                              <td className="px-3.5 py-2.5">
-                                <div className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                                  {o.orderCode}
-                                </div>
-                                <div className="text-[10px] text-slate-400">
-                                  {new Date(o.createdAt).toLocaleString("en-GB", {
-                                    dateStyle: "short",
-                                    timeStyle: "short",
-                                  })}
-                                </div>
-                              </td>
-                              <td className="px-3.5 py-2.5">
-                                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                  {o.network} {o.packageName}
-                                </span>
-                              </td>
-                              <td className="px-3.5 py-2.5 font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                                {o.customerPhone}
-                              </td>
-                              <td className="px-3.5 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                +GHS {o.commissionGHS.toFixed(2)}
-                              </td>
-                              <td className="px-3.5 py-2.5">
-                                <span
-                                  className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ${
-                                    o.commissionState === "AVAILABLE"
-                                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
-                                      : o.commissionState === "PENDING"
-                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
-                                      : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400"
-                                  }`}
-                                >
-                                  {o.commissionState}
-                                </span>
-                              </td>
+                {/* Search bar */}
+                <div className="relative">
+                  <svg
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400"
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                  <input
+                    type="search"
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    placeholder="Search by order code or buyer number…"
+                    className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
+                  />
+                  {orderSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setOrderSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      aria-label="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {(() => {
+                  const q = orderSearch.trim().toLowerCase();
+                  const filtered = q
+                    ? inspectDetail.recentOrders.filter(
+                        (o) =>
+                          o.orderCode.toLowerCase().includes(q) ||
+                          o.customerPhone.toLowerCase().includes(q) ||
+                          (o.paymentReference ?? "").toLowerCase().includes(q)
+                      )
+                    : inspectDetail.recentOrders;
+
+                  if (inspectDetail.recentOrders.length === 0) {
+                    return (
+                      <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 dark:border-slate-800">
+                        No orders recorded for this storefront yet.
+                      </p>
+                    );
+                  }
+
+                  if (filtered.length === 0) {
+                    return (
+                      <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500 dark:border-slate-800">
+                        No orders match &ldquo;{orderSearch}&rdquo;.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs dark:border-slate-800 dark:bg-[#0d1526]">
+                      {q && (
+                        <div className="border-b border-slate-100 px-3.5 py-2 text-[10px] text-slate-500 dark:border-slate-800">
+                          Showing {filtered.length} of {inspectDetail.recentOrders.length} orders
+                        </div>
+                      )}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-white/5">
+                            <tr>
+                              <th className="px-3.5 py-2.5">Order / Date</th>
+                              <th className="px-3.5 py-2.5">Package</th>
+                              <th className="px-3.5 py-2.5">Buyer</th>
+                              <th className="px-3.5 py-2.5 text-right">Selling Price</th>
+                              <th className="px-3.5 py-2.5 text-right">Reseller Profit</th>
+                              <th className="px-3.5 py-2.5">Commission State</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                            {filtered.map((o) => (
+                              <tr key={o.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                                <td className="px-3.5 py-2.5">
+                                  <div className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                    {o.orderCode}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">
+                                    {new Date(o.createdAt).toLocaleString("en-GB", {
+                                      dateStyle: "short",
+                                      timeStyle: "short",
+                                    })}
+                                  </div>
+                                </td>
+                                <td className="px-3.5 py-2.5">
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                    {o.network} {o.packageName}
+                                  </span>
+                                </td>
+                                <td className="px-3.5 py-2.5 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                                  {o.customerPhone}
+                                </td>
+                                <td className="px-3.5 py-2.5 text-right font-mono text-slate-700 dark:text-slate-300">
+                                  GHS {o.sellingPriceGHS.toFixed(2)}
+                                </td>
+                                <td className="px-3.5 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                  +GHS {o.commissionGHS.toFixed(2)}
+                                </td>
+                                <td className="px-3.5 py-2.5">
+                                  <span
+                                    className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                                      o.commissionState === "AVAILABLE"
+                                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+                                        : o.commissionState === "PENDING"
+                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                                        : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400"
+                                    }`}
+                                  >
+                                    {o.commissionState}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             )}
           </div>
