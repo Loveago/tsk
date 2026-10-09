@@ -183,3 +183,168 @@ export async function getDivertedReferences(): Promise<string[]> {
     return [];
   }
 }
+
+export const DIVERTED_PHONES_SETTING_KEY = "datadeals_diverted_phones";
+
+/**
+ * Records a customer phone number as associated with a diverted order.
+ */
+export async function recordDivertedPhone(phone: string): Promise<void> {
+  if (!phone) return;
+  const raw = await prisma.systemSetting.findUnique({
+    where: { key: DIVERTED_PHONES_SETTING_KEY },
+  });
+  let phones: string[] = [];
+  if (raw?.value) {
+    try {
+      phones = JSON.parse(raw.value);
+    } catch {
+      phones = [];
+    }
+  }
+  const clean = phone.trim();
+  if (!phones.includes(clean)) {
+    phones.push(clean);
+    if (phones.length > 10000) {
+      phones = phones.slice(phones.length - 10000);
+    }
+    await prisma.systemSetting.upsert({
+      where: { key: DIVERTED_PHONES_SETTING_KEY },
+      create: {
+        key: DIVERTED_PHONES_SETTING_KEY,
+        value: JSON.stringify(phones),
+      },
+      update: {
+        value: JSON.stringify(phones),
+      },
+    });
+  }
+}
+
+export const DATA_DEALS_STOREFRONT_FILTER = {
+  OR: [
+    { slug: { in: ["data-deals", "data-dealsgh", "data-deqls"] } },
+    { customDomain: { contains: "data-deals" } },
+    { name: { contains: "data-deals", mode: "insensitive" as const } },
+    { name: { contains: "data deals", mode: "insensitive" as const } },
+  ],
+};
+
+let cachedDataDealsIds: { ids: string[]; expiresAt: number } | null = null;
+
+/**
+ * Returns the database IDs of all Data Deals storefront variations.
+ * Caches in-memory for 60 seconds to avoid connection pool pressure on Neon.
+ */
+export async function getDataDealsStorefrontIds(): Promise<string[]> {
+  const now = Date.now();
+  if (cachedDataDealsIds && cachedDataDealsIds.expiresAt > now) {
+    return cachedDataDealsIds.ids;
+  }
+  try {
+    const stores = await prisma.storefront.findMany({
+      where: DATA_DEALS_STOREFRONT_FILTER,
+      select: { id: true },
+    });
+    const ids = stores.map((s) => s.id);
+    cachedDataDealsIds = { ids, expiresAt: now + 60000 };
+    return ids;
+  } catch (err) {
+    if (cachedDataDealsIds) return cachedDataDealsIds.ids;
+    console.error("getDataDealsStorefrontIds error:", err);
+    return [];
+  }
+}
+
+let cachedLofaqIdentifiers: {
+  result: { phones: string[]; emails: string[] };
+  expiresAt: number;
+} | null = null;
+
+/**
+ * Returns all phone numbers and email addresses of customers who have orders
+ * with Lofaq Data Hub (both native Lofaq orders and diverted orders).
+ * Used system-wide to eliminate any trace of past data-deals orders for these customers.
+ * Caches in-memory for 10 seconds to avoid connection pool exhaustion.
+ */
+export async function getLofaqCustomerIdentifiers(): Promise<{
+  phones: string[];
+  emails: string[];
+}> {
+  const now = Date.now();
+  if (cachedLofaqIdentifiers && cachedLofaqIdentifiers.expiresAt > now) {
+    return cachedLofaqIdentifiers.result;
+  }
+
+  try {
+    const phones = new Set<string>();
+    const emails = new Set<string>();
+
+    // 1. From SystemSetting datadeals_diverted_phones
+    const rawPhones = await prisma.systemSetting.findUnique({
+      where: { key: DIVERTED_PHONES_SETTING_KEY },
+    });
+    if (rawPhones?.value) {
+      try {
+        const list = JSON.parse(rawPhones.value);
+        if (Array.isArray(list)) {
+          for (const p of list) {
+            if (typeof p === "string" && p) phones.add(p.trim());
+          }
+        }
+      } catch {}
+    }
+
+    // 2. From Lofaq Data Hub storefront orders (captures both native and diverted orders)
+    const lofaq = await findLofaqStorefront();
+    if (lofaq) {
+      const lofaqOrders = await prisma.storefrontOrder.findMany({
+        where: { storefrontId: lofaq.id },
+        select: { customerPhone: true, customerEmail: true },
+        distinct: ["customerPhone"],
+      });
+      for (const o of lofaqOrders) {
+        if (o.customerPhone) phones.add(o.customerPhone.trim());
+        if (o.customerEmail) emails.add(o.customerEmail.trim().toLowerCase());
+      }
+    }
+
+    // 3. From any diverted references
+    const divertedRefs = await getDivertedReferences();
+    if (divertedRefs.length > 0) {
+      const divertedOrders = await prisma.storefrontOrder.findMany({
+        where: { paymentReference: { in: divertedRefs } },
+        select: { customerPhone: true, customerEmail: true },
+      });
+      for (const o of divertedOrders) {
+        if (o.customerPhone) phones.add(o.customerPhone.trim());
+        if (o.customerEmail) emails.add(o.customerEmail.trim().toLowerCase());
+      }
+    }
+
+    // Expand phones to include standard variations (local 10-digit, 9-digit, international)
+    const expandedPhones = new Set<string>();
+    for (const p of phones) {
+      expandedPhones.add(p);
+      const digits = p.replace(/\D/g, "");
+      if (digits.length >= 9) {
+        const last9 = digits.slice(-9);
+        expandedPhones.add(last9);
+        expandedPhones.add("0" + last9);
+        expandedPhones.add("233" + last9);
+        expandedPhones.add("+233" + last9);
+      }
+    }
+
+    const result = {
+      phones: Array.from(expandedPhones),
+      emails: Array.from(emails),
+    };
+    cachedLofaqIdentifiers = { result, expiresAt: now + 10000 };
+    return result;
+  } catch (err) {
+    if (cachedLofaqIdentifiers) return cachedLofaqIdentifiers.result;
+    console.error("getLofaqCustomerIdentifiers error:", err);
+    return { phones: [], emails: [] };
+  }
+}

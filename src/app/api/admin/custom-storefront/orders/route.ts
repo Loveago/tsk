@@ -39,6 +39,23 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // Eliminate any trace of past data-deals orders for customers allocated/associated with Lofaq Data Hub
+    const { getLofaqCustomerIdentifiers } = await import("@/lib/order-allocation");
+    const { phones: lofaqPhones, emails: lofaqEmails } = await getLofaqCustomerIdentifiers();
+
+    if (lofaqPhones.length > 0 || lofaqEmails.length > 0) {
+      const excludeConditions: Record<string, unknown>[] = [];
+      if (lofaqPhones.length > 0) {
+        excludeConditions.push({ customerPhone: { in: lofaqPhones } });
+      }
+      if (lofaqEmails.length > 0) {
+        excludeConditions.push({ customerEmail: { in: lofaqEmails, mode: "insensitive" } });
+      }
+      where.NOT = {
+        OR: excludeConditions,
+      };
+    }
+
     const [data, total] = await Promise.all([
       prisma.storefrontOrder.findMany({
         where,

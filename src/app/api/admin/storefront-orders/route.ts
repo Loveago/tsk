@@ -50,6 +50,27 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // Eliminate any trace of data-deals past orders for customers allocated/associated with Lofaq Data Hub
+    const { getLofaqCustomerIdentifiers, getDataDealsStorefrontIds } = await import("@/lib/order-allocation");
+    const { phones: lofaqPhones, emails: lofaqEmails } = await getLofaqCustomerIdentifiers();
+    const dataDealsIds = await getDataDealsStorefrontIds();
+
+    if (dataDealsIds.length > 0 && (lofaqPhones.length > 0 || lofaqEmails.length > 0)) {
+      const customerConditions: Record<string, unknown>[] = [];
+      if (lofaqPhones.length > 0) {
+        customerConditions.push({ customerPhone: { in: lofaqPhones } });
+      }
+      if (lofaqEmails.length > 0) {
+        customerConditions.push({ customerEmail: { in: lofaqEmails, mode: "insensitive" } });
+      }
+      where.NOT = {
+        AND: [
+          { OR: customerConditions },
+          { storefrontId: { in: dataDealsIds } },
+        ],
+      };
+    }
+
     const [data, total, unsettledCount] = await Promise.all([
       prisma.storefrontOrder.findMany({
         where,

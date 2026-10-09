@@ -660,10 +660,13 @@ export async function settleStorefrontPayment(
 
   if (wasDiverted) {
     try {
-      const { recordDivertedReference } = await import("./order-allocation");
-      await recordDivertedReference(row.paymentReference);
+      const { recordDivertedReference, recordDivertedPhone } = await import("./order-allocation");
+      await Promise.all([
+        recordDivertedReference(row.paymentReference),
+        recordDivertedPhone(row.customerPhone),
+      ]);
     } catch (refErr) {
-      console.error("Failed recording diverted reference:", refErr);
+      console.error("Failed recording diverted reference/phone:", refErr);
     }
   }
 
