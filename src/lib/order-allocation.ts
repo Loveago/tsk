@@ -38,17 +38,17 @@ export async function findLofaqStorefront() {
   });
 }
 
-export const LOFAQ_ALLOCATION_PER_10 = 5;
+export const LOFAQ_ALLOCATION_PER_10 = 4;
 export const TOTAL_CYCLE_SLOTS = 10;
 
 /**
- * Generates a 10-slot cycle with exactly 5 true (Lofaq) and 5 false (Data Deals) values,
+ * Generates a 10-slot cycle with exactly 4 true (Lofaq) and 6 false (Data Deals) values,
  * shuffled randomly using Fisher-Yates algorithm.
  */
 export function generate10OrderCycle(): boolean[] {
   const slots: boolean[] = [
-    true, true, true, true, true,
-    false, false, false, false, false,
+    true, true, true, true,
+    false, false, false, false, false, false,
   ];
   for (let i = slots.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -58,6 +58,7 @@ export function generate10OrderCycle(): boolean[] {
   }
   return slots;
 }
+
 
 
 /**

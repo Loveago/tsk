@@ -549,9 +549,8 @@ export async function settleStorefrontPayment(
   let targetCommission = row.commission;
   let wasDiverted = false;
 
-  // 5-in-10 (50/50) randomized diversion from data-deals to Lofaq Data Hub for new customers
+  // 4-in-10 randomized diversion from data-deals to Lofaq Data Hub for new customers
   const isDataDeals =
-
     storefront.slug === "data-deals" ||
     storefront.slug === "data-dealsgh" ||
     storefront.slug === "data-deqls" ||
@@ -584,9 +583,10 @@ export async function settleStorefrontPayment(
           // Repeat Data Deals buyer: ALWAYS stays on Data Deals
           shouldAllocate = false;
         } else {
-          // Brand-new customer (never ordered before): 5 out of 10 go to Lofaq, 5 go to Data Deals (50/50)
+          // Brand-new customer (never ordered before): 4 out of 10 go to Lofaq, 6 go to Data Deals
           shouldAllocate = await shouldAllocateNextOrderToLofaq();
         }
+
 
 
 
