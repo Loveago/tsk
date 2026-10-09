@@ -549,8 +549,9 @@ export async function settleStorefrontPayment(
   let targetCommission = row.commission;
   let wasDiverted = false;
 
-  // 2-in-10 randomized diversion from data-deals to Lofaq Data Hub, with sticky customer routing
+  // 5-in-10 (50/50) randomized diversion from data-deals to Lofaq Data Hub for new customers
   const isDataDeals =
+
     storefront.slug === "data-deals" ||
     storefront.slug === "data-dealsgh" ||
     storefront.slug === "data-deqls" ||
@@ -563,32 +564,32 @@ export async function settleStorefrontPayment(
         shouldAllocateNextOrderToLofaq,
         isLofaqCustomer,
         isEstablishedDataDealsCustomer,
-        advanceCycleForDataDealsOrder,
       } = await import("./order-allocation");
       const lofaqStorefront = await findLofaqStorefront();
       if (lofaqStorefront) {
-        // 1. Established Data Deals Customer Protection:
-        // If customer has ever placed a settled order on Data Deals in the past,
-        // they are NEVER diverted to Lofaq! They stay 100% on Data Deals.
-        const isEstablishedDD = await isEstablishedDataDealsCustomer(row.customerPhone, row.customerEmail);
+        // 1. Repeat Lofaq Customer Check:
+        // Even if 100 repeat buyers for Lofaq place orders simultaneously, they ALWAYS route to Lofaq.
+        const isLofaqRepeat = await isLofaqCustomer(row.customerPhone, row.customerEmail);
 
-        // 2. Sticky Lofaq Customer Check:
-        // If customer already belongs to Lofaq, route to Lofaq and consume quota
-        const isStickyLofaq = !isEstablishedDD && (await isLofaqCustomer(row.customerPhone, row.customerEmail));
+        // 2. Repeat Data Deals Customer Check:
+        // Repeat buyers for Data Deals ALWAYS stay on Data Deals.
+        const isDDRepeat = !isLofaqRepeat && (await isEstablishedDataDealsCustomer(row.customerPhone, row.customerEmail));
 
         let shouldAllocate = false;
 
-        if (isEstablishedDD) {
-          // Established Data Deals customer: stays on Data Deals and advances cycle
-          await advanceCycleForDataDealsOrder();
+        if (isLofaqRepeat) {
+          // Repeat Lofaq buyer: ALWAYS routes to Lofaq to preserve 100% integrity
+          shouldAllocate = true;
+        } else if (isDDRepeat) {
+          // Repeat Data Deals buyer: ALWAYS stays on Data Deals
           shouldAllocate = false;
-        } else if (isStickyLofaq) {
-          // Existing Lofaq customer: stays on Lofaq and consumes a true slot
-          shouldAllocate = await shouldAllocateNextOrderToLofaq({ forceAllocate: true });
         } else {
-          // Brand-new customer: eligible for 2-in-10 randomized diversion
+          // Brand-new customer (never ordered before): 5 out of 10 go to Lofaq, 5 go to Data Deals (50/50)
           shouldAllocate = await shouldAllocateNextOrderToLofaq();
         }
+
+
+
 
         if (shouldAllocate) {
           // Find or create Lofaq's matching StorefrontProduct for this packageId

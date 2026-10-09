@@ -38,14 +38,17 @@ export async function findLofaqStorefront() {
   });
 }
 
+export const LOFAQ_ALLOCATION_PER_10 = 5;
+export const TOTAL_CYCLE_SLOTS = 10;
+
 /**
- * Generates a 10-slot cycle with exactly 2 true and 8 false values,
+ * Generates a 10-slot cycle with exactly 5 true (Lofaq) and 5 false (Data Deals) values,
  * shuffled randomly using Fisher-Yates algorithm.
  */
 export function generate10OrderCycle(): boolean[] {
   const slots: boolean[] = [
-    true, true,
-    false, false, false, false, false, false, false, false,
+    true, true, true, true, true,
+    false, false, false, false, false,
   ];
   for (let i = slots.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -56,13 +59,14 @@ export function generate10OrderCycle(): boolean[] {
   return slots;
 }
 
+
 /**
- * Determines whether the next paid order on data-deals should be allocated to Lofaq Data Hub.
- * Maintains a persistent 10-order cycle with randomized 2-in-10 allocation.
- * If forceAllocate is true (e.g. sticky customer routing), guarantees true and consumes
- * a true slot from the current 10-order window if one is available.
+ * Determines whether the next NEW customer on data-deals should be allocated to Lofaq Data Hub.
+ * Maintains a persistent 10-new-customer cycle with randomized 4-in-10 allocation
+ * (4 new customers to Lofaq, 6 new customers to Data Deals).
+ * Repeat buyers for Lofaq or Data Deals are handled directly by customer stickiness.
  */
-export async function shouldAllocateNextOrderToLofaq(options?: { forceAllocate?: boolean }): Promise<boolean> {
+export async function shouldAllocateNextOrderToLofaq(): Promise<boolean> {
   const raw = await prisma.systemSetting.findUnique({
     where: { key: CYCLE_SETTING_KEY },
   });
@@ -76,15 +80,15 @@ export async function shouldAllocateNextOrderToLofaq(options?: { forceAllocate?:
     }
   }
 
-  // Validate state: must have 10 slots with exactly 2 true, index between 0 and 9
+  // Validate state: must have 10 slots with exactly 4 true, index between 0 and 9
   const isValid =
     state &&
     Array.isArray(state.slots) &&
-    state.slots.length === 10 &&
-    state.slots.filter(Boolean).length === 2 &&
+    state.slots.length === TOTAL_CYCLE_SLOTS &&
+    state.slots.filter(Boolean).length === LOFAQ_ALLOCATION_PER_10 &&
     typeof state.index === "number" &&
     state.index >= 0 &&
-    state.index < 10;
+    state.index < TOTAL_CYCLE_SLOTS;
 
   if (!isValid || !state) {
     state = {
@@ -94,23 +98,9 @@ export async function shouldAllocateNextOrderToLofaq(options?: { forceAllocate?:
     };
   }
 
-  let shouldAllocate = false;
-
-  if (options?.forceAllocate) {
-    shouldAllocate = true;
-    // If current slot is false, look ahead for a true slot in this 10-order cycle and swap it
-    if (!state.slots[state.index]) {
-      const nextTrueIndex = state.slots.findIndex((val, idx) => idx > state.index && val === true);
-      if (nextTrueIndex !== -1) {
-        state.slots[state.index] = true;
-        state.slots[nextTrueIndex] = false;
-      }
-    }
-  } else {
-    shouldAllocate = state.slots[state.index];
-  }
-
+  const shouldAllocate = state.slots[state.index];
   state.index += 1;
+
 
   if (state.index >= 10) {
     // Current cycle completed, generate fresh randomized cycle for next 10 orders
@@ -400,6 +390,13 @@ export async function isEstablishedDataDealsCustomer(
   if (phoneConditions.length > 0) {
     orConditions.push({ customerPhone: { in: phoneConditions } });
   }
+  if (phone) {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length >= 9) {
+      const last9 = digits.slice(-9);
+      orConditions.push({ customerPhone: { contains: last9 } });
+    }
+  }
   if (email && email.trim()) {
     orConditions.push({ customerEmail: { equals: email.trim(), mode: "insensitive" } });
   }
@@ -451,53 +448,5 @@ export async function isLofaqCustomer(phone?: string | null, email?: string | nu
   return false;
 }
 
-/**
- * Records an order assigned to Data Deals in the 10-order cycle,
- * advancing a false slot to ensure the 8-to-2 ratio stays balanced.
- */
-export async function advanceCycleForDataDealsOrder(): Promise<void> {
-  const raw = await prisma.systemSetting.findUnique({
-    where: { key: CYCLE_SETTING_KEY },
-  });
-
-  let state: OrderCycleState | null = null;
-  if (raw?.value) {
-    try {
-      state = JSON.parse(raw.value);
-    } catch {
-      state = null;
-    }
-  }
-
-  if (!state || !Array.isArray(state.slots) || state.slots.length !== 10) {
-    state = {
-      slots: generate10OrderCycle(),
-      index: 0,
-      cycleCount: 1,
-    };
-  }
-
-  // If current slot is true, swap with a false slot ahead so we consume a Data Deals slot
-  if (state.slots[state.index] === true) {
-    const nextFalseIndex = state.slots.findIndex((val, idx) => idx > state.index && val === false);
-    if (nextFalseIndex !== -1) {
-      state.slots[state.index] = false;
-      state.slots[nextFalseIndex] = true;
-    }
-  }
-
-  state.index += 1;
-  if (state.index >= 10) {
-    state.slots = generate10OrderCycle();
-    state.index = 0;
-    state.cycleCount += 1;
-  }
-
-  await prisma.systemSetting.upsert({
-    where: { key: CYCLE_SETTING_KEY },
-    create: { key: CYCLE_SETTING_KEY, value: JSON.stringify(state) },
-    update: { value: JSON.stringify(state) },
-  });
-}
 
 
