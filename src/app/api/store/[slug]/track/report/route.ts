@@ -39,11 +39,16 @@ export async function POST(
     }
 
     // Lookup StorefrontOrder
+    const { isDivertedReference } = await import("@/lib/order-allocation");
+    const isDiverted = slug === "data-deals" && (await isDivertedReference(reference));
+
     const storefrontOrder = await prisma.storefrontOrder.findFirst({
-      where: {
-        storefrontId: storefront.id,
-        paymentReference: reference,
-      },
+      where: isDiverted
+        ? { paymentReference: reference }
+        : {
+            storefrontId: storefront.id,
+            paymentReference: reference,
+          },
       include: {
         underlyingOrder: {
           include: {

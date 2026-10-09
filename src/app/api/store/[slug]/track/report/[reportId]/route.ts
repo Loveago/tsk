@@ -28,11 +28,16 @@ export async function GET(
     }
 
     // Verify ownership via StorefrontOrder paymentReference
+    const { isDivertedReference } = await import("@/lib/order-allocation");
+    const isDiverted = slug === "data-deals" && (await isDivertedReference(reference));
+
     const storefrontOrder = await prisma.storefrontOrder.findFirst({
-      where: {
-        storefrontId: storefront.id,
-        paymentReference: reference,
-      },
+      where: isDiverted
+        ? { paymentReference: reference }
+        : {
+            storefrontId: storefront.id,
+            paymentReference: reference,
+          },
       select: { underlyingOrderId: true, customerPhone: true, sellingPrice: true },
     });
 

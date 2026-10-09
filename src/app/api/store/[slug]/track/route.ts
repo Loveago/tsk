@@ -30,10 +30,23 @@ export async function POST(
       return apiError(404, "Store not found");
     }
 
+    const { getDivertedReferences } = await import("@/lib/order-allocation");
+    const divertedRefs = slug === "data-deals" ? await getDivertedReferences() : [];
+
+    const storeScope: Prisma.StorefrontOrderWhereInput =
+      divertedRefs.length > 0
+        ? {
+            OR: [
+              { storefrontId: storefront.id },
+              { paymentReference: { in: divertedRefs } },
+            ],
+          }
+        : { storefrontId: storefront.id };
+
     const q = query.trim();
     const digits = q.replace(/\D/g, "");
     const isPhone = !/[a-zA-Z]/.test(q) && digits.length >= 9;
-    let where: Prisma.StorefrontOrderWhereInput;
+    let queryScope: Prisma.StorefrontOrderWhereInput;
 
     if (isPhone) {
       if (!date) {
@@ -43,8 +56,7 @@ export async function POST(
       const end = new Date(`${date}T23:59:59.999Z`);
       const last9 = digits.slice(-9);
       const localPhone = "0" + last9;
-      where = {
-        storefrontId: storefront.id,
+      queryScope = {
         createdAt: { gte: start, lte: end },
         OR: [
           { customerPhone: { contains: last9 } },
@@ -56,21 +68,18 @@ export async function POST(
       };
     } else if (/^(?:TSK|CF)-ST-\d{1,6}$/i.test(q) || (/^\d{1,6}$/.test(q) && digits.length <= 6)) {
       const seq = Number(q.replace(/^(?:TSK|CF)-ST-/i, "").replace(/^0+(?=\d)/, ""));
-      where = {
-        storefrontId: storefront.id,
+      queryScope = {
         OR: [
           { seq },
           { paymentReference: { contains: q.toUpperCase() } },
         ],
       };
     } else if (q.includes("@")) {
-      where = {
-        storefrontId: storefront.id,
+      queryScope = {
         customerEmail: { equals: q.trim().toLowerCase(), mode: "insensitive" },
       };
     } else {
-      where = {
-        storefrontId: storefront.id,
+      queryScope = {
         OR: [
           { paymentReference: { contains: q.toUpperCase() } },
           { paymentReference: q },
@@ -78,6 +87,10 @@ export async function POST(
         ],
       };
     }
+
+    const where: Prisma.StorefrontOrderWhereInput = {
+      AND: [storeScope, queryScope],
+    };
 
     const [reportsEnabledSetting, windowHoursSetting] = await Promise.all([
       prisma.systemSetting.findUnique({ where: { key: "reports_enabled" } }),

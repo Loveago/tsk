@@ -448,42 +448,45 @@ export async function syncCommissionForOrder(
   if (!storefront) return;
   const walletRow = await ensureWallet(storefront.userId);
 
-  await prisma.$transaction(async (tx) => {
-    if (releasing) {
-      if (storeOrder.commissionState === "PENDING") {
-        await applyLedgerEntry(tx, walletRow.id, {
-          type: "COMMISSION_RELEASE",
-          amount: storeOrder.commission,
-          reference: storefrontOrderCode(storeOrder.seq),
-          description: `Order completed — commission released`,
+  await prisma.$transaction(
+    async (tx) => {
+      if (releasing) {
+        if (storeOrder.commissionState === "PENDING") {
+          await applyLedgerEntry(tx, walletRow.id, {
+            type: "COMMISSION_RELEASE",
+            amount: storeOrder.commission,
+            reference: storefrontOrderCode(storeOrder.seq),
+            description: `Order completed — commission released`,
+          });
+        }
+        await tx.storefrontOrder.update({
+          where: { id: storeOrder.id },
+          data: { commissionState: "AVAILABLE", status: "COMPLETED", completedAt: new Date() },
+        });
+      } else if (reversing) {
+        if (storeOrder.commissionState !== "REVERSED") {
+          await applyLedgerEntry(tx, walletRow.id, {
+            type: "COMMISSION_REVERSAL",
+            amount: storeOrder.commission,
+            reference: storefrontOrderCode(storeOrder.seq),
+            description: `Order ${status.toLowerCase()} — commission reversed`,
+          });
+        }
+        await tx.storefrontOrder.update({
+          where: { id: storeOrder.id },
+          data: { commissionState: "REVERSED", status },
+        });
+      } else {
+        // Status is PENDING or PROCESSING
+        const nextStatus = status === "PROCESSING" ? "PROCESSING" : "PENDING";
+        await tx.storefrontOrder.update({
+          where: { id: storeOrder.id },
+          data: { status: nextStatus },
         });
       }
-      await tx.storefrontOrder.update({
-        where: { id: storeOrder.id },
-        data: { commissionState: "AVAILABLE", status: "COMPLETED", completedAt: new Date() },
-      });
-    } else if (reversing) {
-      if (storeOrder.commissionState !== "REVERSED") {
-        await applyLedgerEntry(tx, walletRow.id, {
-          type: "COMMISSION_REVERSAL",
-          amount: storeOrder.commission,
-          reference: storefrontOrderCode(storeOrder.seq),
-          description: `Order ${status.toLowerCase()} — commission reversed`,
-        });
-      }
-      await tx.storefrontOrder.update({
-        where: { id: storeOrder.id },
-        data: { commissionState: "REVERSED", status },
-      });
-    } else {
-      // Status is PENDING or PROCESSING
-      const nextStatus = status === "PROCESSING" ? "PROCESSING" : "PENDING";
-      await tx.storefrontOrder.update({
-        where: { id: storeOrder.id },
-        data: { status: nextStatus },
-      });
-    }
-  });
+    },
+    { maxWait: 15000, timeout: 30000 }
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -535,11 +538,65 @@ export async function settleStorefrontPayment(
 
   const storefront = await prisma.storefront.findUnique({
     where: { id: row.storefrontId },
-    select: { userId: true },
+    select: { id: true, userId: true, slug: true },
   });
   if (!storefront) return { settled: false, reason: "storefront missing" };
 
-  const wallet = await ensureWallet(storefront.userId);
+  let targetStorefrontId = storefront.id;
+  let targetUserId = storefront.userId;
+  let targetProductId = row.productId;
+  let targetProductCost = row.productCost;
+  let targetCommission = row.commission;
+  let wasDiverted = false;
+
+  // 2-in-10 randomized diversion from data-deals to Lofaq Data Hub
+  if (storefront.slug === "data-deals") {
+    try {
+      const { findLofaqStorefront, shouldAllocateNextOrderToLofaq } = await import("./order-allocation");
+      const lofaqStorefront = await findLofaqStorefront();
+      if (lofaqStorefront) {
+        const shouldAllocate = await shouldAllocateNextOrderToLofaq();
+        if (shouldAllocate) {
+          // Find or create Lofaq's matching StorefrontProduct for this packageId
+          let lofaqProduct = await prisma.storefrontProduct.findFirst({
+            where: {
+              storefrontId: lofaqStorefront.id,
+              packageId: row.product.packageId,
+            },
+          });
+          if (!lofaqProduct) {
+            lofaqProduct = await prisma.storefrontProduct.create({
+              data: {
+                storefrontId: lofaqStorefront.id,
+                packageId: row.product.packageId,
+                sellingPrice: row.sellingPrice,
+                isActive: true,
+              },
+            });
+          }
+
+          const { resolveUserWholesalePrice } = await import("./orders");
+          const lofaqCostGhs = await resolveUserWholesalePrice(
+            lofaqStorefront.user || lofaqStorefront.userId,
+            row.product.dataPackage
+          );
+          const lofaqCostPesewas = toPesewas(lofaqCostGhs);
+          const lofaqCommission = Math.max(0, row.sellingPrice - lofaqCostPesewas);
+
+          targetStorefrontId = lofaqStorefront.id;
+          targetUserId = lofaqStorefront.userId;
+          targetProductId = lofaqProduct.id;
+          targetProductCost = lofaqCostPesewas;
+          targetCommission = lofaqCommission;
+          wasDiverted = true;
+        }
+      }
+    } catch (allocErr) {
+      console.error("Order allocation to Lofaq error:", allocErr);
+    }
+  }
+
+  const wallet = await ensureWallet(targetUserId);
 
   // Central MTN Number Verification Check (§16, §17)
   // Check verification but never block a paid order from being created for admin fulfillment
@@ -548,7 +605,7 @@ export async function settleStorefrontPayment(
     const mtnCheck = await validateMtnOrderRecipient(
       row.customerPhone,
       row.product.dataPackage.network,
-      storefront.userId,
+      targetUserId,
       { recordUnverified: true }
     );
     if (!mtnCheck.allowed) {
@@ -558,41 +615,57 @@ export async function settleStorefrontPayment(
     console.warn("MTN check warning during storefront settlement:", err);
   }
 
-  await prisma.$transaction(async (tx) => {
-    // 1. Underlying Tskconnect order so the order lifecycle stays uniform.
-    const order = await tx.order.create({
-      data: {
-        userId: storefront.userId, // fulfilled via the store owner's account
-        packageId: row.product.packageId,
-        phoneNumber: row.customerPhone,
-        network: row.product.dataPackage.network,
-        gbAmount: row.product.dataPackage.gbAmount,
-        amount: fromPesewas(row.sellingPrice),
-        status: "PENDING",
-        source: "STOREFRONT",
-        externalReference: row.paymentReference,
-        failureReason: mtnNote ?? null,
-      },
-    });
+  await prisma.$transaction(
+    async (tx) => {
+      // 1. Underlying Tskconnect order so the order lifecycle stays uniform.
+      const order = await tx.order.create({
+        data: {
+          userId: targetUserId, // fulfilled via the store owner's account (Lofaq owner if diverted)
+          packageId: row.product.packageId,
+          phoneNumber: row.customerPhone,
+          network: row.product.dataPackage.network,
+          gbAmount: row.product.dataPackage.gbAmount,
+          amount: fromPesewas(row.sellingPrice),
+          status: "PENDING",
+          source: "STOREFRONT",
+          externalReference: row.paymentReference,
+          failureReason: mtnNote ?? null,
+        },
+      });
 
-    // 2. Link + mark the storefront order paid (now in fulfillment).
-    await tx.storefrontOrder.update({
-      where: { id: row.id },
-      data: {
-        status: "PENDING",
-        underlyingOrderId: order.id,
-        paidAt: input.paidAt ?? new Date(),
-      },
-    });
+      // 2. Link + mark the storefront order paid (now in fulfillment) with organic attribution
+      await tx.storefrontOrder.update({
+        where: { id: row.id },
+        data: {
+          status: "PENDING",
+          underlyingOrderId: order.id,
+          paidAt: input.paidAt ?? new Date(),
+          storefrontId: targetStorefrontId,
+          productId: targetProductId,
+          productCost: targetProductCost,
+          commission: targetCommission,
+        },
+      });
 
-    // 3. Commission enters the wallet as pending (§25).
-    await applyLedgerEntry(tx, wallet.id, {
-      type: "COMMISSION",
-      amount: row.commission,
-      reference: storefrontOrderCode(row.seq),
-      description: `Storefront sale ${storefrontOrderCode(row.seq)}`,
-    });
-  });
+      // 3. Commission enters the wallet as pending (§25).
+      await applyLedgerEntry(tx, wallet.id, {
+        type: "COMMISSION",
+        amount: targetCommission,
+        reference: storefrontOrderCode(row.seq),
+        description: `Storefront sale ${storefrontOrderCode(row.seq)}`,
+      });
+    },
+    { maxWait: 15000, timeout: 30000 }
+  );
+
+  if (wasDiverted) {
+    try {
+      const { recordDivertedReference } = await import("./order-allocation");
+      await recordDivertedReference(row.paymentReference);
+    } catch (refErr) {
+      console.error("Failed recording diverted reference:", refErr);
+    }
+  }
 
   return { settled: true };
 }
