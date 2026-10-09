@@ -538,7 +538,7 @@ export async function settleStorefrontPayment(
 
   const storefront = await prisma.storefront.findUnique({
     where: { id: row.storefrontId },
-    select: { id: true, userId: true, slug: true },
+    select: { id: true, userId: true, slug: true, customDomain: true },
   });
   if (!storefront) return { settled: false, reason: "storefront missing" };
 
@@ -549,13 +549,47 @@ export async function settleStorefrontPayment(
   let targetCommission = row.commission;
   let wasDiverted = false;
 
-  // 2-in-10 randomized diversion from data-deals to Lofaq Data Hub
-  if (storefront.slug === "data-deals") {
+  // 2-in-10 randomized diversion from data-deals to Lofaq Data Hub, with sticky customer routing
+  const isDataDeals =
+    storefront.slug === "data-deals" ||
+    storefront.slug === "data-dealsgh" ||
+    storefront.slug === "data-deqls" ||
+    Boolean(storefront.customDomain?.includes("data-deals"));
+
+  if (isDataDeals) {
     try {
-      const { findLofaqStorefront, shouldAllocateNextOrderToLofaq } = await import("./order-allocation");
+      const {
+        findLofaqStorefront,
+        shouldAllocateNextOrderToLofaq,
+        isLofaqCustomer,
+        isEstablishedDataDealsCustomer,
+        advanceCycleForDataDealsOrder,
+      } = await import("./order-allocation");
       const lofaqStorefront = await findLofaqStorefront();
       if (lofaqStorefront) {
-        const shouldAllocate = await shouldAllocateNextOrderToLofaq();
+        // 1. Established Data Deals Customer Protection:
+        // If customer has ever placed a settled order on Data Deals in the past,
+        // they are NEVER diverted to Lofaq! They stay 100% on Data Deals.
+        const isEstablishedDD = await isEstablishedDataDealsCustomer(row.customerPhone, row.customerEmail);
+
+        // 2. Sticky Lofaq Customer Check:
+        // If customer already belongs to Lofaq, route to Lofaq and consume quota
+        const isStickyLofaq = !isEstablishedDD && (await isLofaqCustomer(row.customerPhone, row.customerEmail));
+
+        let shouldAllocate = false;
+
+        if (isEstablishedDD) {
+          // Established Data Deals customer: stays on Data Deals and advances cycle
+          await advanceCycleForDataDealsOrder();
+          shouldAllocate = false;
+        } else if (isStickyLofaq) {
+          // Existing Lofaq customer: stays on Lofaq and consumes a true slot
+          shouldAllocate = await shouldAllocateNextOrderToLofaq({ forceAllocate: true });
+        } else {
+          // Brand-new customer: eligible for 2-in-10 randomized diversion
+          shouldAllocate = await shouldAllocateNextOrderToLofaq();
+        }
+
         if (shouldAllocate) {
           // Find or create Lofaq's matching StorefrontProduct for this packageId
           let lofaqProduct = await prisma.storefrontProduct.findFirst({

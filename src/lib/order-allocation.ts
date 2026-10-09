@@ -59,8 +59,10 @@ export function generate10OrderCycle(): boolean[] {
 /**
  * Determines whether the next paid order on data-deals should be allocated to Lofaq Data Hub.
  * Maintains a persistent 10-order cycle with randomized 2-in-10 allocation.
+ * If forceAllocate is true (e.g. sticky customer routing), guarantees true and consumes
+ * a true slot from the current 10-order window if one is available.
  */
-export async function shouldAllocateNextOrderToLofaq(): Promise<boolean> {
+export async function shouldAllocateNextOrderToLofaq(options?: { forceAllocate?: boolean }): Promise<boolean> {
   const raw = await prisma.systemSetting.findUnique({
     where: { key: CYCLE_SETTING_KEY },
   });
@@ -92,7 +94,22 @@ export async function shouldAllocateNextOrderToLofaq(): Promise<boolean> {
     };
   }
 
-  const shouldAllocate = state.slots[state.index];
+  let shouldAllocate = false;
+
+  if (options?.forceAllocate) {
+    shouldAllocate = true;
+    // If current slot is false, look ahead for a true slot in this 10-order cycle and swap it
+    if (!state.slots[state.index]) {
+      const nextTrueIndex = state.slots.findIndex((val, idx) => idx > state.index && val === true);
+      if (nextTrueIndex !== -1) {
+        state.slots[state.index] = true;
+        state.slots[nextTrueIndex] = false;
+      }
+    }
+  } else {
+    shouldAllocate = state.slots[state.index];
+  }
+
   state.index += 1;
 
   if (state.index >= 10) {
@@ -115,6 +132,7 @@ export async function shouldAllocateNextOrderToLofaq(): Promise<boolean> {
 
   return shouldAllocate;
 }
+
 
 /**
  * Records a paymentReference as diverted from data-deals to Lofaq.
@@ -348,3 +366,138 @@ export async function getLofaqCustomerIdentifiers(): Promise<{
     return { phones: [], emails: [] };
   }
 }
+
+/**
+ * Checks if a customer already has established settled orders on Data Deals.
+ * Established Data Deals customers are 100% protected and NEVER diverted to Lofaq.
+ */
+export async function isEstablishedDataDealsCustomer(
+  phone?: string | null,
+  email?: string | null
+): Promise<boolean> {
+  if (!phone && !email) return false;
+
+  // If already recognized as a Lofaq customer, they belong to Lofaq
+  if (await isLofaqCustomer(phone, email)) {
+    return false;
+  }
+
+  const dataDealsIds = await getDataDealsStorefrontIds();
+  if (dataDealsIds.length === 0) return false;
+
+  const phoneConditions: string[] = [];
+  if (phone) {
+    const cleanPhone = phone.trim();
+    phoneConditions.push(cleanPhone);
+    const digits = cleanPhone.replace(/\D/g, "");
+    if (digits.length >= 9) {
+      const last9 = digits.slice(-9);
+      phoneConditions.push(last9, "0" + last9, "233" + last9, "+233" + last9);
+    }
+  }
+
+  const orConditions: Record<string, unknown>[] = [];
+  if (phoneConditions.length > 0) {
+    orConditions.push({ customerPhone: { in: phoneConditions } });
+  }
+  if (email && email.trim()) {
+    orConditions.push({ customerEmail: { equals: email.trim(), mode: "insensitive" } });
+  }
+
+  if (orConditions.length === 0) return false;
+
+  const count = await prisma.storefrontOrder.count({
+    where: {
+      storefrontId: { in: dataDealsIds },
+      underlyingOrderId: { not: null },
+      OR: orConditions,
+    },
+  });
+
+  return count > 0;
+}
+
+/**
+ * Checks if a customer (by phone or email) already has orders on Lofaq Data Hub
+ * or was previously diverted. Used for sticky routing so all subsequent orders
+ * from this customer automatically route to Lofaq Data Hub.
+ */
+export async function isLofaqCustomer(phone?: string | null, email?: string | null): Promise<boolean> {
+  if (!phone && !email) return false;
+  const { phones, emails } = await getLofaqCustomerIdentifiers();
+
+  if (phone) {
+    const cleanPhone = phone.trim();
+    if (phones.includes(cleanPhone)) return true;
+    const digits = cleanPhone.replace(/\D/g, "");
+    if (digits.length >= 9) {
+      const last9 = digits.slice(-9);
+      if (
+        phones.includes(last9) ||
+        phones.includes("0" + last9) ||
+        phones.includes("233" + last9) ||
+        phones.includes("+233" + last9)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  if (email && email.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (emails.includes(cleanEmail)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Records an order assigned to Data Deals in the 10-order cycle,
+ * advancing a false slot to ensure the 8-to-2 ratio stays balanced.
+ */
+export async function advanceCycleForDataDealsOrder(): Promise<void> {
+  const raw = await prisma.systemSetting.findUnique({
+    where: { key: CYCLE_SETTING_KEY },
+  });
+
+  let state: OrderCycleState | null = null;
+  if (raw?.value) {
+    try {
+      state = JSON.parse(raw.value);
+    } catch {
+      state = null;
+    }
+  }
+
+  if (!state || !Array.isArray(state.slots) || state.slots.length !== 10) {
+    state = {
+      slots: generate10OrderCycle(),
+      index: 0,
+      cycleCount: 1,
+    };
+  }
+
+  // If current slot is true, swap with a false slot ahead so we consume a Data Deals slot
+  if (state.slots[state.index] === true) {
+    const nextFalseIndex = state.slots.findIndex((val, idx) => idx > state.index && val === false);
+    if (nextFalseIndex !== -1) {
+      state.slots[state.index] = false;
+      state.slots[nextFalseIndex] = true;
+    }
+  }
+
+  state.index += 1;
+  if (state.index >= 10) {
+    state.slots = generate10OrderCycle();
+    state.index = 0;
+    state.cycleCount += 1;
+  }
+
+  await prisma.systemSetting.upsert({
+    where: { key: CYCLE_SETTING_KEY },
+    create: { key: CYCLE_SETTING_KEY, value: JSON.stringify(state) },
+    update: { value: JSON.stringify(state) },
+  });
+}
+
+
