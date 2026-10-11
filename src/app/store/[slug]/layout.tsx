@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { StoreChrome } from "@/components/store/store-chrome";
 import { NETWORK_ORDER } from "@/components/store/brands";
+import { getGeminiProSettings } from "@/lib/gemini-pro";
 import type { NetworkProvider } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export default async function StoreLayout({
 }) {
   const { slug } = await params;
 
-  const [storefront, supportSetting] = await Promise.all([
+  const [storefront, supportSetting, geminiSettings] = await Promise.all([
     prisma.storefront.findUnique({
       where: { slug },
       select: {
@@ -35,6 +36,7 @@ export default async function StoreLayout({
       },
     }),
     prisma.systemSetting.findUnique({ where: { key: "support_whatsapp" } }),
+    getGeminiProSettings(),
   ]);
 
   // Disabled/unknown stores: skip chrome; the page itself renders notFound().
@@ -70,6 +72,7 @@ export default async function StoreLayout({
       whatsappLabel={storefront.whatsappLabel}
       notice={storefront.notice}
       networks={networks}
+      geminiEnabled={geminiSettings.enabled}
     >
       {children}
     </StoreChrome>

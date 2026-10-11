@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 import { ensureAdminCustomStorefront } from "@/lib/storefront";
+import { getGeminiProSettings, updateGeminiProSettings } from "@/lib/gemini-pro";
 import { z } from "zod";
 
 const updateSettingsSchema = z.object({
@@ -18,6 +19,8 @@ const updateSettingsSchema = z.object({
   logoUrl: z.string().url().max(500).optional().nullable().or(z.literal("")),
   bannerUrl: z.string().url().max(500).optional().nullable().or(z.literal("")),
   isActive: z.boolean().optional(),
+  geminiProEnabled: z.boolean().optional(),
+  geminiProPrice: z.number().positive().optional(),
 });
 
 const updateProductSchema = z.object({
@@ -131,6 +134,7 @@ export async function GET() {
         totalCommission: (revenueAgg._sum.commission ?? 0) / 100,
         pendingCommission: (pendingAgg._sum.commission ?? 0) / 100,
       },
+      geminiSettings: await getGeminiProSettings(),
     });
   } catch (err) {
     return handleRouteError(err);
@@ -165,7 +169,15 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ storefront: updated });
+    let geminiSettings = await getGeminiProSettings();
+    if (input.geminiProEnabled !== undefined || input.geminiProPrice !== undefined) {
+      geminiSettings = await updateGeminiProSettings({
+        enabled: input.geminiProEnabled,
+        price: input.geminiProPrice,
+      });
+    }
+
+    return NextResponse.json({ storefront: updated, geminiSettings });
   } catch (err) {
     return handleRouteError(err);
   }

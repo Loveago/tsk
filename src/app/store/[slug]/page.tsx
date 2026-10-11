@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ShoppingBag, Clock, ShieldCheck, Zap, Wallet } from "lucide-react";
+import { ShoppingBag, Clock, ShieldCheck, Zap, Wallet, Sparkles } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { fromPesewas } from "@/lib/storefront";
+import { getGeminiProSettings } from "@/lib/gemini-pro";
 import { NetworkLogo } from "@/components/store/network-logo";
 import { NetworkWheel } from "@/components/store/network-wheel";
 import { NETWORK_BRANDS, NETWORK_ORDER, ghs, networkHref, storeHref } from "@/components/store/brands";
@@ -23,9 +24,10 @@ export default async function PublicStorePage({
   const { slug } = await params;
   const { payment, reference } = await searchParams;
 
-  const [storefront, featureSetting] = await Promise.all([
+  const [storefront, featureSetting, geminiSettings] = await Promise.all([
     prisma.storefront.findUnique({ where: { slug } }),
     prisma.systemSetting.findUnique({ where: { key: "storefront_feature_enabled" } }),
+    getGeminiProSettings(),
   ]);
   if (!storefront || storefront.status !== "ENABLED") notFound();
   if (featureSetting?.value === "false") {
@@ -201,12 +203,64 @@ export default async function PublicStorePage({
 
       {/* Shop grid */}
       <section id="shop" className="mx-auto max-w-6xl scroll-mt-24 px-4 pb-12">
-        {groups.length === 0 ? (
+        {groups.length === 0 && !geminiSettings.enabled ? (
           <p className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-white/5">
             This store has no bundles on sale right now. Check back soon.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {/* Google Gemini Pro Category (when turned on by admin) */}
+            {geminiSettings.enabled && (
+              <Link
+                href={storeHref(slug, "gemini")}
+                className="group relative flex flex-col justify-between rounded-2xl bg-white p-2 shadow-sm ring-1 ring-purple-500/30 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:ring-purple-500/60 sm:rounded-3xl sm:p-3 dark:bg-[#111a2c] dark:ring-purple-500/30"
+              >
+                <div className="relative aspect-square overflow-hidden rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#13111C] via-[#1E1235] to-[#0D0B14] p-3 sm:p-4 flex flex-col justify-between border border-purple-500/20 text-white">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/25 border border-purple-400/30 px-2 py-0.5 text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-purple-200">
+                      <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-purple-300 animate-pulse" />
+                      AI Suite
+                    </span>
+                    <span className="rounded-full bg-emerald-500/25 px-2 py-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-300">
+                      18 Months
+                    </span>
+                  </div>
+
+                  <div className="my-auto text-center py-1">
+                    <div className="mx-auto flex h-11 w-11 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-pink-500 shadow-lg shadow-purple-500/40">
+                      <Sparkles className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
+                    </div>
+                    <p className="mt-2 font-serif text-xs sm:text-sm font-black tracking-tight text-white">
+                      Gemini Pro
+                    </p>
+                    <p className="text-[10px] text-purple-200/80">
+                      + 2TB Cloud Storage
+                    </p>
+                  </div>
+
+                  <div className="text-center">
+                    <span className="inline-block rounded-lg bg-white/10 px-2.5 py-0.5 text-[10px] sm:text-xs font-mono font-bold text-purple-200 backdrop-blur-xs">
+                      ₵{geminiSettings.price.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="px-1 pb-1 pt-2 sm:px-2 sm:pb-2 sm:pt-3">
+                  <p className="font-serif text-sm font-bold text-slate-900 sm:text-base dark:text-white">
+                    Google Gemini Pro
+                  </p>
+                  <div className="mt-1 flex items-center justify-between">
+                    <p className="text-[11px] leading-tight text-purple-600 font-semibold sm:text-xs dark:text-purple-400">
+                      18 Months · Full Perks
+                    </p>
+                    <span className="text-xs font-bold text-purple-600 transition-transform group-hover:translate-x-0.5 sm:text-sm dark:text-purple-400">
+                      Buy →
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            )}
+
             {groups.map((g) => {
               const brand = NETWORK_BRANDS[g.network];
               return (

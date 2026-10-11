@@ -37,6 +37,22 @@ export async function GET(request: NextRequest) {
           const result = await verifyAndSettleStorefrontOrder(reference);
           outcome = result.settled ? "success" : "failed";
         }
+      } else {
+        // Check if this is a Google Gemini Pro activation link order
+        const geminiOrder = await prisma.geminiProOrder.findUnique({
+          where: { paymentReference: reference },
+        });
+        if (geminiOrder) {
+          slug = "data-deals";
+          customDomain = process.env.ADMIN_CUSTOM_DOMAIN || "data-deals.com";
+          if (geminiOrder.paystackStatus === "PAID") {
+            outcome = "success";
+          } else {
+            const { verifyAndSettleGeminiOrder } = await import("@/lib/gemini-pro");
+            const result = await verifyAndSettleGeminiOrder(reference);
+            outcome = result.settled ? "success" : "failed";
+          }
+        }
       }
 
       const { isDivertedReference } = await import("@/lib/order-allocation");
@@ -111,6 +127,17 @@ export async function POST(request: NextRequest) {
     }
 
     const reference = event.data.reference;
+
+    // Check if this reference is a Google Gemini Pro activation order
+    const geminiOrder = await prisma.geminiProOrder.findUnique({
+      where: { paymentReference: reference },
+    });
+    if (geminiOrder) {
+      const { verifyAndSettleGeminiOrder } = await import("@/lib/gemini-pro");
+      const result = await verifyAndSettleGeminiOrder(reference);
+      return NextResponse.json({ received: true, settled: result.settled });
+    }
+
     const result = await verifyAndSettleStorefrontOrder(reference);
     return NextResponse.json({ received: true, settled: result.settled });
   } catch (err) {

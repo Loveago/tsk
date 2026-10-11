@@ -13,6 +13,7 @@ import {
   ChevronDown,
   UserRound,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { NetworkLogo } from "./network-logo";
 import { NETWORK_BRANDS, networkHref, storeHref } from "./brands";
@@ -31,6 +32,7 @@ export interface StoreChromeProps {
   whatsappLabel?: string | null;
   notice?: string | null;
   networks: NetworkProvider[];
+  geminiEnabled?: boolean;
   children: React.ReactNode;
 }
 
@@ -146,6 +148,7 @@ export function StoreChrome(props: StoreChromeProps) {
     whatsappLabel,
     notice,
     networks,
+    geminiEnabled = false,
     children,
   } = props;
   const [shopOpen, setShopOpen] = React.useState(false);
@@ -227,6 +230,23 @@ export function StoreChrome(props: StoreChromeProps) {
                   onClick={() => setShopOpen(false)}
                 />
                 <div className="absolute left-0 top-12 z-20 w-96 rounded-2xl bg-white p-4 shadow-2xl shadow-slate-900/10 ring-1 ring-slate-900/5 dark:bg-[#111a2c] dark:ring-white/10">
+                  {geminiEnabled && (
+                    <div className="mb-2 pb-2 border-b border-slate-100 dark:border-white/10">
+                      <Link
+                        href={storeHref(slug, "gemini")}
+                        onClick={() => setShopOpen(false)}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-purple-700 bg-purple-50/80 hover:bg-purple-100 dark:text-purple-300 dark:bg-purple-500/15 dark:hover:bg-purple-500/25 transition"
+                      >
+                        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-tr from-purple-600 via-indigo-600 to-pink-500 text-white shadow-sm">
+                          <Sparkles className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="flex flex-col">
+                          <span>Google Gemini Pro</span>
+                          <span className="text-[10px] text-purple-600/90 dark:text-purple-400">18 Mo Activation · 2TB Cloud</span>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-1">
                     {networks.map((n) => (
                       <Link
@@ -560,6 +580,22 @@ export function StoreChrome(props: StoreChromeProps) {
                 </Link>
               ))}
               {networks.length === 0 && <p className="px-3 py-2 text-sm text-slate-500">No bundles on sale right now.</p>}
+              {geminiEnabled && (
+                <Link
+                  href={storeHref(slug, "gemini")}
+                  onClick={() => setDrawerOpen(false)}
+                  className="mt-2 flex items-center gap-3 rounded-2xl bg-purple-50/80 px-3 py-2.5 text-sm font-semibold text-purple-700 hover:bg-purple-100 dark:bg-purple-500/15 dark:text-purple-300 dark:hover:bg-purple-500/25 transition"
+                >
+                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-tr from-purple-600 via-indigo-600 to-pink-500 text-white shadow-sm">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="flex flex-col">
+                    <span>Google Gemini Pro</span>
+                    <span className="text-[10px] text-purple-600/90 dark:text-purple-400">18 Mo Activation · 2TB Cloud</span>
+                  </div>
+                  <ChevronRight className="ml-auto h-4 w-4 text-purple-400" />
+                </Link>
+              )}
             </nav>
 
             <div className="mt-auto space-y-3 px-4 pb-6 pt-8">

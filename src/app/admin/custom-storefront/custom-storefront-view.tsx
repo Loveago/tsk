@@ -33,6 +33,7 @@ import {
   Lock,
 } from "lucide-react";
 import { useToast } from "@/components/toast";
+import { GeminiProAdminTab } from "./gemini-tab";
 
 interface StorefrontData {
   id: string;
@@ -103,8 +104,9 @@ export function CustomStorefrontView({
   initialStorefront: StorefrontData;
 }) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = React.useState<"overview" | "products" | "settings" | "orders">("overview");
+  const [activeTab, setActiveTab] = React.useState<"overview" | "products" | "settings" | "gemini" | "orders">("overview");
   const [storefront, setStorefront] = React.useState<StorefrontData>(initialStorefront);
+  const [geminiSettings, setGeminiSettings] = React.useState<{ enabled: boolean; price: number }>({ enabled: false, price: 50 });
   const [products, setProducts] = React.useState<ProductItem[]>([]);
   const [packages, setPackages] = React.useState<PackageItem[]>([]);
   const [stats, setStats] = React.useState({
@@ -171,6 +173,9 @@ export function CustomStorefrontView({
       setProducts(data.products);
       setPackages(data.packages);
       setStats(data.stats);
+      if (data.geminiSettings) {
+        setGeminiSettings(data.geminiSettings);
+      }
       if (data.networkSettings) {
         setNetworkSettings(data.networkSettings);
       }
@@ -524,6 +529,22 @@ export function CustomStorefrontView({
           Store Settings & Branding
         </button>
         <button
+          onClick={() => setActiveTab("gemini")}
+          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
+            activeTab === "gemini"
+              ? "border-purple-600 text-purple-600 dark:border-purple-400 dark:text-purple-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          <Sparkles className="h-4 w-4" />
+          <span>Gemini Pro</span>
+          {geminiSettings.enabled && (
+            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+              LIVE
+            </span>
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab("orders")}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === "orders"
@@ -649,6 +670,45 @@ export function CustomStorefrontView({
                   Internal slug path powering the custom domain seamless rewrites.
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Google Gemini Pro Quick Card */}
+          <div className="rounded-2xl border border-purple-200/80 bg-gradient-to-r from-purple-50/70 via-indigo-50/50 to-pink-50/40 p-6 shadow-xs dark:border-purple-500/20 dark:from-purple-950/20 dark:via-indigo-950/15 dark:to-pink-950/10">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white shadow-md shadow-purple-500/20">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Google Gemini Pro (18 Months)
+                    </h3>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        geminiSettings.enabled
+                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                          : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
+                      }`}
+                    >
+                      {geminiSettings.enabled ? "ACTIVE ON STORE" : "PAUSED"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                    Selling 18-month activation links at ₵{geminiSettings.price.toFixed(2)}. Buyers provide WhatsApp and Email for link delivery.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("gemini")}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-purple-700 cursor-pointer self-start sm:self-auto"
+              >
+                <span>Manage Gemini Pro</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
 
@@ -1184,7 +1244,16 @@ export function CustomStorefrontView({
         </form>
       )}
 
-      {/* TAB 4: ORDERS */}
+      {/* TAB 4: GOOGLE GEMINI PRO */}
+      {activeTab === "gemini" && (
+        <GeminiProAdminTab
+          customDomain={customDomain}
+          initialSettings={geminiSettings}
+          onSettingsChange={setGeminiSettings}
+        />
+      )}
+
+      {/* TAB 5: ORDERS */}
       {activeTab === "orders" && (
         <div className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

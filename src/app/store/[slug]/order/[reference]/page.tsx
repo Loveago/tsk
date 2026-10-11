@@ -101,8 +101,174 @@ export default async function StorefrontOrderPage({
   const { isDivertedReference } = await import("@/lib/order-allocation");
   let isDiverted = slug === "data-deals" && (await isDivertedReference(reference));
 
-  // Guard: must exist
-  if (!order) notFound();
+  // Guard: if not standard storefront order, check if Google Gemini Pro order
+  if (!order) {
+    let geminiOrder = await prisma.geminiProOrder.findUnique({
+      where: { paymentReference: reference },
+    });
+    if (!geminiOrder) notFound();
+
+    if (geminiOrder.paystackStatus !== "PAID") {
+      const { verifyAndSettleGeminiOrder } = await import("@/lib/gemini-pro");
+      const auto = await verifyAndSettleGeminiOrder(reference);
+      if (auto.settled && auto.order) {
+        geminiOrder = auto.order;
+      }
+    }
+
+    if (!geminiOrder) notFound();
+
+    const isPaid = geminiOrder.paystackStatus === "PAID";
+    const isSent = geminiOrder.fulfillmentStatus === "SENT";
+
+    return (
+      <div className="mx-auto max-w-lg px-4 py-10 sm:py-16">
+        <Link
+          href={storeHref(slug)}
+          className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Data Deals
+        </Link>
+
+        {/* Status card */}
+        <div
+          className={`rounded-3xl border p-6 sm:p-8 ${
+            isSent
+              ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30"
+              : isPaid
+              ? "bg-purple-50 border-purple-200 dark:bg-purple-500/10 dark:border-purple-500/30"
+              : "bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <CheckCircle2
+              className={`h-8 w-8 shrink-0 ${
+                isSent
+                  ? "text-emerald-500"
+                  : isPaid
+                  ? "text-purple-600 dark:text-purple-400"
+                  : "text-amber-500"
+              }`}
+            />
+            <div>
+              <p className="text-lg font-bold text-slate-900 dark:text-white">
+                {isSent
+                  ? "Activation Link Ready!"
+                  : isPaid
+                  ? "Payment Received — Preparing Link"
+                  : "Payment Pending"}
+              </p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                {isSent
+                  ? "Your 18-month Google Gemini Pro activation link has been prepared below and sent to your WhatsApp."
+                  : isPaid
+                  ? "We received your payment! The admin will send your 18-month activation link to your WhatsApp and email shortly."
+                  : "Waiting for payment confirmation. If you were debited, this page will update automatically."}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Activation Link Card if available */}
+        {geminiOrder.activationLink && (
+          <div className="mt-4 rounded-3xl border border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-50 p-6 shadow-sm dark:border-purple-500/30 dark:from-purple-950/30 dark:to-indigo-950/30">
+            <h3 className="font-serif text-lg font-bold text-purple-900 dark:text-purple-200">
+              Your Google Gemini Pro Activation Link
+            </h3>
+            <p className="mt-1 text-xs text-purple-700 dark:text-purple-300">
+              Click the link below or paste it into your browser to activate your 18 months of Google Gemini Pro:
+            </p>
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-white p-2.5 ring-1 ring-purple-200 dark:bg-black/30 dark:ring-purple-500/30">
+              <input
+                type="text"
+                readOnly
+                value={geminiOrder.activationLink}
+                className="w-full bg-transparent font-mono text-xs text-purple-900 outline-none dark:text-purple-200"
+              />
+              <a
+                href={geminiOrder.activationLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-purple-700"
+              >
+                Activate Now →
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Order details card */}
+        <div className="mt-4 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5 sm:p-8 dark:bg-[#111a2c] dark:ring-white/10">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/10">
+            <div>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-bold text-purple-800 dark:bg-purple-500/20 dark:text-purple-300">
+                ✨ Google Gemini Pro
+              </span>
+              <h2 className="mt-1 font-serif text-xl font-bold text-slate-900 dark:text-white">
+                18 Months Activation
+              </h2>
+            </div>
+            <div className="text-right">
+              <span className="font-mono text-xl font-black text-slate-900 dark:text-white">
+                ₵{geminiOrder.amount.toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          <dl className="mt-4 space-y-4 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <dt className="font-medium text-slate-500 dark:text-slate-400">Order Code</dt>
+              <dd className="font-mono font-bold text-slate-900 dark:text-white">{reference}</dd>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <dt className="font-medium text-slate-500 dark:text-slate-400">WhatsApp Phone</dt>
+              <dd className="font-mono font-bold text-slate-900 dark:text-white">
+                {geminiOrder.customerWhatsapp}
+              </dd>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <dt className="font-medium text-slate-500 dark:text-slate-400">Recipient Email</dt>
+              <dd className="font-medium text-slate-900 dark:text-white">
+                {geminiOrder.customerEmail}
+              </dd>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <dt className="font-medium text-slate-500 dark:text-slate-400">Access Duration</dt>
+              <dd className="font-bold text-purple-700 dark:text-purple-300">18 Months (1.5 Years)</dd>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <dt className="font-medium text-slate-500 dark:text-slate-400">Cloud Storage</dt>
+              <dd className="font-medium text-slate-900 dark:text-white">2 TB Google One included</dd>
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <dt className="font-medium text-slate-500 dark:text-slate-400">Date Paid</dt>
+              <dd className="text-right text-slate-700 dark:text-slate-300">
+                {new Date(geminiOrder.createdAt).toLocaleString("en-GH", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <Link
+            href={storeHref(slug)}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-yellow-300 py-3 text-sm font-bold text-slate-900 shadow-md shadow-yellow-400/30 transition hover:bg-yellow-400"
+          >
+            Back to Store
+          </Link>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
+          Order Reference: <span className="font-mono font-semibold">{reference}</span>. If you have any questions, contact support with this reference.
+        </p>
+      </div>
+    );
+  }
 
   // If not belonging to this slug, only allow if this order was placed on data-deals and diverted
   if (order.storefront.slug !== slug && !isDiverted) {

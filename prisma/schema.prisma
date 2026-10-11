@@ -882,3 +882,32 @@ model BlockedNumber {
   @@index([createdAt])
 }
 
+// ---------------------------------------------------------------------------
+// Google Gemini Pro 18-Month Activation Links (data-deals.com)
+// ---------------------------------------------------------------------------
+
+model GeminiProOrder {
+  id               String    @id @default(cuid())
+  seq              Int       @unique
+  storefrontId     String?
+  customerEmail    String
+  customerWhatsapp String
+  amount           Float     @default(50) // GHS
+  paymentReference String    @unique
+  paystackStatus   String    @default("PENDING") // PENDING | PAID | FAILED
+  fulfillmentStatus String   @default("PENDING") // PENDING | SENT | CANCELLED
+  activationLink   String?
+  adminNotes       String?
+  paidAt           DateTime?
+  sentAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([customerEmail])
+  @@index([customerWhatsapp])
+  @@index([paymentReference])
+  @@index([paystackStatus])
+  @@index([fulfillmentStatus])
+  @@index([createdAt])
+}
+
