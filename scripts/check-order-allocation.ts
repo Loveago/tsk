@@ -105,7 +105,7 @@ async function main() {
     where: { key: CYCLE_SETTING_KEY },
   });
   let cycleState: OrderCycleState = {
-    slots: [true, true, true, true, false, false, false, false, false, false],
+    slots: [true, true, true, true, true, false, false, false, false, false],
     index: 0,
     cycleCount: 1,
   };
@@ -248,7 +248,7 @@ async function main() {
       if (isLofaq) {
         newCustomerToLofaq++;
         classification = isDiverted
-          ? "NEW CUSTOMER -> LOFAQ (4/10 Split)"
+          ? `NEW CUSTOMER -> LOFAQ (${LOFAQ_ALLOCATION_PER_10}/${TOTAL_CYCLE_SLOTS} Split)`
           : "NEW CUSTOMER -> LOFAQ (Direct)";
         classificationTag = `${GREEN}NEW -> LOFAQ${RESET}`;
       } else {
@@ -315,8 +315,11 @@ async function main() {
   const newLofaqPct = newCustomerTotal > 0 ? ((newCustomerToLofaq / newCustomerTotal) * 100).toFixed(1) : "0.0";
   const newDDPct = newCustomerTotal > 0 ? ((newCustomerToDD / newCustomerTotal) * 100).toFixed(1) : "0.0";
 
-  console.log(`    ${GREEN}├─ Allocated to Lofaq:${RESET}     ${BOLD}${newCustomerToLofaq}${RESET} (${newLofaqPct}%)  ${DIM}[Target: ${LOFAQ_ALLOCATION_PER_10} in ${TOTAL_CYCLE_SLOTS} = 40.0%]${RESET}`);
-  console.log(`    ${CYAN}└─ Retained on Data Deals:${RESET} ${BOLD}${newCustomerToDD}${RESET} (${newDDPct}%)  ${DIM}[Target: ${TOTAL_CYCLE_SLOTS - LOFAQ_ALLOCATION_PER_10} in ${TOTAL_CYCLE_SLOTS} = 60.0%]${RESET}\n`);
+  const targetLofaqPct = ((LOFAQ_ALLOCATION_PER_10 / TOTAL_CYCLE_SLOTS) * 100).toFixed(1);
+  const targetDDPct = (((TOTAL_CYCLE_SLOTS - LOFAQ_ALLOCATION_PER_10) / TOTAL_CYCLE_SLOTS) * 100).toFixed(1);
+
+  console.log(`    ${GREEN}├─ Allocated to Lofaq:${RESET}     ${BOLD}${newCustomerToLofaq}${RESET} (${newLofaqPct}%)  ${DIM}[Target: ${LOFAQ_ALLOCATION_PER_10} in ${TOTAL_CYCLE_SLOTS} = ${targetLofaqPct}%]${RESET}`);
+  console.log(`    ${CYAN}└─ Retained on Data Deals:${RESET} ${BOLD}${newCustomerToDD}${RESET} (${newDDPct}%)  ${DIM}[Target: ${TOTAL_CYCLE_SLOTS - LOFAQ_ALLOCATION_PER_10} in ${TOTAL_CYCLE_SLOTS} = ${targetDDPct}%]${RESET}\n`);
 
   console.log(`  ${BOLD}Repeat Customers:${RESET}      ${BOLD}${repeatCustomerTotal}${RESET} total in this period`);
   console.log(`    ${MAGENTA}├─ Sticky to Lofaq:${RESET}        ${BOLD}${repeatLofaqCount}${RESET} ${DIM}(100% sticky to Lofaq Hub)${RESET}`);

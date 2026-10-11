@@ -549,7 +549,7 @@ export async function settleStorefrontPayment(
   let targetCommission = row.commission;
   let wasDiverted = false;
 
-  // 4-in-10 randomized diversion from data-deals to Lofaq Data Hub for new customers
+  // 5-in-10 (50/50) randomized diversion from data-deals to Lofaq Data Hub for new customers
   const isDataDeals =
     storefront.slug === "data-deals" ||
     storefront.slug === "data-dealsgh" ||

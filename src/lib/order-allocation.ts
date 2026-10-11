@@ -38,17 +38,17 @@ export async function findLofaqStorefront() {
   });
 }
 
-export const LOFAQ_ALLOCATION_PER_10 = 4;
+export const LOFAQ_ALLOCATION_PER_10 = 5;
 export const TOTAL_CYCLE_SLOTS = 10;
 
 /**
- * Generates a 10-slot cycle with exactly 4 true (Lofaq) and 6 false (Data Deals) values,
+ * Generates a 10-slot cycle with exactly 5 true (Lofaq) and 5 false (Data Deals) values (50/50 split),
  * shuffled randomly using Fisher-Yates algorithm.
  */
 export function generate10OrderCycle(): boolean[] {
   const slots: boolean[] = [
-    true, true, true, true,
-    false, false, false, false, false, false,
+    true, true, true, true, true,
+    false, false, false, false, false,
   ];
   for (let i = slots.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -63,8 +63,8 @@ export function generate10OrderCycle(): boolean[] {
 
 /**
  * Determines whether the next NEW customer on data-deals should be allocated to Lofaq Data Hub.
- * Maintains a persistent 10-new-customer cycle with randomized 4-in-10 allocation
- * (4 new customers to Lofaq, 6 new customers to Data Deals).
+ * Maintains a persistent 10-new-customer cycle with randomized 5-in-10 allocation
+ * (5 new customers to Lofaq, 5 new customers to Data Deals).
  * Repeat buyers for Lofaq or Data Deals are handled directly by customer stickiness.
  */
 export async function shouldAllocateNextOrderToLofaq(): Promise<boolean> {
