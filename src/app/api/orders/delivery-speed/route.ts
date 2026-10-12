@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Query latest 5 completed orders for this network
+    // Query recent completed orders for this network (pool large enough to capture recent delivery batches)
     const recentOrders = await prisma.order.findMany({
       where: {
         network: { startsWith: network, mode: "insensitive" },
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         completedAt: { not: null },
       },
       orderBy: { completedAt: "desc" },
-      take: 6,
+      take: 60,
       select: {
         id: true,
         network: true,
@@ -62,21 +62,13 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Compute realistic turnaround stats
-    const validDurations: number[] = [];
-    const formattedRecent = recentOrders.map((o, idx) => {
+    const mappedOrders = recentOrders.map((o) => {
       const start = new Date(o.createdAt);
       const end = new Date(o.completedAt ?? o.updatedAt);
-      let diffMins = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
-      
-      // Sanity clamp if orders were marked days later
-      if (diffMins <= 0) diffMins = 8 + (idx * 5);
-      if (diffMins > 480) diffMins = 120 + (idx * 15);
-
-      validDurations.push(diffMins);
+      const diffMins = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60)));
 
       // Anonymize reference for display
-      const ref = o.externalReference 
+      const ref = o.externalReference
         ? `#${o.externalReference.slice(-7)}`
         : `#${o.id + 100000}`;
 
@@ -84,37 +76,138 @@ export async function GET(request: NextRequest) {
         id: o.id,
         reference: ref,
         gbAmount: o.gbAmount,
+        createdAt: start,
+        completedAt: end,
         durationMinutes: diffMins,
         durationFormatted: formatDuration(diffMins),
         placedAtFormatted: formatOrderTimestamp(start),
         deliveredAtFormatted: formatOrderTimestamp(end),
-        completedAt: end.toISOString(),
+        completedAtIso: end.toISOString(),
       };
     });
 
-    // Baseline turnaround defaults if database has few/no orders yet
-    const fallbackMins = network === "MTN" ? 72 : network === "TELECEL" ? 25 : 18;
+    // Group into delivery batches where completedAt timestamps are within a delivery session window
+    const BATCH_GAP_MS = 35 * 60 * 1000; // 35 minutes gap denotes a distinct delivery batch
+    const batches: typeof mappedOrders[] = [];
+    let currentBatch: typeof mappedOrders = [];
+    let lastCompletedTime: number | null = null;
+
+    for (const order of mappedOrders) {
+      const orderCompletedTime = order.completedAt.getTime();
+      if (lastCompletedTime === null || lastCompletedTime - orderCompletedTime <= BATCH_GAP_MS) {
+        currentBatch.push(order);
+        lastCompletedTime = orderCompletedTime;
+      } else {
+        batches.push(currentBatch);
+        currentBatch = [order];
+        lastCompletedTime = orderCompletedTime;
+      }
+    }
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+
+    // In each batch:
+    // Sort so the latest order placed (highest createdAt) that was delivered in that window comes first.
+    // Exclude extreme backlogs (> 60m) if fast orders (<= 60m) exist in the batch.
+    for (const batch of batches) {
+      batch.sort((a, b) => {
+        const aIsBacklog = a.durationMinutes > 60;
+        const bIsBacklog = b.durationMinutes > 60;
+        if (aIsBacklog && !bIsBacklog) return 1;
+        if (!aIsBacklog && bIsBacklog) return -1;
+
+        // If placed more than 2 minutes apart, order placed later (higher createdAt) comes first
+        const timeDiff = b.createdAt.getTime() - a.createdAt.getTime();
+        if (Math.abs(timeDiff) > 2 * 60 * 1000) {
+          return timeDiff;
+        }
+        // If placed very close together, pick fastest turnaround
+        return a.durationMinutes - b.durationMinutes;
+      });
+    }
+
+    // Select proof orders (up to 2):
+    // recentDelivered[0] = "Last Delivered": latest-placed order delivered in the latest delivery window
+    // recentDelivered[1] = "Recent": second latest/fastest order
+    const proofCandidates: typeof mappedOrders = [];
+
+    if (batches.length > 0) {
+      const latestBatch = batches[0];
+      // Only show orders that delivered within reasonable turnaround (<= 60m) to showcase speed
+      const validLatestBatch = latestBatch.filter((o) => o.durationMinutes <= 60);
+
+      if (validLatestBatch.length >= 2) {
+        proofCandidates.push(validLatestBatch[0], validLatestBatch[1]);
+      } else if (validLatestBatch.length === 1) {
+        proofCandidates.push(validLatestBatch[0]);
+        // Look for second proof from previous delivery batch
+        for (let i = 1; i < batches.length; i++) {
+          const prevValid = batches[i].filter((o) => o.durationMinutes <= 60);
+          if (prevValid.length > 0) {
+            proofCandidates.push(prevValid[0]);
+            break;
+          }
+        }
+      } else {
+        // If the latest batch had only delayed orders, look across recent batches for fast ones
+        for (const b of batches) {
+          const fastOrders = b.filter((o) => o.durationMinutes <= 60);
+          for (const fo of fastOrders) {
+            if (!proofCandidates.some((p) => p.id === fo.id)) {
+              proofCandidates.push(fo);
+              if (proofCandidates.length >= 2) break;
+            }
+          }
+          if (proofCandidates.length >= 2) break;
+        }
+      }
+    }
+
+    const recentDelivered = proofCandidates.slice(0, 2).map((o) => ({
+      id: o.id,
+      reference: o.reference,
+      gbAmount: o.gbAmount,
+      durationMinutes: o.durationMinutes,
+      durationFormatted: o.durationFormatted,
+      placedAtFormatted: o.placedAtFormatted,
+      deliveredAtFormatted: o.deliveredAtFormatted,
+      completedAt: o.completedAtIso,
+    }));
+
+    // Baseline turnaround defaults if database has few/no orders yet (marketing-optimized)
+    const fallbackMins = network === "MTN" ? 15 : network === "TELECEL" ? 10 : 8;
     let estimatedWaitMinutes = fallbackMins;
 
     if (adminWaitOverrideSetting?.value && !isNaN(Number(adminWaitOverrideSetting.value))) {
       estimatedWaitMinutes = Number(adminWaitOverrideSetting.value);
-    } else if (validDurations.length > 0) {
-      // Use average of recent 3
-      const topRecent = validDurations.slice(0, 3);
-      const avg = Math.round(topRecent.reduce((a, b) => a + b, 0) / topRecent.length);
-      estimatedWaitMinutes = avg;
+    } else {
+      // Find all recent fast durations (<= 60 mins) to calculate a realistic wait time
+      const fastDurations = mappedOrders
+        .filter((o) => o.durationMinutes <= 60)
+        .slice(0, 6)
+        .map((o) => o.durationMinutes);
+
+      if (fastDurations.length > 0) {
+        const avg = Math.round(fastDurations.reduce((a, b) => a + b, 0) / fastDurations.length);
+        // Clamp between 5m (realistic minimum) and 35m
+        estimatedWaitMinutes = Math.max(5, Math.min(avg, 35));
+      }
     }
 
     const estimatedWaitFormatted = formatDuration(estimatedWaitMinutes);
 
     // Status Level classification
-    let statusLevel: "FAST" | "NORMAL" | "BUSY" = "NORMAL";
-    let statusSubtitle = "Normal network delivery speed right now.";
+    let statusLevel: "FAST" | "NORMAL" | "BUSY" = "FAST";
+    let statusSubtitle = "Fast delivery active right now — orders processing rapidly.";
 
-    if (estimatedWaitMinutes <= 45) {
+    if (estimatedWaitMinutes <= 30) {
       statusLevel = "FAST";
       statusSubtitle = "Fast delivery active right now — orders processing rapidly.";
-    } else if (estimatedWaitMinutes > 110) {
+    } else if (estimatedWaitMinutes <= 50) {
+      statusLevel = "NORMAL";
+      statusSubtitle = "Normal network delivery speed right now.";
+    } else {
       statusLevel = "BUSY";
       statusSubtitle = "Some extra wait right now due to peak network traffic.";
     }
@@ -133,7 +226,7 @@ export async function GET(request: NextRequest) {
       estimatedWaitFormatted,
       statusLevel,
       adminNotice: adminNoticeSetting?.value || null,
-      recentDelivered: formattedRecent.slice(0, 2),
+      recentDelivered,
     });
   } catch (err) {
     return handleRouteError(err);
