@@ -38,18 +38,94 @@ export async function findLofaqStorefront() {
   });
 }
 
-export const LOFAQ_ALLOCATION_PER_10 = 5;
+export const DEFAULT_LOFAQ_ALLOCATION_PER_10 = 5;
+export const LOFAQ_ALLOCATION_PER_10 = DEFAULT_LOFAQ_ALLOCATION_PER_10;
 export const TOTAL_CYCLE_SLOTS = 10;
+export const RATIO_SETTING_KEY = "datadeals_lofaq_ratio";
 
 /**
- * Generates a 10-slot cycle with exactly 5 true (Lofaq) and 5 false (Data Deals) values (50/50 split),
+ * Gets the current configured Lofaq allocation ratio per 10 new customers from the database.
+ * Defaults to 5 (50/50 split) if not explicitly set.
+ */
+export async function getLofaqAllocationRatio(): Promise<number> {
+  try {
+    const raw = await prisma.systemSetting.findUnique({
+      where: { key: RATIO_SETTING_KEY },
+    });
+    if (raw?.value) {
+      const num = parseInt(raw.value, 10);
+      if (!isNaN(num) && num >= 0 && num <= TOTAL_CYCLE_SLOTS) {
+        return num;
+      }
+    }
+  } catch (err) {
+    console.error("Error fetching allocation ratio setting:", err);
+  }
+  return DEFAULT_LOFAQ_ALLOCATION_PER_10;
+}
+
+/**
+ * Sets the Lofaq allocation ratio per 10 new customers and immediately generates
+ * a fresh randomized 10-slot cycle in the database.
+ */
+export async function setLofaqAllocationRatio(lofaqCount: number): Promise<{
+  lofaqCount: number;
+  dataDealsCount: number;
+  state: OrderCycleState;
+}> {
+  if (typeof lofaqCount !== "number" || isNaN(lofaqCount) || lofaqCount < 0 || lofaqCount > TOTAL_CYCLE_SLOTS) {
+    throw new Error(`Allocation must be an integer between 0 and ${TOTAL_CYCLE_SLOTS} (received: ${lofaqCount})`);
+  }
+
+  // 1. Save ratio to system setting
+  await prisma.systemSetting.upsert({
+    where: { key: RATIO_SETTING_KEY },
+    create: { key: RATIO_SETTING_KEY, value: String(lofaqCount) },
+    update: { value: String(lofaqCount) },
+  });
+
+  // 2. Fetch current cycle number or start at 1
+  const existingCycle = await prisma.systemSetting.findUnique({
+    where: { key: CYCLE_SETTING_KEY },
+  });
+  let cycleCount = 1;
+  if (existingCycle?.value) {
+    try {
+      const parsed = JSON.parse(existingCycle.value);
+      if (typeof parsed.cycleCount === "number") cycleCount = parsed.cycleCount + 1;
+    } catch {}
+  }
+
+  // 3. Generate fresh randomized cycle with new ratio and reset index to 0
+  const state: OrderCycleState = {
+    slots: generate10OrderCycle(lofaqCount),
+    index: 0,
+    cycleCount,
+  };
+
+  await prisma.systemSetting.upsert({
+    where: { key: CYCLE_SETTING_KEY },
+    create: { key: CYCLE_SETTING_KEY, value: JSON.stringify(state) },
+    update: { value: JSON.stringify(state) },
+  });
+
+  return {
+    lofaqCount,
+    dataDealsCount: TOTAL_CYCLE_SLOTS - lofaqCount,
+    state,
+  };
+}
+
+/**
+ * Generates a 10-slot cycle with exactly `lofaqCount` true (Lofaq) and `(10 - lofaqCount)` false (Data Deals) values,
  * shuffled randomly using Fisher-Yates algorithm.
  */
-export function generate10OrderCycle(): boolean[] {
-  const slots: boolean[] = [
-    true, true, true, true, true,
-    false, false, false, false, false,
-  ];
+export function generate10OrderCycle(lofaqCount: number = DEFAULT_LOFAQ_ALLOCATION_PER_10): boolean[] {
+  const count = Math.max(0, Math.min(TOTAL_CYCLE_SLOTS, Math.round(lofaqCount)));
+  const slots: boolean[] = [];
+  for (let i = 0; i < count; i++) slots.push(true);
+  for (let i = 0; i < TOTAL_CYCLE_SLOTS - count; i++) slots.push(false);
+
   for (let i = slots.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     const temp = slots[i];
@@ -59,15 +135,14 @@ export function generate10OrderCycle(): boolean[] {
   return slots;
 }
 
-
-
 /**
  * Determines whether the next NEW customer on data-deals should be allocated to Lofaq Data Hub.
- * Maintains a persistent 10-new-customer cycle with randomized 5-in-10 allocation
- * (5 new customers to Lofaq, 5 new customers to Data Deals).
+ * Maintains a persistent 10-new-customer cycle with randomized allocation based on the database setting.
  * Repeat buyers for Lofaq or Data Deals are handled directly by customer stickiness.
  */
 export async function shouldAllocateNextOrderToLofaq(): Promise<boolean> {
+  const currentRatio = await getLofaqAllocationRatio();
+
   const raw = await prisma.systemSetting.findUnique({
     where: { key: CYCLE_SETTING_KEY },
   });
@@ -81,19 +156,19 @@ export async function shouldAllocateNextOrderToLofaq(): Promise<boolean> {
     }
   }
 
-  // Validate state: must have 10 slots with exactly 4 true, index between 0 and 9
+  // Validate state: must have 10 slots with exactly currentRatio true, index between 0 and 9
   const isValid =
     state &&
     Array.isArray(state.slots) &&
     state.slots.length === TOTAL_CYCLE_SLOTS &&
-    state.slots.filter(Boolean).length === LOFAQ_ALLOCATION_PER_10 &&
+    state.slots.filter(Boolean).length === currentRatio &&
     typeof state.index === "number" &&
     state.index >= 0 &&
     state.index < TOTAL_CYCLE_SLOTS;
 
   if (!isValid || !state) {
     state = {
-      slots: generate10OrderCycle(),
+      slots: generate10OrderCycle(currentRatio),
       index: 0,
       cycleCount: (state?.cycleCount ?? 0) + 1,
     };
@@ -102,10 +177,9 @@ export async function shouldAllocateNextOrderToLofaq(): Promise<boolean> {
   const shouldAllocate = state.slots[state.index];
   state.index += 1;
 
-
   if (state.index >= 10) {
     // Current cycle completed, generate fresh randomized cycle for next 10 orders
-    state.slots = generate10OrderCycle();
+    state.slots = generate10OrderCycle(currentRatio);
     state.index = 0;
     state.cycleCount += 1;
   }

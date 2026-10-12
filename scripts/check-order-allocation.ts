@@ -4,7 +4,7 @@ import {
   DIVERTED_REFS_SETTING_KEY,
   DIVERTED_PHONES_SETTING_KEY,
   DATA_DEALS_STOREFRONT_FILTER,
-  LOFAQ_ALLOCATION_PER_10,
+  getLofaqAllocationRatio,
   TOTAL_CYCLE_SLOTS,
   OrderCycleState,
 } from "../src/lib/order-allocation";
@@ -100,12 +100,14 @@ async function main() {
   });
   const lofaqStoreIds = new Set(lofaqStores.map((s) => s.id));
 
-  // 2. Fetch System Settings (Cycle state, Diverted refs, Diverted phones)
+  // 2. Fetch System Settings (Ratio, Cycle state, Diverted refs, Diverted phones)
+  const configuredRatio = await getLofaqAllocationRatio();
+
   const cycleSetting = await prisma.systemSetting.findUnique({
     where: { key: CYCLE_SETTING_KEY },
   });
   let cycleState: OrderCycleState = {
-    slots: [true, true, true, true, true, false, false, false, false, false],
+    slots: Array.from({ length: TOTAL_CYCLE_SLOTS }, (_, i) => i < configuredRatio),
     index: 0,
     cycleCount: 1,
   };
@@ -248,7 +250,7 @@ async function main() {
       if (isLofaq) {
         newCustomerToLofaq++;
         classification = isDiverted
-          ? `NEW CUSTOMER -> LOFAQ (${LOFAQ_ALLOCATION_PER_10}/${TOTAL_CYCLE_SLOTS} Split)`
+          ? `NEW CUSTOMER -> LOFAQ (${configuredRatio}/${TOTAL_CYCLE_SLOTS} Split)`
           : "NEW CUSTOMER -> LOFAQ (Direct)";
         classificationTag = `${GREEN}NEW -> LOFAQ${RESET}`;
       } else {
@@ -315,11 +317,11 @@ async function main() {
   const newLofaqPct = newCustomerTotal > 0 ? ((newCustomerToLofaq / newCustomerTotal) * 100).toFixed(1) : "0.0";
   const newDDPct = newCustomerTotal > 0 ? ((newCustomerToDD / newCustomerTotal) * 100).toFixed(1) : "0.0";
 
-  const targetLofaqPct = ((LOFAQ_ALLOCATION_PER_10 / TOTAL_CYCLE_SLOTS) * 100).toFixed(1);
-  const targetDDPct = (((TOTAL_CYCLE_SLOTS - LOFAQ_ALLOCATION_PER_10) / TOTAL_CYCLE_SLOTS) * 100).toFixed(1);
+  const targetLofaqPct = ((configuredRatio / TOTAL_CYCLE_SLOTS) * 100).toFixed(1);
+  const targetDDPct = (((TOTAL_CYCLE_SLOTS - configuredRatio) / TOTAL_CYCLE_SLOTS) * 100).toFixed(1);
 
-  console.log(`    ${GREEN}├─ Allocated to Lofaq:${RESET}     ${BOLD}${newCustomerToLofaq}${RESET} (${newLofaqPct}%)  ${DIM}[Target: ${LOFAQ_ALLOCATION_PER_10} in ${TOTAL_CYCLE_SLOTS} = ${targetLofaqPct}%]${RESET}`);
-  console.log(`    ${CYAN}└─ Retained on Data Deals:${RESET} ${BOLD}${newCustomerToDD}${RESET} (${newDDPct}%)  ${DIM}[Target: ${TOTAL_CYCLE_SLOTS - LOFAQ_ALLOCATION_PER_10} in ${TOTAL_CYCLE_SLOTS} = ${targetDDPct}%]${RESET}\n`);
+  console.log(`    ${GREEN}├─ Allocated to Lofaq:${RESET}     ${BOLD}${newCustomerToLofaq}${RESET} (${newLofaqPct}%)  ${DIM}[Target: ${configuredRatio} in ${TOTAL_CYCLE_SLOTS} = ${targetLofaqPct}%]${RESET}`);
+  console.log(`    ${CYAN}└─ Retained on Data Deals:${RESET} ${BOLD}${newCustomerToDD}${RESET} (${newDDPct}%)  ${DIM}[Target: ${TOTAL_CYCLE_SLOTS - configuredRatio} in ${TOTAL_CYCLE_SLOTS} = ${targetDDPct}%]${RESET}\n`);
 
   console.log(`  ${BOLD}Repeat Customers:${RESET}      ${BOLD}${repeatCustomerTotal}${RESET} total in this period`);
   console.log(`    ${MAGENTA}├─ Sticky to Lofaq:${RESET}        ${BOLD}${repeatLofaqCount}${RESET} ${DIM}(100% sticky to Lofaq Hub)${RESET}`);
@@ -401,7 +403,29 @@ async function main() {
   console.log(`${DIM}Flags: --today | --yesterday | --days=7 | --all | --verbose | --limit=50${RESET}\n`);
 }
 
-main()
+async function runWithRetry(maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await main();
+      return;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTransient =
+        msg.includes("Can't reach database server") ||
+        msg.includes("connection pool") ||
+        msg.includes("P2024") ||
+        msg.includes("Connection");
+      if (isTransient && attempt < maxRetries) {
+        console.log(`[Database reconnecting... Retrying in 1.5s (attempt ${attempt}/${maxRetries})]`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+runWithRetry()
   .catch((err) => {
     console.error("Audit script failed:", err);
     process.exit(1);
