@@ -117,6 +117,20 @@ export async function POST(request: NextRequest) {
           ],
         },
       });
+
+      // SAFEGUARD: Orders held back from the provider batch for manual fulfillment or blocked
+      // must NEVER be auto-updated by batch callbacks for batches they were excluded from!
+      if (orders.length > 0) {
+        orders = orders.filter((o) => {
+          const ref = o.providerReference || "";
+          return (
+            !ref.startsWith("CLICKYFIED_MANUAL_HOLD") &&
+            !ref.startsWith("CLICKYFIED_INFLIGHT_HOLD") &&
+            !ref.includes(":FILTERED:") &&
+            !ref.includes(":BLOCKED")
+          );
+        });
+      }
     }
 
     // Fallback: If not found by orderId/externalRef, check if payload entries phone numbers match active orders
@@ -580,6 +594,16 @@ export async function POST(request: NextRequest) {
       const claimedIndices = new Set<number>();
 
       for (const ord of orders) {
+        // Double-check safeguard: skip any held-back or blocked orders
+        if (
+          ord.providerReference?.startsWith("CLICKYFIED_MANUAL_HOLD") ||
+          ord.providerReference?.startsWith("CLICKYFIED_INFLIGHT_HOLD") ||
+          ord.providerReference?.includes(":FILTERED:") ||
+          ord.providerReference?.includes(":BLOCKED")
+        ) {
+          continue;
+        }
+
         const ordNormPhone = normalizePhoneLast9(ord.phoneNumber);
         const cachedParts = (ord.providerReference || "").replace("CLICKYFIED:", "").trim().split(":");
         const cachedEntryId = cachedParts.length >= 2 ? cachedParts[cachedParts.length - 1] : null;
@@ -647,9 +671,16 @@ export async function POST(request: NextRequest) {
           }
         } else if (hasExplicitBatchStatus) {
           // SAFEGUARD: If individual entries were provided and this order was NOT matched to any of them,
-          // or if this order was tagged :BLOCKED, it is NOT part of this delivery batch!
-          // NEVER escalate an unmatched or BLOCKED order to SUCCESS based on parent batch status!
-          if ((parsedEntries.length > 0 && !matchedEntry) || ord.providerReference?.includes(":BLOCKED")) {
+          // or if this order was tagged :BLOCKED, :FILTERED:, or held back for manual fulfillment,
+          // it is NOT part of this delivery batch!
+          // NEVER escalate an unmatched, held, or BLOCKED order to SUCCESS based on parent batch status!
+          if (
+            (parsedEntries.length > 0 && !matchedEntry) ||
+            ord.providerReference?.includes(":BLOCKED") ||
+            ord.providerReference?.includes(":FILTERED:") ||
+            ord.providerReference?.startsWith("CLICKYFIED_MANUAL_HOLD") ||
+            ord.providerReference?.startsWith("CLICKYFIED_INFLIGHT_HOLD")
+          ) {
             continue;
           }
           if (["SUCCESS", "FAILED", "CANCELLED"].includes(overallTargetStatus)) {

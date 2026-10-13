@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const network = searchParams.get("network");
     const q = searchParams.get("q");
     const source = searchParams.get("source"); // WEB | API | STOREFRONT
+    const excluded = searchParams.get("excluded") === "true";
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
@@ -54,6 +55,27 @@ export async function GET(request: NextRequest) {
         orConditions.push({ id: Number(idMatch[1]) });
       }
       where.OR = orConditions;
+    }
+
+    if (excluded) {
+      const excludedConditions: any[] = [
+        { providerReference: { startsWith: "CLICKYFIED_MANUAL_HOLD" } },
+        { providerReference: { startsWith: "CLICKYFIED_INFLIGHT_HOLD" } },
+        { providerReference: { contains: ":FILTERED:" } },
+        { providerReference: "CLICKYFIED:BLOCKED" },
+        { failureReason: { contains: "Excluded by provider" } },
+        { failureReason: { contains: "Held in PENDING" } },
+        { failureReason: { contains: "Held back from batch" } },
+      ];
+      if (where.OR) {
+        where.AND = [
+          { OR: where.OR },
+          { OR: excludedConditions },
+        ];
+        delete where.OR;
+      } else {
+        where.OR = excludedConditions;
+      }
     }
 
     // Eliminate any trace of data-deals past orders for customers allocated/associated with Lofaq Data Hub

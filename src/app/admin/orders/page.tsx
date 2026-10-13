@@ -6,6 +6,7 @@ import { BatchesTable, type BatchRow } from "@/components/admin/batches-table";
 import { SingleOrdersTable, type AdminOrderRow } from "@/components/admin/single-orders-table";
 import { ApiOrdersTable } from "@/components/admin/api-orders-table";
 import { StorefrontOrdersTable, type StorefrontOrderRow } from "@/components/admin/storefront-orders-table";
+import { ExcludedOrdersTable } from "@/components/admin/excluded-orders-table";
 import { BatchDetailSheet } from "@/components/admin/batch-detail-sheet";
 import { QuickExportPanel } from "@/components/admin/quick-export-panel";
 import { Pagination } from "@/components/ui/pagination";
@@ -13,7 +14,8 @@ import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import Link from "next/link";
-import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet, ShieldAlert } from "lucide-react";
 import { downloadBase64 } from "@/components/batches/batch-ui";
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
@@ -27,15 +29,19 @@ const STOREFRONT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "AWAITING_PAY
 const selectCls =
   "h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 placeholder:text-slate-400 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400 [&>option]:bg-white dark:[&>option]:bg-[#0d1526]";
 
-type ViewMode = "batches" | "single" | "storefront" | "api";
+type ViewMode = "batches" | "single" | "storefront" | "api" | "excluded";
 
 export default function AdminOrdersPage() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const badges = useNavBadges(true);
   const pendingOrdersCount = badges["/admin/orders"]?.count ?? 0;
 
   // ── view toggle ─────────────────────────────────────────────
-  const [viewMode, setViewMode] = React.useState<ViewMode>("batches");
+  const initialView = searchParams.get("view");
+  const [viewMode, setViewMode] = React.useState<ViewMode>(
+    initialView === "excluded" ? "excluded" : "batches"
+  );
 
   // ── shared filters ───────────────────────────────────────────
   const [network, setNetwork] = React.useState("");
@@ -95,11 +101,30 @@ export default function AdminOrdersPage() {
   const [apiTotal, setApiTotal] = React.useState(0);
   const [apiPages, setApiPages] = React.useState(1);
 
+  // ── excluded orders state ────────────────────────────────────
+  const [excludedOrders, setExcludedOrders] = React.useState<AdminOrderRow[]>([]);
+  const [excludedTotal, setExcludedTotal] = React.useState(0);
+  const [excludedPages, setExcludedPages] = React.useState(1);
+  const [excludedBadgeCount, setExcludedBadgeCount] = React.useState(0);
+
   // ── data fetcher ─────────────────────────────────────────────
   const load = React.useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      if (viewMode === "api") {
+      if (viewMode === "excluded") {
+        const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), excluded: "true" });
+        if (network) params.set("network", network);
+        if (status) params.set("status", status);
+        if (q) params.set("q", q);
+        if (dateFilter.from) params.set("from", dateFilter.from);
+        if (dateFilter.to) params.set("to", dateFilter.to);
+        const res = await fetch(`/api/admin/orders?${params}`, { cache: "no-store" });
+        const json = await res.json();
+        setExcludedOrders(json.data ?? []);
+        setExcludedTotal(json.total ?? 0);
+        setExcludedPages(json.pages ?? 1);
+        setExcludedBadgeCount(json.total ?? 0);
+      } else if (viewMode === "api") {
         const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), source: "API" });
         if (network) params.set("network", network);
         if (status) params.set("status", status);
@@ -149,6 +174,15 @@ export default function AdminOrdersPage() {
         setBatchTotal(json.total ?? 0);
         setBatchPages(json.pages ?? 1);
       }
+
+      // Keep excluded badge updated in the background if not on excluded tab
+      if (viewMode !== "excluded") {
+        fetch("/api/admin/orders?excluded=true&pageSize=1", { cache: "no-store" })
+          .then((r) => r.json())
+          .then((d) => setExcludedBadgeCount(d.total ?? 0))
+          .catch(() => {});
+      }
+
       setLastRefreshed(new Date());
       window.dispatchEvent(new CustomEvent("nav-counts-update"));
     } finally {
@@ -184,7 +218,7 @@ export default function AdminOrdersPage() {
     setViewMode(v);
     setPage(1);
     setStatus("");
-    if (v === "single" || v === "api") {
+    if (v === "single" || v === "api" || v === "excluded") {
       setPageSize(100);
     } else {
       setPageSize(15);
@@ -414,6 +448,8 @@ export default function AdminOrdersPage() {
       ? "Storefront Orders"
       : viewMode === "api"
       ? "API Orders"
+      : viewMode === "excluded"
+      ? "API Excluded Orders"
       : viewMode === "single"
       ? "Order Lookup"
       : "Batch Ops Center";
@@ -423,6 +459,8 @@ export default function AdminOrdersPage() {
       ? `${sfTotal} storefront sale${sfTotal === 1 ? "" : "s"} from all public storefronts`
       : viewMode === "api"
       ? `${apiTotal} API order${apiTotal === 1 ? "" : "s"} received via Developer API`
+      : viewMode === "excluded"
+      ? `${excludedTotal} order${excludedTotal === 1 ? "" : "s"} excluded or held back by provider APIs for manual processing`
       : viewMode === "single"
       ? `${singleTotal} order${singleTotal === 1 ? "" : "s"}${q ? ` matching "${q}"` : ""}`
       : `${batchTotal} batch${batchTotal === 1 ? "" : "es"} — orders grouped per network`;
@@ -432,6 +470,8 @@ export default function AdminOrdersPage() {
       ? sfTotal
       : viewMode === "api"
       ? apiTotal
+      : viewMode === "excluded"
+      ? excludedTotal
       : viewMode === "single"
       ? singleTotal
       : batchTotal;
@@ -440,6 +480,8 @@ export default function AdminOrdersPage() {
       ? sfPages
       : viewMode === "api"
       ? apiPages
+      : viewMode === "excluded"
+      ? excludedPages
       : viewMode === "single"
       ? singlePages
       : batchPages;
@@ -566,6 +608,29 @@ export default function AdminOrdersPage() {
                 }`}
               >
                 <Code2 className="h-3.5 w-3.5" /> API Orders
+              </button>
+              <button
+                onClick={() => switchView("excluded")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
+                  viewMode === "excluded"
+                    ? "bg-rose-600 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+                title="Orders excluded or held back by provider APIs for manual processing"
+              >
+                <ShieldAlert className="h-3.5 w-3.5 text-rose-500" />
+                <span>Excluded by API</span>
+                {excludedBadgeCount > 0 && (
+                  <span
+                    className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                      viewMode === "excluded"
+                        ? "bg-white/25 text-white"
+                        : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                    }`}
+                  >
+                    {excludedBadgeCount}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -735,13 +800,18 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-      {/* Bulk action bar — Single orders & API orders */}
-      {(viewMode === "single" || viewMode === "api") && selectedOrderIds.size > 0 && (
+      {/* Bulk action bar — Single orders, API orders, and Excluded orders */}
+      {(viewMode === "single" || viewMode === "api" || viewMode === "excluded") && selectedOrderIds.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200">
           <div className="flex items-center gap-2">
             <span>{selectedOrderIds.size} order(s) selected</span>
             {(() => {
-              const currentList = viewMode === "api" ? apiOrders : singleOrders;
+              const currentList =
+                viewMode === "api"
+                  ? apiOrders
+                  : viewMode === "excluded"
+                  ? excludedOrders
+                  : singleOrders;
               return selectedOrderIds.size < currentList.length ? (
                 <button
                   type="button"
@@ -855,6 +925,28 @@ export default function AdminOrdersPage() {
               setSelectedOrderIds(new Set());
             } else {
               setSelectedOrderIds(new Set(apiOrders.map((o) => o.id)));
+            }
+          }}
+          onChangeStatus={handleSingleOrderStatusChange}
+        />
+      ) : viewMode === "excluded" ? (
+        <ExcludedOrdersTable
+          orders={excludedOrders}
+          loading={loading}
+          selectedIds={selectedOrderIds}
+          onToggleSelectRow={(id) => {
+            setSelectedOrderIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            });
+          }}
+          onToggleSelectAll={() => {
+            if (selectedOrderIds.size === excludedOrders.length && excludedOrders.length > 0) {
+              setSelectedOrderIds(new Set());
+            } else {
+              setSelectedOrderIds(new Set(excludedOrders.map((o) => o.id)));
             }
           }}
           onChangeStatus={handleSingleOrderStatusChange}
