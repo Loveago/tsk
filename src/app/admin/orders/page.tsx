@@ -66,9 +66,9 @@ export default function AdminOrdersPage() {
       .catch(() => {/* use default */});
   }, []);
 
-  // auto-switch to single view when a phone number is typed in
+  // auto-switch to single view when a phone number is typed in (except on storefront and excluded views)
   React.useEffect(() => {
-    if (viewMode !== "storefront" && /\d{3,}/.test(q.trim())) {
+    if (viewMode !== "storefront" && viewMode !== "excluded" && /\d{3,}/.test(q.trim())) {
       setViewMode("single");
       setPageSize(100);
     }
@@ -679,7 +679,7 @@ export default function AdminOrdersPage() {
             }}
           >
             <option value="">All statuses</option>
-            {viewMode === "single"
+            {viewMode === "single" || viewMode === "excluded"
               ? [
                   { value: "Pending", label: "Pending" },
                   { value: "Processing", label: "Processing" },
@@ -705,6 +705,8 @@ export default function AdminOrdersPage() {
             placeholder={
               viewMode === "storefront"
                 ? "Search phone, reference, store…"
+                : viewMode === "excluded"
+                ? "Search excluded phone, code, batch…"
                 : "Search phone number, code, user…"
             }
             value={q}

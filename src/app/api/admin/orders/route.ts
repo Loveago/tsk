@@ -46,9 +46,18 @@ export async function GET(request: NextRequest) {
       const orConditions: any[] = [
         { phoneNumber: { contains: trimmed } },
         { externalReference: { contains: trimmed } },
+        { providerReference: { contains: trimmed } },
+        { failureReason: { contains: trimmed } },
         { user: { is: { email: { contains: trimmed } } } },
         { user: { is: { name: { contains: trimmed } } } },
       ];
+      if (/^\d{7,13}$/.test(trimmed)) {
+        if (trimmed.startsWith("0")) {
+          orConditions.push({ phoneNumber: { contains: trimmed.slice(1) } });
+        } else {
+          orConditions.push({ phoneNumber: { contains: `0${trimmed}` } });
+        }
+      }
       if (parsedId !== null && parsedId < 2147483647) {
         orConditions.push({ id: parsedId });
       } else if (idMatch && Number(idMatch[1]) < 2147483647) {

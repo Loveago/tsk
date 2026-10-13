@@ -28,6 +28,7 @@ import {
   Square,
   ChevronLeft,
   ChevronRight,
+  Zap,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/types";
 import { ImportAcceptedModal } from "@/components/admin/mtn-verification/import-accepted-modal";
@@ -1237,16 +1238,37 @@ export default function AdminMtnVerificationPage() {
 
                 <select
                   value={accSource}
-                  onChange={(e) => setAccSource(e.target.value)}
+                  onChange={(e) => {
+                    setAccSource(e.target.value);
+                    setAccPage(1);
+                  }}
                   className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="ALL">All Sources</option>
+                  <option value="CLICKYFIED_API">⚡ Clickyfied API Verified</option>
                   <option value="MANUAL">Manual</option>
                   <option value="IMPORT_TXT">Import (TXT)</option>
                   <option value="IMPORT_CSV">Import (CSV)</option>
                   <option value="BATCH_VERIFICATION">Batch Verification</option>
                   <option value="BLOCKED_NUMBER_PROMOTION">Blocked Promotion</option>
                 </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccSource((prev) => (prev === "CLICKYFIED_API" ? "ALL" : "CLICKYFIED_API"));
+                    setAccPage(1);
+                  }}
+                  className={`inline-flex h-8.5 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition ${
+                    accSource === "CLICKYFIED_API"
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                  title="Filter numbers verified automatically by the Clickyfied API"
+                >
+                  <Zap className={`h-3.5 w-3.5 ${accSource === "CLICKYFIED_API" ? "text-emerald-600 dark:text-emerald-400 fill-emerald-600/20" : "text-amber-500"}`} />
+                  <span>Clickyfied Verified</span>
+                </button>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -1380,9 +1402,18 @@ export default function AdminMtnVerificationPage() {
                             </div>
                           </td>
                           <td className="px-3 py-2.5">
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                              {a.source}
-                            </span>
+                            {a.source?.includes("CLICKYFIED") ||
+                            a.verifiedBy?.toLowerCase().includes("clickyfied") ||
+                            a.verifiedBy === "Automated Verification API" ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/40">
+                                <Zap className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                                Clickyfied API
+                              </span>
+                            ) : (
+                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                {a.source}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-2.5 font-mono text-[11px] text-slate-500">
                             {a.batch?.batchReference || "—"}

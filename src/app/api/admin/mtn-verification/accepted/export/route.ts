@@ -24,7 +24,25 @@ export async function GET(request: NextRequest) {
       }
     } else {
       if (source && source !== "ALL") {
-        where.source = source;
+        const sourceCond =
+          source === "CLICKYFIED_API" || source === "CLICKYFIED"
+            ? {
+                OR: [
+                  { source: "CLICKYFIED_API" },
+                  { source: "CLICKYFIED" },
+                  { source: { contains: "CLICKYFIED", mode: "insensitive" as const } },
+                  { verifiedBy: { contains: "Clickyfied", mode: "insensitive" as const } },
+                  { verifiedBy: { contains: "Automated Verification API", mode: "insensitive" as const } },
+                ],
+              }
+            : { source };
+
+        if (where.OR) {
+          where.AND = [{ OR: where.OR }, sourceCond];
+          delete where.OR;
+        } else {
+          Object.assign(where, sourceCond);
+        }
       }
       if (batchId) {
         where.batchId = batchId;
