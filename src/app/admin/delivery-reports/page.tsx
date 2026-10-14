@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { formatDateTime, formatGHS } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { FileWarning, Image as ImageIcon, RefreshCw, Pause, Play, Clock } from "lucide-react";
+import { FileWarning, Image as ImageIcon, RefreshCw, Pause, Play, Clock, Loader2, CheckSquare } from "lucide-react";
+import { useToast } from "@/components/toast";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
 
@@ -51,6 +52,7 @@ interface ReportRow {
 }
 
 export default function DeliveryReportsPage() {
+  const { toast } = useToast();
   const [rows, setRows] = React.useState<ReportRow[]>([]);
   const [stats, setStats] = React.useState<Record<string, number>>({});
   const [total, setTotal] = React.useState(0);
@@ -63,6 +65,10 @@ export default function DeliveryReportsPage() {
   const [manageId, setManageId] = React.useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = React.useState<Date | null>(null);
   const [refreshInterval, setRefreshInterval] = React.useState(30);
+
+  // Bulk actions state
+  const [selectedReportIds, setSelectedReportIds] = React.useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = React.useState(false);
 
   // Load refresh interval from admin settings
   React.useEffect(() => {
@@ -104,6 +110,37 @@ export default function DeliveryReportsPage() {
     const t = setTimeout(() => { void load(false); }, 250);
     return () => clearTimeout(t);
   }, [load]);
+
+  React.useEffect(() => {
+    setSelectedReportIds(new Set());
+  }, [page, status, dateFilter]);
+
+  const handleBulkStatus = async (action: string) => {
+    if (selectedReportIds.size === 0 || bulkUpdating) return;
+    try {
+      setBulkUpdating(true);
+      const res = await fetch("/api/admin/delivery-reports", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reportIds: Array.from(selectedReportIds),
+          action,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to update reports", "error");
+        return;
+      }
+      toast(`Successfully updated ${json.updatedCount ?? selectedReportIds.size} report(s)`, "success");
+      setSelectedReportIds(new Set());
+      await load(true);
+    } catch {
+      toast("Error during bulk reports update", "error");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
 
   // Efficient Auto-refresh with tab visibility awareness & silent background refresh
   const {
@@ -228,6 +265,85 @@ export default function DeliveryReportsPage() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedReportIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200 shadow-sm animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <span>{selectedReportIds.size} report{selectedReportIds.size === 1 ? "" : "s"} selected</span>
+            {selectedReportIds.size < rows.length && (
+              <button
+                type="button"
+                disabled={bulkUpdating}
+                onClick={() => setSelectedReportIds(new Set(rows.map((r) => r.id)))}
+                className="underline hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer disabled:opacity-50"
+              >
+                (Select all {rows.length} on this page)
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkStatus("RESOLVE_CONFIRM_SENT")}
+              className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-300 dark:hover:bg-emerald-950/40 font-medium"
+            >
+              {bulkUpdating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Confirm Sent
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkStatus("RESOLVE")}
+              className="border-blue-500/40 text-blue-700 hover:bg-blue-50 dark:border-blue-500/40 dark:text-blue-300 dark:hover:bg-blue-950/40 font-medium"
+            >
+              {bulkUpdating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Resolved
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkStatus("RESOLVE_REFUNDED")}
+              className="border-cyan-500/40 text-cyan-700 hover:bg-cyan-50 dark:border-cyan-500/40 dark:text-cyan-300 dark:hover:bg-cyan-950/40 font-medium"
+            >
+              {bulkUpdating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Refunded
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkStatus("MARK_UNDER_REVIEW")}
+              className="border-amber-500/40 text-amber-700 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-950/40 font-medium"
+            >
+              {bulkUpdating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Under Review
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUpdating}
+              onClick={() => handleBulkStatus("REJECT")}
+              className="border-rose-500/40 text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-950/40 font-medium"
+            >
+              {bulkUpdating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Reject
+            </Button>
+            <button
+              type="button"
+              disabled={bulkUpdating}
+              onClick={() => setSelectedReportIds(new Set())}
+              className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
         {loading ? (
           <div className="flex justify-center py-12">
@@ -264,6 +380,26 @@ export default function DeliveryReportsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs text-slate-500 dark:border-slate-800">
+                  <th className="w-10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all on this page"
+                      checked={rows.length > 0 && selectedReportIds.size === rows.length}
+                      ref={(el) => {
+                        if (el) {
+                          el.indeterminate = selectedReportIds.size > 0 && selectedReportIds.size < rows.length;
+                        }
+                      }}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedReportIds(new Set(rows.map((r) => r.id)));
+                        } else {
+                          setSelectedReportIds(new Set());
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="px-4 py-3 font-medium">Report</th>
                   <th className="px-4 py-3 font-medium">Issue</th>
                   <th className="px-4 py-3 font-medium">Customer</th>
@@ -276,7 +412,23 @@ export default function DeliveryReportsPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {rows.map((r) => {
                   return (
-                    <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    <tr key={r.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/60 ${selectedReportIds.has(r.id) ? "bg-brand-50/40 dark:bg-brand-500/5" : ""}`}>
+                      <td className="w-10 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select report ${r.code}`}
+                          checked={selectedReportIds.has(r.id)}
+                          onChange={(e) => {
+                            setSelectedReportIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(r.id);
+                              else next.delete(r.id);
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <p className="font-mono text-xs font-bold">{r.code}</p>
                         <div className="mt-0.5 flex items-center gap-1.5">

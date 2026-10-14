@@ -71,6 +71,20 @@ export async function GET(request: NextRequest) {
     });
     const submissionEnabled = killSwitch?.value !== "false";
 
+    const [
+      waEnabledSetting,
+      waUrlSetting,
+      waTitleSetting,
+      waDescSetting,
+      waBtnSetting,
+    ] = await Promise.all([
+      prisma.systemSetting.findUnique({ where: { key: "whatsapp_channel_enabled" } }),
+      prisma.systemSetting.findUnique({ where: { key: "whatsapp_channel_url" } }),
+      prisma.systemSetting.findUnique({ where: { key: "whatsapp_channel_title" } }),
+      prisma.systemSetting.findUnique({ where: { key: "whatsapp_channel_description" } }),
+      prisma.systemSetting.findUnique({ where: { key: "whatsapp_channel_button_text" } }),
+    ]);
+
     const { getNetworkPauseSettings } = await import("@/lib/orders");
     const pauseInfo = await getNetworkPauseSettings();
 
@@ -80,6 +94,13 @@ export async function GET(request: NextRequest) {
       userBalance: user.balance,
       isHalted: pauseInfo.isHalted,
       networkStatus: pauseInfo.networkStatus,
+      whatsappChannel: {
+        enabled: waEnabledSetting?.value === "true",
+        url: waUrlSetting?.value || "",
+        title: waTitleSetting?.value || "Join our WhatsApp Channel",
+        description: waDescSetting?.value || "Get real-time updates, network delivery speeds, and exclusive announcements directly on WhatsApp.",
+        buttonText: waBtnSetting?.value || "Join Channel",
+      },
     });
 
   } catch (err) {

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { formatGHS } from "@/lib/types";
 import { isMtnPrefix } from "@/lib/phone-utils";
-import { Check, Copy, Send, ShoppingBag, Trash2 } from "lucide-react";
+import { Check, Copy, Send, ShoppingBag, Trash2, Loader2 } from "lucide-react";
 
 export interface Line {
   phoneNumber: string;
@@ -90,9 +90,13 @@ export function QueueList({
                 onClick={onSubmit}
                 disabled={submitting || isSubmitDisabled}
                 type="button"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-3.5 text-xs font-bold shadow-xs transition hover:shadow disabled:opacity-50 cursor-pointer"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-3.5 text-xs font-bold shadow-xs transition hover:shadow disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                <Send className="h-3.5 w-3.5" />
+                {submitting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
                 <span>{submitting ? "Sending…" : `Send ${lines.length} order${lines.length === 1 ? "" : "s"}`}</span>
               </button>
             )}
@@ -193,10 +197,19 @@ export function SendSummary({
             <button
               onClick={onSubmit}
               disabled={submitting}
-              className="mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-8 text-sm font-bold text-blue-700 shadow-md transition hover:bg-blue-50 disabled:opacity-60"
+              className="mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-8 text-sm font-bold text-blue-700 shadow-md transition hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
-              <Send className="h-4 w-4" />
-              {submitting ? "Sending…" : `Send ${count} order${count === 1 ? "" : "s"}`}
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-700" />
+                  <span>Sending orders…</span>
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  <span>Send ${count} order${count === 1 ? "" : "s"}</span>
+                </>
+              )}
             </button>
           </>
         )}

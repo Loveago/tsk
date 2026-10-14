@@ -171,6 +171,25 @@ export const deliveryReportActionSchema = z.object({
   adminResponse: z.string().max(1000).optional().or(z.literal("")),
 });
 
+export const bulkDeliveryReportActionSchema = z.object({
+  reportIds: z.array(z.string().min(1)).min(1, "Select at least one report"),
+  action: z.enum([
+    "RESOLVE_RESEND",
+    "RESOLVE_REFUND",
+    "REJECT",
+    "START_INVESTIGATION",
+    "KEEP_INVESTIGATING",
+    "MARK_DELIVERED",
+    "ADD_RESPONSE",
+    "RESOLVE",
+    "MARK_UNDER_REVIEW",
+    "RESOLVE_REFUNDED",
+    "RESOLVE_CONFIRM_SENT",
+  ]),
+  resolutionNote: z.string().max(300).optional().or(z.literal("")),
+  adminResponse: z.string().max(1000).optional().or(z.literal("")),
+});
+
 export const deliveryReportCreateSchema = z.object({
   orderId: z.coerce.number().int().positive(),
   reason: z.string().min(1, "Select or enter a reason").max(200),
@@ -306,6 +325,13 @@ export const settingsSchema = z.object({
   support_telegram: z.string().max(100).optional(),
   support_email: z.string().max(80).optional(),
   footer_text: z.string().max(500).optional(),
+
+  // WhatsApp Channel Widget
+  whatsapp_channel_enabled: z.enum(["true", "false"]).optional(),
+  whatsapp_channel_url: z.string().max(255).optional(),
+  whatsapp_channel_title: z.string().max(100).optional(),
+  whatsapp_channel_description: z.string().max(300).optional(),
+  whatsapp_channel_button_text: z.string().max(50).optional(),
   
   // Pricing & Packages
   show_package_prices_to_users: z.enum(["true", "false"]).optional(),

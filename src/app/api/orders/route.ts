@@ -15,9 +15,19 @@ import { handleRouteError, apiError } from "@/lib/api-helpers";
 import { normalizeOrderStatus, sanitizeCustomerRefundNote } from "@/lib/types";
 import { parseOrderCode } from "@/lib/utils";
 
+/** In-flight submissions lock per user to prevent duplicate concurrent submissions */
+const inFlightUserSubmissions = new Set<string>();
+
 export async function POST(request: NextRequest) {
+  let userIdForLock: string | null = null;
   try {
     const user = await requireUser();
+    userIdForLock = user.id;
+
+    if (inFlightUserSubmissions.has(user.id)) {
+      return apiError(409, "An order submission is already processing for your account. Please wait a moment.");
+    }
+    inFlightUserSubmissions.add(user.id);
 
     if (await isOrderProcessingHalted()) {
       return apiError(503, "Order processing is temporarily halted. Please try again later.");
@@ -45,6 +55,24 @@ export async function POST(request: NextRequest) {
 
     if (deduplicatedOrders.length === 0) {
       return apiError(400, "No valid orders provided.");
+    }
+
+    // Rapid duplicate submission check: prevent accidental double-submits from identical batch within 10 seconds
+    const tenSecondsAgo = new Date(Date.now() - 10000);
+    const recentOrders = await prisma.order.findMany({
+      where: {
+        userId: user.id,
+        createdAt: { gte: tenSecondsAgo },
+        phoneNumber: { in: deduplicatedOrders.map((o) => o.phoneNumber) },
+      },
+      select: { phoneNumber: true, gbAmount: true },
+    });
+    if (recentOrders.length > 0 && recentOrders.length === deduplicatedOrders.length) {
+      const recentKeys = new Set(recentOrders.map((ro) => `${ro.phoneNumber}:${ro.gbAmount}`));
+      const allMatch = deduplicatedOrders.every((o) => recentKeys.has(`${o.phoneNumber}:${o.gbAmount}`));
+      if (allMatch) {
+        return apiError(409, "Duplicate submission detected. These orders were just submitted and are currently processing.");
+      }
     }
 
     const maxOrdersSetting = await prisma.systemSetting.findUnique({
@@ -457,6 +485,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     return handleRouteError(err);
+  } finally {
+    if (userIdForLock) {
+      inFlightUserSubmissions.delete(userIdForLock);
+    }
   }
 }
 

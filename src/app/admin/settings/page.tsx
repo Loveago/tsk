@@ -32,6 +32,7 @@ import {
   Server,
 } from "lucide-react";
 import { ProviderApisSettings } from "@/components/admin/provider-apis-settings";
+import { WhatsAppChannelWidget } from "@/components/whatsapp-channel-widget";
 
 type Category =
   | "orders"
@@ -1445,6 +1446,94 @@ export default function AdminSettingsPage() {
                   placeholder="support@tskconnect.com"
                 />
               </div>
+            </div>
+
+            {/* WhatsApp Channel Widget Card */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+                      WA
+                    </span>
+                    WhatsApp Channel Widget (User Home Page)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Show an engaging banner on the user home page encouraging users to join your official WhatsApp channel or community.
+                  </p>
+                </div>
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    className="peer sr-only"
+                    checked={settings.whatsapp_channel_enabled === "true"}
+                    onChange={(e) =>
+                      setSettings((s) => ({
+                        ...s,
+                        whatsapp_channel_enabled: e.target.checked ? "true" : "false",
+                      }))
+                    }
+                  />
+                  <div className="peer h-6 w-11 rounded-full bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:bg-emerald-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600"></div>
+                </label>
+              </div>
+
+              {settings.whatsapp_channel_enabled === "true" && (
+                <div className="space-y-4 border-t border-slate-100 pt-4 dark:border-slate-800 animate-in fade-in duration-200">
+                  <div className="space-y-1.5">
+                    <Label>WhatsApp Channel or Group Link</Label>
+                    <Input
+                      value={settings.whatsapp_channel_url ?? ""}
+                      onChange={(e) => setSettings((s) => ({ ...s, whatsapp_channel_url: e.target.value }))}
+                      placeholder="https://whatsapp.com/channel/..."
+                    />
+                    <p className="text-[11px] text-slate-400">
+                      The full URL for your WhatsApp Channel or Group (e.g. https://whatsapp.com/channel/... or https://chat.whatsapp.com/...).
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label>Widget Title</Label>
+                      <Input
+                        value={settings.whatsapp_channel_title ?? ""}
+                        onChange={(e) => setSettings((s) => ({ ...s, whatsapp_channel_title: e.target.value }))}
+                        placeholder="Join our WhatsApp Channel"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Button Text</Label>
+                      <Input
+                        value={settings.whatsapp_channel_button_text ?? ""}
+                        onChange={(e) => setSettings((s) => ({ ...s, whatsapp_channel_button_text: e.target.value }))}
+                        placeholder="Join Channel"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Widget Description</Label>
+                    <Input
+                      value={settings.whatsapp_channel_description ?? ""}
+                      onChange={(e) => setSettings((s) => ({ ...s, whatsapp_channel_description: e.target.value }))}
+                      placeholder="Get real-time updates, network delivery speeds, and exclusive announcements directly on WhatsApp."
+                    />
+                  </div>
+
+                  {/* Live Preview */}
+                  <div className="space-y-1.5 pt-2">
+                    <Label className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Live Preview</Label>
+                    <WhatsAppChannelWidget
+                      enabled={true}
+                      url={settings.whatsapp_channel_url || "https://whatsapp.com/channel/preview"}
+                      title={settings.whatsapp_channel_title || "Join our WhatsApp Channel"}
+                      description={settings.whatsapp_channel_description || "Get real-time updates, network delivery speeds, and exclusive announcements directly on WhatsApp."}
+                      buttonText={settings.whatsapp_channel_button_text || "Join Channel"}
+                      dismissible={false}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

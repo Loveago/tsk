@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { LiveDeliverySpeedCard } from "@/components/send/live-delivery-speed-card";
+import { WhatsAppChannelWidget, type WhatsAppChannelConfig } from "@/components/whatsapp-channel-widget";
 import {
   AlertTriangle,
   Check,
@@ -68,6 +69,7 @@ export default function SendOrderPage() {
   const [draftLoaded, setDraftLoaded] = React.useState(false);
   const [copiedBulkText, setCopiedBulkText] = React.useState(false);
   const [copiedFromModal, setCopiedFromModal] = React.useState(false);
+  const [whatsappChannel, setWhatsappChannel] = React.useState<WhatsAppChannelConfig | null>(null);
 
   // Insufficient balance dialog state
   const [insufficientBalanceModal, setInsufficientBalanceModal] = React.useState<{
@@ -79,6 +81,7 @@ export default function SendOrderPage() {
   } | null>(null);
 
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const isSubmittingRef = React.useRef(false);
 
   // State for confirming unverified MTN numbers
   const [pendingUnverified, setPendingUnverified] = React.useState<{
@@ -150,6 +153,9 @@ export default function SendOrderPage() {
         }
         if (typeof d.userBalance === "number") {
           setUserBalance(d.userBalance);
+        }
+        if (d.whatsappChannel) {
+          setWhatsappChannel(d.whatsappChannel);
         }
       })
       .catch(() => toast("Failed to load packages", "error"))
@@ -338,6 +344,7 @@ export default function SendOrderPage() {
 
   const confirmUnverifiedAddition = (includeUnverified: boolean) => {
     if (!pendingUnverified) return;
+    if (isSubmittingRef.current || submitting) return;
     const mode = pendingUnverified.mode;
     const items = includeUnverified ? pendingUnverified.toAdd : pendingUnverified.verifiedItems;
     const unverifiedCount = pendingUnverified.unverifiedNumbers.length;
@@ -346,6 +353,8 @@ export default function SendOrderPage() {
     if (mode === "submit") {
       if (items.length > 0) {
         setLines(items);
+        isSubmittingRef.current = true;
+        setSubmitting(true);
         void executeOrderSubmission(items);
       } else {
         toast("No orders to send — unverified number(s) were removed", "info");
@@ -553,23 +562,29 @@ export default function SendOrderPage() {
   };
 
   const executeOrderSubmission = async (ordersToSend: Line[]) => {
-    if (submitting) return;
     if (!ordersToSend.length) {
+      isSubmittingRef.current = false;
+      setSubmitting(false);
       toast("Add at least one order", "error");
       return;
     }
     if (isHalted) {
+      isSubmittingRef.current = false;
+      setSubmitting(false);
       toast("Order processing is currently paused for scheduled system maintenance.", "error");
       return;
     }
     const pausedOrder = ordersToSend.find((o) => networkStatus[o.network] === false);
     if (pausedOrder) {
+      isSubmittingRef.current = false;
+      setSubmitting(false);
       toast(
         `${NETWORK_LABELS[pausedOrder.network] || pausedOrder.network} orders are currently paused for maintenance.`,
         "error"
       );
       return;
     }
+    isSubmittingRef.current = true;
     setSubmitting(true);
     setResult(null);
 
@@ -622,84 +637,107 @@ export default function SendOrderPage() {
       }
       toast("Orders sent!", "success");
     } finally {
+      isSubmittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const submit = async () => {
-    let ordersToSubmit = lines;
-    if (!ordersToSubmit.length && tab === "paste" && bulkText.trim()) {
-      const rawLines = splitOrderLines(bulkText);
-      const parsed: Line[] = [];
-      let skipped = 0;
-      rawLines.forEach((line) => {
-        if (isHeaderLine(line)) return;
-        const parsedLine = parseOrderLine(line, packages, network);
-        if (parsedLine) parsed.push(parsedLine);
-        else skipped++;
-      });
-      if (parsed.length > 0) {
-        addParsed(parsed, skipped, "pasted text", bulkText);
-        return;
-      }
-    }
+    if (isSubmittingRef.current || submitting) return;
+    isSubmittingRef.current = true;
+    setSubmitting(true);
 
-    if (!ordersToSubmit.length) {
-      toast("Add at least one order", "error");
-      return;
-    }
-
-    const currentTotal = ordersToSubmit.reduce((s, l) => s + (l.price ?? 0), 0);
-
-    // Pre-check balance if known
-    if (userBalance !== null && userBalance < currentTotal) {
-      const deficit = Math.max(0, currentTotal - userBalance);
-      setInsufficientBalanceModal({
-        needed: currentTotal,
-        balance: userBalance,
-        deficit,
-        orders: ordersToSubmit,
-        message: `Insufficient balance. You need GHS ${currentTotal.toFixed(2)} but have GHS ${userBalance.toFixed(2)}.`,
-      });
-      return;
-    }
-
-    // Pre-submission check for any unverified MTN numbers
-    const mtnLines = ordersToSubmit.filter((l) => l.network === "MTN");
-    if (mtnLines.length > 0) {
-      try {
-        const checkRes = await fetch("/api/mtn-verification/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phoneNumbers: mtnLines.map((l) => l.phoneNumber) }),
+    try {
+      let ordersToSubmit = lines;
+      if (!ordersToSubmit.length && tab === "paste" && bulkText.trim()) {
+        const rawLines = splitOrderLines(bulkText);
+        const parsed: Line[] = [];
+        let skipped = 0;
+        rawLines.forEach((line) => {
+          if (isHeaderLine(line)) return;
+          const parsedLine = parseOrderLine(line, packages, network);
+          if (parsedLine) parsed.push(parsedLine);
+          else skipped++;
         });
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
-          if (unverifiedList.length > 0) {
-            const unverifiedSet = new Set(unverifiedList);
-            setPendingUnverified({
-              toAdd: ordersToSubmit,
-              unverifiedNumbers: unverifiedList,
-              verifiedItems: ordersToSubmit.filter((l) => !unverifiedSet.has(l.phoneNumber)),
-              verificationEnabled: checkData.verificationEnabled ?? true,
-              rawText: null,
-              mode: "submit",
-            });
-            return;
-          }
-        } else {
-          const errorData = await checkRes.json().catch(() => null);
-          toast(errorData?.message || "Failed to verify MTN numbers. Please try again.", "error");
+        if (parsed.length > 0) {
+          isSubmittingRef.current = false;
+          setSubmitting(false);
+          addParsed(parsed, skipped, "pasted text", bulkText);
           return;
         }
-      } catch {
-        toast("Network error verifying MTN numbers. Please try again.", "error");
+      }
+
+      if (!ordersToSubmit.length) {
+        isSubmittingRef.current = false;
+        setSubmitting(false);
+        toast("Add at least one order", "error");
         return;
       }
-    }
 
-    await executeOrderSubmission(ordersToSubmit);
+      const currentTotal = ordersToSubmit.reduce((s, l) => s + (l.price ?? 0), 0);
+
+      // Pre-check balance if known
+      if (userBalance !== null && userBalance < currentTotal) {
+        isSubmittingRef.current = false;
+        setSubmitting(false);
+        const deficit = Math.max(0, currentTotal - userBalance);
+        setInsufficientBalanceModal({
+          needed: currentTotal,
+          balance: userBalance,
+          deficit,
+          orders: ordersToSubmit,
+          message: `Insufficient balance. You need GHS ${currentTotal.toFixed(2)} but have GHS ${userBalance.toFixed(2)}.`,
+        });
+        return;
+      }
+
+      // Pre-submission check for any unverified MTN numbers
+      const mtnLines = ordersToSubmit.filter((l) => l.network === "MTN");
+      if (mtnLines.length > 0) {
+        try {
+          const checkRes = await fetch("/api/mtn-verification/check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phoneNumbers: mtnLines.map((l) => l.phoneNumber) }),
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
+            if (unverifiedList.length > 0) {
+              isSubmittingRef.current = false;
+              setSubmitting(false);
+              const unverifiedSet = new Set(unverifiedList);
+              setPendingUnverified({
+                toAdd: ordersToSubmit,
+                unverifiedNumbers: unverifiedList,
+                verifiedItems: ordersToSubmit.filter((l) => !unverifiedSet.has(l.phoneNumber)),
+                verificationEnabled: checkData.verificationEnabled ?? true,
+                rawText: null,
+                mode: "submit",
+              });
+              return;
+            }
+          } else {
+            isSubmittingRef.current = false;
+            setSubmitting(false);
+            const errorData = await checkRes.json().catch(() => null);
+            toast(errorData?.message || "Failed to verify MTN numbers. Please try again.", "error");
+            return;
+          }
+        } catch {
+          isSubmittingRef.current = false;
+          setSubmitting(false);
+          toast("Network error verifying MTN numbers. Please try again.", "error");
+          return;
+        }
+      }
+
+      await executeOrderSubmission(ordersToSubmit);
+    } catch (err) {
+      isSubmittingRef.current = false;
+      setSubmitting(false);
+      toast("An unexpected error occurred while submitting orders", "error");
+    }
   };
 
   return (
@@ -718,6 +756,11 @@ export default function SendOrderPage() {
         <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
           <Send className="h-4 w-4 shrink-0" /> {result}
         </div>
+      )}
+
+      {/* WhatsApp Channel Widget */}
+      {whatsappChannel && whatsappChannel.enabled && Boolean(whatsappChannel.url) && (
+        <WhatsAppChannelWidget {...whatsappChannel} />
       )}
 
       {/* Upload card */}
@@ -1065,10 +1108,19 @@ export default function SendOrderPage() {
               isHalted ||
               lines.some((l) => networkStatus[l.network] === false)
             }
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-6 text-sm font-bold text-blue-700 shadow-md transition hover:bg-blue-50 disabled:opacity-60 cursor-pointer"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-6 text-sm font-bold text-blue-700 shadow-md transition hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
-            <Send className="h-4 w-4" />
-            {submitting ? "Sending…" : `Send ${lines.length} order${lines.length === 1 ? "" : "s"}`}
+            {submitting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin text-blue-700" />
+                <span>Sending orders…</span>
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                <span>Send {lines.length} order{lines.length === 1 ? "" : "s"}</span>
+              </>
+            )}
           </button>
         </div>
       )}

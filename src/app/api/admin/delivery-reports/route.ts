@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
-import { deliveryReportActionSchema } from "@/lib/validation";
+import { deliveryReportActionSchema, bulkDeliveryReportActionSchema } from "@/lib/validation";
 import { changeOrderStatus } from "@/lib/orders";
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
@@ -189,7 +189,159 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const actor = await requireStaff();
-    const input = deliveryReportActionSchema.parse(await request.json());
+    const body = await request.json();
+
+    // Bulk action on multiple reports
+    if (Array.isArray(body.reportIds)) {
+      const input = bulkDeliveryReportActionSchema.parse(body);
+      const reports = await prisma.deliveryReport.findMany({
+        where: { id: { in: input.reportIds } },
+        include: { order: { select: { id: true, status: true } } },
+      });
+
+      const actorLabel = { id: actor.id, label: actor.email };
+      let updatedCount = 0;
+      const results: Array<{ id: string; status: string; ok: boolean }> = [];
+
+      for (const report of reports) {
+        try {
+          const isClosed =
+            report.status === "RESOLVED" ||
+            report.status === "REJECTED" ||
+            report.status === "REFUNDED" ||
+            report.status === "CONFIRM_SENT";
+
+          if (isClosed && input.action !== "ADD_RESPONSE" && input.action !== "MARK_UNDER_REVIEW") {
+            continue;
+          }
+
+          let orderUpdated: string | null = null;
+          const data: Record<string, unknown> = {};
+
+          if (input.action === "START_INVESTIGATION") {
+            data.status = "INVESTIGATING";
+          } else if (input.action === "MARK_UNDER_REVIEW") {
+            data.status = "UNDER_REVIEW";
+            if (input.resolutionNote) data.adminNote = input.resolutionNote;
+          } else if (input.action === "MARK_DELIVERED") {
+            data.status = "DELIVERED";
+          } else if (input.action === "ADD_RESPONSE") {
+            if (input.adminResponse?.trim()) {
+              data.adminResponse = input.adminResponse.trim();
+              data.respondedAt = new Date();
+              data.respondedBy = actor.email;
+            }
+          } else if (input.action === "RESOLVE") {
+            data.status = "RESOLVED";
+            data.resolvedAt = new Date();
+            data.resolvedBy = actor.email;
+            if (input.resolutionNote) data.adminNote = input.resolutionNote;
+          } else if (input.action === "REJECT") {
+            data.status = "REJECTED";
+            data.resolvedAt = new Date();
+            data.resolvedBy = actor.email;
+            if (input.resolutionNote) data.adminNote = input.resolutionNote;
+          } else if (input.action === "RESOLVE_RESEND") {
+            if (report.order?.status === "FAILED") {
+              await changeOrderStatus(
+                report.orderId,
+                "PROCESSING",
+                `Report resolved: resend${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
+                actorLabel
+              );
+              orderUpdated = "PROCESSING";
+            }
+            data.status = "RESOLVED";
+            data.resolvedAt = new Date();
+            data.resolvedBy = actor.email;
+            if (input.resolutionNote) data.adminNote = input.resolutionNote;
+          } else if (input.action === "RESOLVE_REFUND") {
+            await changeOrderStatus(
+              report.orderId,
+              "FAILED",
+              `Report resolved: refund${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
+              actorLabel,
+              { force: true }
+            );
+            orderUpdated = "FAILED";
+            data.status = "RESOLVED";
+            data.resolvedAt = new Date();
+            data.resolvedBy = actor.email;
+            if (input.resolutionNote) data.adminNote = input.resolutionNote;
+          } else if (input.action === "RESOLVE_REFUNDED") {
+            await changeOrderStatus(
+              report.orderId,
+              "FAILED",
+              `Report closed as refunded${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
+              actorLabel,
+              { force: true }
+            );
+            orderUpdated = "FAILED";
+            data.status = "REFUNDED";
+            data.resolvedAt = new Date();
+            data.resolvedBy = actor.email;
+            if (input.resolutionNote) data.adminNote = input.resolutionNote;
+          } else if (input.action === "RESOLVE_CONFIRM_SENT") {
+            data.status = "CONFIRM_SENT";
+            data.resolvedAt = new Date();
+            data.resolvedBy = actor.email;
+            if (input.resolutionNote) data.adminNote = input.resolutionNote;
+          }
+
+          if (input.adminResponse?.trim() && input.action !== "ADD_RESPONSE") {
+            data.adminResponse = input.adminResponse.trim();
+            data.respondedAt = new Date();
+            data.respondedBy = actor.email;
+          }
+
+          await prisma.$transaction(async (tx) => {
+            await tx.deliveryReport.update({
+              where: { id: report.id },
+              data,
+            });
+            await tx.deliveryReportEvent.create({
+              data: {
+                reportId: report.id,
+                type: EVENT_FOR_ACTION[input.action] ?? input.action,
+                message:
+                  input.action === "ADD_RESPONSE"
+                    ? "Administrative response added"
+                    : input.resolutionNote || `Bulk action: ${input.action}`,
+                actorLabel: actor.email,
+              },
+            });
+          });
+
+          updatedCount++;
+          results.push({ id: report.id, status: String(data.status || report.status), ok: true });
+        } catch (itemErr) {
+          console.error(`Error in bulk report update for ${report.id}:`, itemErr);
+          results.push({ id: report.id, status: report.status, ok: false });
+        }
+      }
+
+      await recordAudit({
+        userId: actor.id,
+        actorLabel: actor.email,
+        action: `delivery_report.bulk_${input.action.toLowerCase()}`,
+        target: `delivery_reports:${input.reportIds.length}`,
+        newValue: JSON.stringify({
+          action: input.action,
+          updatedCount,
+          total: input.reportIds.length,
+        }),
+      });
+
+      return NextResponse.json({
+        ok: true,
+        updatedCount,
+        total: input.reportIds.length,
+        results,
+      });
+    }
+
+    // Single report action
+    const input = deliveryReportActionSchema.parse(body);
 
     const report = await prisma.deliveryReport.findUnique({
       where: { id: input.reportId },
