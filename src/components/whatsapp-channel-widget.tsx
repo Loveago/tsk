@@ -19,7 +19,7 @@ export interface WhatsAppChannelConfig {
   buttonText?: string;
 }
 
-const STORAGE_KEY = "tsk_whatsapp_channel_dismissed_v1";
+const SESSION_STORAGE_KEY = "tsk_whatsapp_channel_dismissed_session";
 
 export function WhatsAppChannelWidget({
   enabled,
@@ -34,13 +34,10 @@ export function WhatsAppChannelWidget({
 
   React.useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      // If the URL changed since dismissal, re-show it
-      if (stored && stored === url) {
-        setDismissed(true);
-      } else {
-        setDismissed(false);
-      }
+      // Clear legacy localStorage key if present
+      localStorage.removeItem("tsk_whatsapp_channel_dismissed_v1");
+      const isDismissed = sessionStorage.getItem(SESSION_STORAGE_KEY) === "true";
+      setDismissed(isDismissed);
     } catch {
       setDismissed(false);
     }
@@ -53,7 +50,7 @@ export function WhatsAppChannelWidget({
   const handleDismiss = () => {
     setDismissed(true);
     try {
-      localStorage.setItem(STORAGE_KEY, url);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, "true");
     } catch {}
   };
 

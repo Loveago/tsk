@@ -66,6 +66,11 @@ export default function LoginPage() {
       return;
     }
 
+    try {
+      sessionStorage.removeItem("tsk_whatsapp_channel_dismissed_session");
+      localStorage.removeItem("tsk_whatsapp_channel_dismissed_v1");
+    } catch {}
+
     toast("Welcome back!", "success");
     router.push("/dashboard");
     router.refresh();
@@ -88,6 +93,10 @@ export default function LoginPage() {
         setServerError(json.error ?? "Verification failed");
         return;
       }
+      try {
+        sessionStorage.removeItem("tsk_whatsapp_channel_dismissed_session");
+        localStorage.removeItem("tsk_whatsapp_channel_dismissed_v1");
+      } catch {}
       toast("Welcome back!", "success");
       router.push("/dashboard");
       router.refresh();

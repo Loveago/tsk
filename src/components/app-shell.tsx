@@ -289,6 +289,10 @@ export function AppShell({
   const desktopItems = items.filter((i) => !i.mobileOnly);
 
   const onLogout = async () => {
+    try {
+      sessionStorage.removeItem("tsk_whatsapp_channel_dismissed_session");
+      localStorage.removeItem("tsk_whatsapp_channel_dismissed_v1");
+    } catch {}
     await fetch("/api/auth/logout", { method: "POST" });
     toast("Signed out", "info");
     router.push("/login");
