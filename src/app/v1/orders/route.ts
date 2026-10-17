@@ -7,7 +7,14 @@ import {
   logApiRequestEntry,
   ApiError,
 } from "@/lib/developer-api";
-import { isOrderProcessingHalted, isNetworkOrdersPaused, getDefaultProfileId, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
+import {
+  isOrderProcessingHalted,
+  isNetworkOrdersPaused,
+  getDefaultProfileId,
+  getPricingForProfile,
+  resolveUserWholesalePrice,
+  verifyUserPricingProfileActive,
+} from "@/lib/orders";
 import { dispatchWebhookEvent } from "@/lib/webhooks";
 import { phoneSchema } from "@/lib/validation";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
@@ -447,6 +454,20 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       throw new ApiError("FORBIDDEN", "User account not found", 403);
+    }
+
+    const profileStatus = await verifyUserPricingProfileActive(user);
+    if (!profileStatus.allowed) {
+      if (idemKey) {
+        await prisma.idempotencyKey.deleteMany({
+          where: { key: idemKey, status: "PROCESSING" },
+        }).catch(() => undefined);
+      }
+      throw new ApiError(
+        "PRICING_PROFILE_DISABLED",
+        profileStatus.error || "Your pricing plan is currently disabled. You cannot purchase data. Please contact support.",
+        403
+      );
     }
 
     const price = await resolveUserWholesalePrice(user, pkg);

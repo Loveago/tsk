@@ -20,6 +20,7 @@ export type ApiErrorCode =
   | "MTN_NUMBER_NOT_VERIFIED"
   | "ORDER_IN_PROGRESS"
   | "NUMBER_VERIFICATION_ERROR"
+  | "PRICING_PROFILE_DISABLED"
   | "SERVER_ERROR";
 
 export class ApiError extends Error {

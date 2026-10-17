@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { sendOrdersSchema } from "@/lib/validation";
-import { createOrder, isOrderProcessingHalted, isNetworkOrdersPaused } from "@/lib/orders";
+import { createOrder, isOrderProcessingHalted, isNetworkOrdersPaused, verifyUserPricingProfileActive } from "@/lib/orders";
 import {
   validateMtnOrderRecipient,
   isMtnVerificationEnabled,
@@ -38,6 +38,15 @@ export async function POST(request: NextRequest) {
     });
     if (killSwitch?.value === "false") {
       return apiError(503, "Number submission is currently disabled by administrator.");
+    }
+
+    // Verify user pricing profile is active - users on disabled profiles cannot purchase data
+    const profileStatus = await verifyUserPricingProfileActive(user);
+    if (!profileStatus.allowed) {
+      return apiError(
+        403,
+        profileStatus.error || "Your pricing plan is currently disabled. You cannot purchase data at this time. Please contact support."
+      );
     }
 
     const body = await request.json();
@@ -163,10 +172,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve prices & total
-    const profileId = user.pricingProfileId ?? null;
-    const profile = profileId
-      ? await prisma.pricingProfile.findUnique({ where: { id: profileId } })
-      : null;
+    const profile = profileStatus.profile;
+    const profileId = profile?.id ?? user.pricingProfileId ?? null;
     const isCustomProfile = profile && !profile.isDefault;
 
     const tiers = (isCustomProfile && profileId)

@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { PageHeader, StatCard } from "@/components/shared";
 import { ProfileForms } from "./profile-form";
 import { formatGHS } from "@/lib/types";
-import { getEffectivePricingProfileForUser } from "@/lib/orders";
+import { getUserAssignedPricingProfile } from "@/lib/orders";
 import {
   ArrowDownLeft,
   BookOpen,
@@ -43,12 +43,13 @@ export default async function ProfilePage() {
   });
   if (!user) return null;
 
-  const effectiveProfile = await getEffectivePricingProfileForUser({
+  const assignedProfile = await getUserAssignedPricingProfile({
     id: current.id,
     role: user.role,
     pricingProfileId: user.pricingProfileId,
   });
-  const profileName = effectiveProfile?.name ?? "Standard";
+  const profileName = assignedProfile?.name ?? "Standard";
+  const isProfileDisabled = assignedProfile ? !assignedProfile.active : false;
 
   const statusGroups = await prisma.order.groupBy({
     by: ["status"],
@@ -123,7 +124,14 @@ export default async function ProfilePage() {
                   <dt className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
                     <Tag className="h-3.5 w-3.5" /> Pricing profile
                   </dt>
-                  <dd className="truncate font-medium">{profileName}</dd>
+                  <dd className="truncate font-medium flex items-center gap-2">
+                    <span>{profileName}</span>
+                    {isProfileDisabled && (
+                      <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+                        Disabled
+                      </span>
+                    )}
+                  </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt className="flex items-center gap-2 text-slate-500 dark:text-slate-400">

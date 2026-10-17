@@ -130,7 +130,7 @@ export async function getDefaultProfileId(): Promise<string | null> {
   return profile?.id ?? null;
 }
 
-export async function getEffectivePricingProfileForUser(
+export async function getUserAssignedPricingProfile(
   userIdOrUser: string | { id?: string; role?: string; pricingProfileId?: string | null }
 ) {
   let role: string | undefined;
@@ -156,36 +156,65 @@ export async function getEffectivePricingProfileForUser(
     }
   }
 
-  // 1. If user has an explicit pricingProfileId, look it up
+  // 1. If user has an explicit pricingProfileId, look it up directly
   if (profileId) {
     const profile = await prisma.pricingProfile.findUnique({ where: { id: profileId } });
-    if (profile && profile.active) return profile;
+    if (profile) return profile;
   }
 
-  // 2. If user's role is RESELLER, inherit the active RESELLER pricing profile
+  // 2. If user's role is RESELLER, look up the RESELLER pricing profile
   if (role === "RESELLER") {
     const resellerProfile = await prisma.pricingProfile.findFirst({
-      where: { type: "RESELLER", active: true },
+      where: { type: "RESELLER" },
     });
     if (resellerProfile) return resellerProfile;
   }
 
   // 3. Fallback: Default profile
-  const defaultProfile = await prisma.pricingProfile.findFirst({
-    where: { isDefault: true, active: true },
-  });
-  if (defaultProfile) return defaultProfile;
-
   return prisma.pricingProfile.findFirst({
     where: { isDefault: true },
   });
+}
+
+export async function verifyUserPricingProfileActive(
+  userIdOrUser: string | { id?: string; role?: string; pricingProfileId?: string | null }
+): Promise<{ allowed: boolean; profile: any | null; error?: string }> {
+  const profile = await getUserAssignedPricingProfile(userIdOrUser);
+  if (profile && !profile.active) {
+    return {
+      allowed: false,
+      profile,
+      error: `Your pricing plan (${profile.name}) is currently disabled by administrator. You cannot purchase data at this time. Please contact support.`,
+    };
+  }
+  return {
+    allowed: true,
+    profile,
+  };
+}
+
+export async function getEffectivePricingProfileForUser(
+  userIdOrUser: string | { id?: string; role?: string; pricingProfileId?: string | null }
+) {
+  const profile = await getUserAssignedPricingProfile(userIdOrUser);
+  // If the user's applicable pricing profile is disabled, do NOT fall back to default retail
+  if (!profile || !profile.active) {
+    return null;
+  }
+  return profile;
 }
 
 export async function resolveUserWholesalePrice(
   userIdOrUser: string | { id?: string; role?: string; pricingProfileId?: string | null },
   pkg: { gbAmount: number; network: string; retailPriceGHS?: number | null }
 ): Promise<number> {
-  const profile = await getEffectivePricingProfileForUser(userIdOrUser);
+  const status = await verifyUserPricingProfileActive(userIdOrUser);
+  if (!status.allowed) {
+    throw new Error(
+      status.error || "Your pricing plan is currently disabled. You cannot purchase data at this time. Please contact support."
+    );
+  }
+  const profile = status.profile;
   if (profile) {
     const price = await getPricingForProfile(profile.id, pkg.gbAmount, pkg.network);
     if (price != null && price > 0) return price;
@@ -228,6 +257,13 @@ export async function createOrder(
   input: CreateOrderInput,
   client: any = prisma
 ) {
+  const profileStatus = await verifyUserPricingProfileActive(input.userId);
+  if (!profileStatus.allowed) {
+    throw new Error(
+      profileStatus.error || "Your pricing plan is currently disabled. You cannot purchase data at this time. Please contact support."
+    );
+  }
+
   const userRecord = await prisma.user.findUnique({
     where: { id: input.userId },
     select: { id: true, role: true, pricingProfileId: true },

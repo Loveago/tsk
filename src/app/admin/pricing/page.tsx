@@ -88,9 +88,38 @@ export default function AdminPricingPage() {
   const [editingPackage, setEditingPackage] = React.useState<AdminPackage | null>(null);
   const [packagePriceInput, setPackagePriceInput] = React.useState("");
   const [savingPackagePrice, setSavingPackagePrice] = React.useState(false);
+  const [togglingProfileId, setTogglingProfileId] = React.useState<string | null>(null);
 
   // Per-profile selected network tab preview in cards
   const [profilePreviewNetwork, setProfilePreviewNetwork] = React.useState<Record<string, string>>({});
+
+  const toggleProfileActive = async (p: PricingProfile) => {
+    setTogglingProfileId(p.id);
+    try {
+      const nextActive = !p.active;
+      const res = await fetch(`/api/admin/pricing/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: nextActive }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to update profile", "error");
+        return;
+      }
+      toast(
+        nextActive
+          ? `Pricing profile "${p.name}" enabled.`
+          : `Pricing profile "${p.name}" disabled. Users on this profile cannot purchase data.`,
+        "success"
+      );
+      load();
+    } catch {
+      toast("Failed to update profile", "error");
+    } finally {
+      setTogglingProfileId(null);
+    }
+  };
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -599,16 +628,42 @@ export default function AdminPricingPage() {
                               </span>
                             )}
                           </div>
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            {p.type} · {p._count.users} user{p._count.users === 1 ? "" : "s"} ·{" "}
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                            <span>{p.type}</span>
+                            <span>·</span>
+                            <span>{p._count.users} user{p._count.users === 1 ? "" : "s"}</span>
+                            <span>·</span>
                             {p.active ? (
-                              <span className="text-emerald-600 dark:text-emerald-400">Active</span>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active
+                              </span>
                             ) : (
-                              <span className="text-slate-400">Inactive</span>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-400">
+                                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> Disabled
+                              </span>
                             )}
-                          </p>
+                          </div>
                         </div>
-                        <div className="flex gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => toggleProfileActive(p)}
+                            disabled={togglingProfileId === p.id}
+                            className={
+                              p.active
+                                ? "text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900/50 dark:hover:bg-rose-950/40"
+                                : "text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-900/50 dark:hover:bg-emerald-950/40"
+                            }
+                            title={p.active ? "Disable pricing profile (blocks user data purchases)" : "Enable pricing profile"}
+                          >
+                            {togglingProfileId === p.id ? (
+                              <Spinner className="h-3.5 w-3.5" />
+                            ) : (
+                              <Power className={`h-3.5 w-3.5 ${p.active ? "text-rose-500" : "text-emerald-500"}`} />
+                            )}
+                            <span className="ml-1 text-xs font-semibold">{p.active ? "Disable" : "Enable"}</span>
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -625,6 +680,13 @@ export default function AdminPricingPage() {
                           </Button>
                         </div>
                       </div>
+
+                      {!p.active && (
+                        <div className="mt-3 flex items-center gap-2 rounded-xl bg-rose-50/80 px-3 py-2 text-xs font-medium text-rose-800 dark:bg-rose-950/30 dark:text-rose-300 border border-rose-200/60 dark:border-rose-900/40">
+                          <Power className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                          <span>Profile is disabled. Users on this pricing plan cannot purchase data.</span>
+                        </div>
+                      )}
 
                       {/* Network Switcher on the Card */}
                       <div className="mt-4 flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">

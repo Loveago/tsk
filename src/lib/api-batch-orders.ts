@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { phoneSchema } from "@/lib/validation";
 import { detectNetworkNameByPrefix } from "@/lib/phone-utils";
-import { resolveUserWholesalePrice, isNetworkOrdersPaused } from "@/lib/orders";
+import { resolveUserWholesalePrice, isNetworkOrdersPaused, verifyUserPricingProfileActive } from "@/lib/orders";
 import { nextBatchCode } from "@/lib/batches";
 import { sanitizeCustomerRefundNote } from "@/lib/types";
 import { ApiError, formatApiSuccess, logApiRequestEntry } from "@/lib/developer-api";
@@ -513,6 +513,20 @@ export async function handleBatchOrderSubmission({
 
   if (!user) {
     throw new ApiError("FORBIDDEN", "User account not found", 403);
+  }
+
+  const profileStatus = await verifyUserPricingProfileActive(user);
+  if (!profileStatus.allowed) {
+    if (idemKey) {
+      await prisma.idempotencyKey.deleteMany({
+        where: { key: idemKey, status: "PROCESSING" },
+      }).catch(() => undefined);
+    }
+    throw new ApiError(
+      "PRICING_PROFILE_DISABLED",
+      profileStatus.error || "Your pricing plan is currently disabled. You cannot purchase data. Please contact support.",
+      403
+    );
   }
 
   // 4. Validate and filter entries

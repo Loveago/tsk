@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey, ApiKeyError, logApiRequest } from "@/lib/api-auth";
 import { publicOrderSchema } from "@/lib/validation";
-import { changeOrderStatus, isOrderProcessingHalted, isNetworkOrdersPaused, getPricingForProfile, resolveUserWholesalePrice } from "@/lib/orders";
+import {
+  changeOrderStatus,
+  isOrderProcessingHalted,
+  isNetworkOrdersPaused,
+  getPricingForProfile,
+  resolveUserWholesalePrice,
+  verifyUserPricingProfileActive,
+} from "@/lib/orders";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
 import { isPhoneNumberBlocked } from "@/lib/blocked-numbers";
 import { detectNetworkNameByPrefix } from "@/lib/phone-utils";
@@ -78,6 +85,17 @@ export async function POST(request: NextRequest) {
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return fail(request, keyId, endpoint, 403, "Account not found");
+
+    const profileStatus = await verifyUserPricingProfileActive(user);
+    if (!profileStatus.allowed) {
+      if (idemKey) {
+        await prisma.idempotencyKey.update({
+          where: { key: idemKey },
+          data: { status: "FAILED", response: profileStatus.error },
+        }).catch(() => undefined);
+      }
+      return fail(request, keyId, endpoint, 403, profileStatus.error || "Your pricing plan is currently disabled. You cannot purchase data.");
+    }
 
     let network = pkg.network;
     if (input.network && input.network !== pkg.network) {

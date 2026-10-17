@@ -19,6 +19,27 @@ export async function PATCH(
     if (!existing) return apiError(404, "Profile not found");
 
     const body = await request.json();
+
+    // Support single-field active toggle directly from the admin UI
+    if (typeof body.active === "boolean" && Object.keys(body).length === 1) {
+      const profile = await prisma.pricingProfile.update({
+        where: { id },
+        data: { active: body.active },
+        include: { tiers: true },
+      });
+
+      await recordAudit({
+        userId: actor.id,
+        actorLabel: actor.email,
+        action: body.active ? "pricing_profile.enable" : "pricing_profile.disable",
+        target: `pricing_profile:${id}`,
+        previousValue: JSON.stringify({ active: existing.active, name: existing.name }),
+        newValue: JSON.stringify({ active: body.active, name: existing.name }),
+      });
+
+      return NextResponse.json({ profile });
+    }
+
     const input = pricingProfileSchema.parse(body);
 
     const rawFallbackTiers =

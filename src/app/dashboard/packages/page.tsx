@@ -2,19 +2,22 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { PriceMask } from "@/components/price-mask";
 import { NetworkPackageGrid, type PackageGroup } from "@/components/packages/network-package-grid";
-import { BadgeCheck, Layers, Package, ShieldCheck } from "lucide-react";
+import { BadgeCheck, Layers, Package, ShieldCheck, ShieldAlert } from "lucide-react";
 import { formatGHS } from "@/lib/types";
-import { getEffectivePricingProfileForUser } from "@/lib/orders";
+import { getUserAssignedPricingProfile, verifyUserPricingProfileActive } from "@/lib/orders";
 
 export default async function PackagesPage() {
   const user = await getCurrentUser();
 
-  const profile = user ? await getEffectivePricingProfileForUser(user) : null;
+  const assignedProfile = user ? await getUserAssignedPricingProfile(user) : null;
+  const profileStatus = user ? await verifyUserPricingProfileActive(user) : { allowed: true, profile: null };
+  const isProfileActive = profileStatus.allowed;
+  const profile = isProfileActive ? assignedProfile : null;
   const profileId = profile?.id ?? null;
   const tiers = profileId
     ? await prisma.priceTier.findMany({ where: { profileId }, orderBy: { gbAmount: "asc" } })
     : [];
-  const profileName = profile?.name ?? "Standard";
+  const profileName = assignedProfile?.name ?? "Standard";
 
   // Available packages grouped by network, with the user's profile price attached
   const packages = await prisma.dataPackage.findMany({
@@ -86,6 +89,19 @@ export default async function PackagesPage() {
         </p>
       </div>
 
+      {/* Warning banner if pricing profile is disabled */}
+      {!isProfileActive && (
+        <div className="flex items-center gap-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300 shadow-sm">
+          <ShieldAlert className="h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+          <div>
+            <p className="font-bold">Pricing Plan Disabled</p>
+            <p className="mt-0.5 text-xs text-rose-700 dark:text-rose-300">
+              Your assigned pricing profile (<strong>{profileName}</strong>) is currently disabled by administrator. Purchasing data is currently blocked for accounts on this pricing plan.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Assigned pricing profile */}
       <div className="overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-violet-50 shadow-sm dark:border-brand-500/30 dark:from-brand-500/15 dark:via-[#0d1526] dark:to-violet-500/15">
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -95,9 +111,15 @@ export default async function PackagesPage() {
             </p>
             <h2 className="mt-1 truncate text-lg font-bold">{profileName}</h2>
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active
-              </span>
+              {isProfileActive ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> Disabled
+                </span>
+              )}
               <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
                 <Layers className="h-3 w-3" /> Tiered Pricing
               </span>
@@ -110,7 +132,11 @@ export default async function PackagesPage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2.5 rounded-xl border border-brand-200/70 bg-white/80 px-4 py-3 dark:border-white/10 dark:bg-white/5">
-            <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-500" />
+            {isProfileActive ? (
+              <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-500" />
+            ) : (
+              <ShieldAlert className="h-5 w-5 shrink-0 text-rose-500" />
+            )}
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                 Profile

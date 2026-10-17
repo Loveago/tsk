@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
-import { getEffectivePricingProfileForUser } from "@/lib/orders";
+import {
+  getEffectivePricingProfileForUser,
+  getUserAssignedPricingProfile,
+  verifyUserPricingProfileActive,
+} from "@/lib/orders";
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +16,10 @@ export async function GET(request: NextRequest) {
       orderBy: [{ network: "asc" }, { gbAmount: "asc" }, { sortOrder: "asc" }],
     });
 
-    const profile = await getEffectivePricingProfileForUser(user);
+    const assignedProfile = await getUserAssignedPricingProfile(user);
+    const profileStatus = await verifyUserPricingProfileActive(user);
+    const isProfileActive = profileStatus.allowed;
+    const profile = isProfileActive ? assignedProfile : null;
     const profileId = profile?.id ?? null;
     const isCustomProfile = Boolean(profile && !profile.isDefault);
 
@@ -94,6 +101,17 @@ export async function GET(request: NextRequest) {
       userBalance: user.balance,
       isHalted: pauseInfo.isHalted,
       networkStatus: pauseInfo.networkStatus,
+      pricingProfile: assignedProfile
+        ? {
+            id: assignedProfile.id,
+            name: assignedProfile.name,
+            active: assignedProfile.active,
+          }
+        : null,
+      pricingProfileDisabled: !isProfileActive,
+      pricingProfileDisabledMessage: !isProfileActive
+        ? (profileStatus.error ?? "Your pricing plan is currently disabled by administrator. You cannot purchase data.")
+        : null,
       whatsappChannel: {
         enabled: waEnabledSetting?.value === "true",
         url: waUrlSetting?.value || "",

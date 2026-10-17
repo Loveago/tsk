@@ -42,7 +42,7 @@ export function UserFormDialog({
   open: boolean;
   onClose: () => void;
   user: AdminUser | null;
-  profiles: { id: string; name: string }[];
+  profiles: { id: string; name: string; active?: boolean }[];
   onSaved: () => void;
 }) {
   const { toast } = useToast();
@@ -179,7 +179,9 @@ export function UserFormDialog({
             <Select value={profileId} onChange={(e) => setProfileId(e.target.value)}>
               <option value="">Default (retail)</option>
               {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name} {p.active === false ? "— (Disabled)" : ""}
+                </option>
               ))}
             </Select>
           </div>

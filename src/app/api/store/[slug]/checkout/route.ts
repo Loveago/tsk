@@ -13,7 +13,12 @@ import {
 } from "@/lib/storefront";
 import { isPaystackConfigured, initializeTransaction } from "@/lib/paystack";
 import { validateMtnOrderRecipient } from "@/lib/mtn-verification";
-import { resolveUserWholesalePrice, isNetworkOrdersPaused, isOrderProcessingHalted } from "@/lib/orders";
+import {
+  resolveUserWholesalePrice,
+  isNetworkOrdersPaused,
+  isOrderProcessingHalted,
+  verifyUserPricingProfileActive,
+} from "@/lib/orders";
 
 /**
  * Public storefront checkout (no sign-in): validates the bundle + recipient
@@ -109,6 +114,10 @@ export async function POST(
       where: { id: storefront.userId },
       select: { id: true, role: true, pricingProfileId: true },
     });
+    const ownerStatus = await verifyUserPricingProfileActive(owner || storefront.userId);
+    if (!ownerStatus.allowed) {
+      return apiError(400, "Purchases for this store are temporarily unavailable. Please try again later.");
+    }
     const ownerCostGHS = await resolveUserWholesalePrice(owner || storefront.userId, product.dataPackage);
     const sellingPrice = product.sellingPrice;
     const productCost = toPesewas(ownerCostGHS);

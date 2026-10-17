@@ -70,6 +70,8 @@ export default function SendOrderPage() {
   const [copiedBulkText, setCopiedBulkText] = React.useState(false);
   const [copiedFromModal, setCopiedFromModal] = React.useState(false);
   const [whatsappChannel, setWhatsappChannel] = React.useState<WhatsAppChannelConfig | null>(null);
+  const [pricingProfileDisabled, setPricingProfileDisabled] = React.useState(false);
+  const [pricingProfileDisabledMessage, setPricingProfileDisabledMessage] = React.useState<string | null>(null);
 
   // Insufficient balance dialog state
   const [insufficientBalanceModal, setInsufficientBalanceModal] = React.useState<{
@@ -156,6 +158,12 @@ export default function SendOrderPage() {
         }
         if (d.whatsappChannel) {
           setWhatsappChannel(d.whatsappChannel);
+        }
+        if (d.pricingProfileDisabled !== undefined) {
+          setPricingProfileDisabled(Boolean(d.pricingProfileDisabled));
+        }
+        if (d.pricingProfileDisabledMessage) {
+          setPricingProfileDisabledMessage(d.pricingProfileDisabledMessage);
         }
       })
       .catch(() => toast("Failed to load packages", "error"))
@@ -351,6 +359,10 @@ export default function SendOrderPage() {
     setPendingUnverified(null);
 
     if (mode === "submit") {
+      if (pricingProfileDisabled) {
+        toast(pricingProfileDisabledMessage || "Your pricing plan is currently disabled by administrator. You cannot purchase data.", "error");
+        return;
+      }
       if (items.length > 0) {
         setLines(items);
         isSubmittingRef.current = true;
@@ -643,6 +655,10 @@ export default function SendOrderPage() {
   };
 
   const submit = async () => {
+    if (pricingProfileDisabled) {
+      toast(pricingProfileDisabledMessage || "Your pricing plan is currently disabled by administrator. You cannot purchase data.", "error");
+      return;
+    }
     if (isSubmittingRef.current || submitting) return;
     isSubmittingRef.current = true;
     setSubmitting(true);
@@ -749,6 +765,18 @@ export default function SendOrderPage() {
             <strong>Number Submission Paused:</strong> Order submission has been temporarily turned
             off by the administrator. Please try again later.
           </p>
+        </div>
+      )}
+
+      {pricingProfileDisabled && (
+        <div className="flex items-center gap-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300 shadow-sm">
+          <ShieldAlert className="h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+          <div>
+            <p className="font-bold">Pricing Plan Disabled</p>
+            <p className="mt-0.5 text-xs text-rose-700 dark:text-rose-300">
+              {pricingProfileDisabledMessage || "Your pricing profile has been disabled by the administrator. Purchasing data is currently blocked for your account. Please contact support."}
+            </p>
+          </div>
         </div>
       )}
 
@@ -1106,6 +1134,7 @@ export default function SendOrderPage() {
               submitting ||
               !submissionEnabled ||
               isHalted ||
+              pricingProfileDisabled ||
               lines.some((l) => networkStatus[l.network] === false)
             }
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-6 text-sm font-bold text-blue-700 shadow-md transition hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
@@ -1114,6 +1143,11 @@ export default function SendOrderPage() {
               <>
                 <Loader2 className="h-4 w-4 animate-spin text-blue-700" />
                 <span>Sending orders…</span>
+              </>
+            ) : pricingProfileDisabled ? (
+              <>
+                <ShieldAlert className="h-4 w-4 text-rose-600" />
+                <span>Pricing Plan Disabled</span>
               </>
             ) : (
               <>
@@ -1136,6 +1170,7 @@ export default function SendOrderPage() {
             submitting ||
             !submissionEnabled ||
             isHalted ||
+            pricingProfileDisabled ||
             lines.some((l) => networkStatus[l.network] === false)
           }
         />
@@ -1148,6 +1183,7 @@ export default function SendOrderPage() {
           submitting ||
           !submissionEnabled ||
           isHalted ||
+          pricingProfileDisabled ||
           lines.some((l) => networkStatus[l.network] === false)
         }
         onSubmit={submit}

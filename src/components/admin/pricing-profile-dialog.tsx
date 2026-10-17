@@ -382,7 +382,7 @@ export function PricingProfileDialog({
             onChange={(e) => setActive(e.target.checked)}
             className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
           />
-          <span className="text-xs font-medium">Profile is active (available for user assignment)</span>
+          <span className="text-xs font-medium">Profile is active (if disabled, users on this profile cannot purchase data)</span>
         </label>
 
         <Button className="w-full" onClick={save} disabled={saving}>
