@@ -511,7 +511,6 @@ export default function AdminMtnVerificationPage() {
   const [exportingAccepted, setExportingAccepted] = React.useState(false);
 
   const handleExportAccepted = async (format: "txt" | "csv" = "txt") => {
-    setExportingAccepted(true);
     try {
       const params = new URLSearchParams({ format });
       if (selectedAccIds.size > 0) {
@@ -521,7 +520,24 @@ export default function AdminMtnVerificationPage() {
         if (accSearch.trim()) params.set("q", accSearch.trim());
       }
 
-      const res = await fetch(`/api/admin/mtn-verification/accepted/export?${params.toString()}`);
+      const exportUrl = `/api/admin/mtn-verification/accepted/export?${params.toString()}`;
+
+      // For bulk exports (e.g. all 2.4M records), trigger browser-native streaming download directly.
+      // This streams data directly to disk without loading 30MB-120MB into browser JavaScript memory,
+      // avoiding memory lag and giving users real-time progress in their browser download shelf.
+      if (selectedAccIds.size === 0) {
+        const a = document.createElement("a");
+        a.href = exportUrl;
+        a.download = `accepted-mtn-numbers-${new Date().toISOString().slice(0, 10)}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast(`Export started. Streaming accepted numbers as ${format.toUpperCase()} directly to your downloads.`, "success");
+        return;
+      }
+
+      setExportingAccepted(true);
+      const res = await fetch(exportUrl);
       if (!res.ok) {
         let errMsg = "Export failed";
         try {

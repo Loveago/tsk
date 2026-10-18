@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/auth";
 import { handleRouteError } from "@/lib/api-helpers";
 
-const CHUNK_SIZE = 5_000; // rows per cursor page
+const CHUNK_SIZE = 50_000; // 50k rows per page minimizes round trips for 2M+ rows
 
 export async function GET(request: NextRequest) {
   try {
@@ -75,63 +75,77 @@ export async function GET(request: NextRequest) {
         : `accepted-mtn-numbers-${nowStr}.txt`;
     const mimeType = format === "csv" ? "text/csv" : "text/plain";
 
-    // Stream the response using cursor-based pagination to handle millions of rows
-    // without loading them all into memory at once.
     const encoder = new TextEncoder();
 
-    type MtnRow = { id: string; number: string | null; source: string | null; verifiedAt: Date | null; createdAt: Date };
+    type TxtRow = { id: string; number: string | null };
+    type CsvRow = { id: string; number: string | null; source: string | null; verifiedAt: Date | null; createdAt: Date };
 
-    /** Fetch one page of rows, typed explicitly so the ReadableStream callback can infer types. */
-    async function fetchPage(lastId: string | undefined): Promise<MtnRow[]> {
+    async function fetchPageTxt(lastId: string | undefined): Promise<TxtRow[]> {
+      return prisma.acceptedMtnNumber.findMany({
+        where,
+        orderBy: { id: "asc" },
+        take: CHUNK_SIZE,
+        ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
+        select: { id: true, number: true },
+      }) as Promise<TxtRow[]>;
+    }
+
+    async function fetchPageCsv(lastId: string | undefined): Promise<CsvRow[]> {
       return prisma.acceptedMtnNumber.findMany({
         where,
         orderBy: { id: "asc" },
         take: CHUNK_SIZE,
         ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
         select: { id: true, number: true, source: true, verifiedAt: true, createdAt: true },
-      }) as Promise<MtnRow[]>;
+      }) as Promise<CsvRow[]>;
     }
 
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // CSV header
-          if (format === "csv") {
-            controller.enqueue(encoder.encode("number,source,verifiedAt\n"));
-          }
-
           let lastId: string | undefined = undefined;
           let done = false;
 
-          while (!done) {
-            const chunk: MtnRow[] = await fetchPage(lastId);
+          if (format === "csv") {
+            controller.enqueue(encoder.encode("number,source,verifiedAt\n"));
+            while (!done) {
+              const chunk = await fetchPageCsv(lastId);
+              if (chunk.length === 0) {
+                done = true;
+                break;
+              }
 
-            if (chunk.length === 0) {
-              done = true;
-              break;
-            }
-
-            let chunkText = "";
-            if (format === "csv") {
-              for (const r of chunk) {
+              let chunkText = "";
+              for (let i = 0; i < chunk.length; i++) {
+                const r = chunk[i];
                 const dateVal = r.verifiedAt ?? r.createdAt;
                 const iso = dateVal instanceof Date ? dateVal.toISOString() : (dateVal ? new Date(dateVal).toISOString() : "");
                 const num = (r.number ?? "").replace(/"/g, '""');
                 const src = (r.source ?? "").replace(/"/g, '""');
                 chunkText += `"${num}","${src}","${iso}"\n`;
               }
-            } else {
-              for (const r of chunk) {
-                const num = r.number?.trim();
+
+              controller.enqueue(encoder.encode(chunkText));
+              lastId = chunk[chunk.length - 1].id;
+              if (chunk.length < CHUNK_SIZE) done = true;
+            }
+          } else {
+            while (!done) {
+              const chunk = await fetchPageTxt(lastId);
+              if (chunk.length === 0) {
+                done = true;
+                break;
+              }
+
+              let chunkText = "";
+              for (let i = 0; i < chunk.length; i++) {
+                const num = chunk[i].number?.trim();
                 if (num) chunkText += num + "\n";
               }
-            }
 
-            controller.enqueue(encoder.encode(chunkText));
-            lastId = chunk[chunk.length - 1].id;
-
-            if (chunk.length < CHUNK_SIZE) {
-              done = true;
+              controller.enqueue(encoder.encode(chunkText));
+              lastId = chunk[chunk.length - 1].id;
+              if (chunk.length < CHUNK_SIZE) done = true;
             }
           }
 
