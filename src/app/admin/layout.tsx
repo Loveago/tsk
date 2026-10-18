@@ -24,9 +24,9 @@ export default async function AdminLayout({
     try {
       allowedNavHrefs = secretaryPagesSetting?.value
         ? JSON.parse(secretaryPagesSetting.value)
-        : ["/admin", "/admin/orders", "/admin/exports", "/admin/delivery-reports"];
+        : ["/admin", "/admin/orders", "/admin/refunds", "/admin/exports", "/admin/delivery-reports"];
     } catch {
-      allowedNavHrefs = ["/admin", "/admin/orders", "/admin/exports", "/admin/delivery-reports"];
+      allowedNavHrefs = ["/admin", "/admin/orders", "/admin/refunds", "/admin/exports", "/admin/delivery-reports"];
     }
   }
 

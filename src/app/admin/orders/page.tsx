@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet, ShieldAlert } from "lucide-react";
+import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet, ShieldAlert, RotateCcw } from "lucide-react";
 import { downloadBase64 } from "@/components/batches/batch-ui";
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
@@ -567,6 +567,14 @@ export default function AdminOrdersPage() {
             >
               <Activity className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
               <span>API Logs</span>
+            </Link>
+            <Link
+              href="/admin/refunds"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300/80 bg-amber-50/70 px-3 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/20"
+              title="Scan phone numbers & GBs to bulk refund orders"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Refunds</span>
             </Link>
             <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
               <button
