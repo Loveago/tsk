@@ -8,7 +8,7 @@ import { NetworkExportDialog } from "@/components/admin/network-export-dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatGHS } from "@/lib/types";
-import { FileSpreadsheet, Download, RefreshCw, ChevronRight, FileText, CalendarDays } from "lucide-react";
+import { FileSpreadsheet, Download, RefreshCw, ChevronRight, FileText, CalendarDays, Phone } from "lucide-react";
 
 import { useToast } from "@/components/toast";
 
@@ -80,13 +80,18 @@ export default function AdminExportsPage() {
   const [txtFrom, setTxtFrom] = React.useState(todayStr);
   const [txtTo, setTxtTo] = React.useState(todayStr);
   const [txtNetwork, setTxtNetwork] = React.useState("");
-  const [txtExporting, setTxtExporting] = React.useState(false);
+  const [txtDedupe, setTxtDedupe] = React.useState(false);
+  const [txtExporting, setTxtExporting] = React.useState<"numbers" | "full" | null>(null);
 
-  const handleTxtExport = async () => {
-    setTxtExporting(true);
+  const handleTxtExport = async (numbersOnly: boolean) => {
+    setTxtExporting(numbersOnly ? "numbers" : "full");
     try {
       const params = new URLSearchParams({ from: txtFrom, to: txtTo });
       if (txtNetwork) params.set("network", txtNetwork);
+      if (numbersOnly) {
+        params.set("numbersOnly", "true");
+        if (txtDedupe) params.set("dedupe", "true");
+      }
       const url = `/api/admin/orders/txt-export?${params}`;
       const res = await fetch(url);
       if (!res.ok) {
@@ -97,17 +102,28 @@ export default function AdminExportsPage() {
       const blob = await res.blob();
       const fromStr = txtFrom;
       const toStr = txtTo;
-      const filename = fromStr === toStr ? `orders-${fromStr}.txt` : `orders-${fromStr}-to-${toStr}.txt`;
+      const filename = numbersOnly
+        ? fromStr === toStr
+          ? `numbers-${fromStr}.txt`
+          : `numbers-${fromStr}-to-${toStr}.txt`
+        : fromStr === toStr
+          ? `orders-${fromStr}.txt`
+          : `orders-${fromStr}-to-${toStr}.txt`;
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = filename;
       a.click();
       URL.revokeObjectURL(a.href);
-      toast("Orders exported successfully", "success");
+      toast(
+        numbersOnly
+          ? "Phone numbers exported successfully (all statuses included)"
+          : "Orders exported successfully",
+        "success"
+      );
     } catch {
       toast("Failed to export orders", "error");
     } finally {
-      setTxtExporting(false);
+      setTxtExporting(null);
     }
   };
 
@@ -210,10 +226,12 @@ export default function AdminExportsPage() {
 
       {/* TXT Daily Orders Export */}
       <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
-        <div className="flex items-center gap-2 mb-4">
-          <CalendarDays className="h-4 w-4 text-brand-500" />
-          <h3 className="text-sm font-semibold">Export Orders to TXT</h3>
-          <span className="ml-auto text-xs text-slate-400">Select a day or date range — downloads a plain-text file</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-brand-500" />
+            <h3 className="text-sm font-semibold">Export Daily Orders (.txt)</h3>
+          </div>
+          <span className="text-xs text-slate-400">Export phone numbers or full order details for any single day or date range</span>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
@@ -251,14 +269,34 @@ export default function AdminExportsPage() {
               ))}
             </select>
           </div>
-          <Button
-            onClick={handleTxtExport}
-            disabled={txtExporting || !txtFrom || !txtTo}
-            className="gap-1.5"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            {txtExporting ? "Exporting…" : "Download TXT"}
-          </Button>
+          <label className="flex items-center gap-1.5 h-9 text-xs text-slate-600 dark:text-slate-300 cursor-pointer select-none pb-0.5">
+            <input
+              type="checkbox"
+              checked={txtDedupe}
+              onChange={(e) => setTxtDedupe(e.target.checked)}
+              className="rounded border-slate-300 dark:border-white/20 text-brand-600 focus:ring-brand-500"
+            />
+            <span>Unique only</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => handleTxtExport(true)}
+              disabled={Boolean(txtExporting) || !txtFrom || !txtTo}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 shadow-sm"
+            >
+              <Phone className="h-3.5 w-3.5" />
+              {txtExporting === "numbers" ? "Exporting Numbers…" : "Download Numbers Only"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleTxtExport(false)}
+              disabled={Boolean(txtExporting) || !txtFrom || !txtTo}
+              className="gap-1.5"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              {txtExporting === "full" ? "Exporting Details…" : "Download Full Details"}
+            </Button>
+          </div>
           {/* Quick date shortcuts */}
           <div className="flex flex-wrap gap-1.5 ml-auto">
             {[
@@ -285,9 +323,16 @@ export default function AdminExportsPage() {
             ))}
           </div>
         </div>
-        <p className="mt-3 text-xs text-slate-400">
-          Format: <code className="font-mono">phoneNumber | network | GB | amount | status | date</code>
-        </p>
+        <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+            <span className="font-semibold text-slate-700 dark:text-slate-200">Numbers Only:</span>
+            <span>Pure phone numbers (1 per line). <strong>Includes all order statuses</strong> (Pending, Processing, Completed, Failed, Refunded, Cancelled).</span>
+          </div>
+          <p className="text-slate-400">
+            Full Details: <code className="font-mono text-[11px]">phone | network | GB | amount | status | date</code>
+          </p>
+        </div>
       </div>
 
       {/* Per-network queue cards */}
