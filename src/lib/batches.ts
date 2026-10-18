@@ -42,7 +42,13 @@ export interface BatchListFilters {
 export function buildBatchWhere(filters: BatchListFilters): Prisma.OrderBatchWhereInput {
   const where: Prisma.OrderBatchWhereInput = {};
   if (filters.network) where.network = filters.network;
-  if (filters.status) where.status = filters.status;
+  if (filters.status) {
+    if (filters.status === "REFUNDED" || filters.status === "REFUND") {
+      where.orders = { some: { status: "REFUNDED" } };
+    } else {
+      where.status = filters.status;
+    }
+  }
   if (filters.userId) where.userId = filters.userId;
   if (filters.packageId) where.orders = { some: { packageId: filters.packageId } };
   if (filters.q) {

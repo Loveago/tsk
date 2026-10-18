@@ -23,7 +23,7 @@ import { OrderDateFilter, getTodayRange, type DateFilterValue } from "@/componen
 import { useNavBadges } from "@/components/app-nav";
 
 const NETWORKS = ["MTN", "TELECEL", "AIRTELTIGO", "AIRTELTIGO_BIGTIME"] as const;
-const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"];
+const BATCH_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED", "REFUNDED"];
 const STOREFRONT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "AWAITING_PAYMENT", "FAILED", "REFUNDED"];
 
 const selectCls =
