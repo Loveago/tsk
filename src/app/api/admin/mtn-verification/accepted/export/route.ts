@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/auth";
 import { handleRouteError } from "@/lib/api-helpers";
+
+const CHUNK_SIZE = 5_000; // rows per cursor page
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +18,7 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
-    const where: Record<string, unknown> = {};
+    const where: Prisma.AcceptedMtnNumberWhereInput = {};
 
     if (idsParam) {
       const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean);
@@ -65,43 +68,89 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const records = await prisma.acceptedMtnNumber.findMany({
-      where,
-      orderBy: { number: "asc" },
-      select: { id: true, number: true, source: true, verifiedAt: true, createdAt: true },
-    });
-
     const nowStr = new Date().toISOString().slice(0, 10);
-    let content = "";
-    let filename = "";
-    let mimeType = "";
+    const filename =
+      format === "csv"
+        ? `accepted-mtn-numbers-${nowStr}.csv`
+        : `accepted-mtn-numbers-${nowStr}.txt`;
+    const mimeType = format === "csv" ? "text/csv" : "text/plain";
 
-    if (format === "csv") {
-      const rows = records.map((r) => {
-        const dateVal = r.verifiedAt ?? r.createdAt;
-        const iso = dateVal instanceof Date ? dateVal.toISOString() : (dateVal ? new Date(dateVal).toISOString() : "");
-        const num = (r.number ?? "").replace(/"/g, '""');
-        const src = (r.source ?? "").replace(/"/g, '""');
-        return `"${num}","${src}","${iso}"`;
-      });
-      content = "number,source,verifiedAt\n" + rows.join("\n");
-      filename = `accepted-mtn-numbers-${nowStr}.csv`;
-      mimeType = "text/csv";
-    } else {
-      content = records
-        .map((r) => r.number?.trim())
-        .filter((num): num is string => Boolean(num))
-        .join("\n");
-      filename = `accepted-mtn-numbers-${nowStr}.txt`;
-      mimeType = "text/plain";
+    // Stream the response using cursor-based pagination to handle millions of rows
+    // without loading them all into memory at once.
+    const encoder = new TextEncoder();
+
+    type MtnRow = { id: string; number: string | null; source: string | null; verifiedAt: Date | null; createdAt: Date };
+
+    /** Fetch one page of rows, typed explicitly so the ReadableStream callback can infer types. */
+    async function fetchPage(lastId: string | undefined): Promise<MtnRow[]> {
+      return prisma.acceptedMtnNumber.findMany({
+        where,
+        orderBy: { id: "asc" },
+        take: CHUNK_SIZE,
+        ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
+        select: { id: true, number: true, source: true, verifiedAt: true, createdAt: true },
+      }) as Promise<MtnRow[]>;
     }
 
-    return new NextResponse(content, {
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // CSV header
+          if (format === "csv") {
+            controller.enqueue(encoder.encode("number,source,verifiedAt\n"));
+          }
+
+          let lastId: string | undefined = undefined;
+          let done = false;
+
+          while (!done) {
+            const chunk: MtnRow[] = await fetchPage(lastId);
+
+            if (chunk.length === 0) {
+              done = true;
+              break;
+            }
+
+            let chunkText = "";
+            if (format === "csv") {
+              for (const r of chunk) {
+                const dateVal = r.verifiedAt ?? r.createdAt;
+                const iso = dateVal instanceof Date ? dateVal.toISOString() : (dateVal ? new Date(dateVal).toISOString() : "");
+                const num = (r.number ?? "").replace(/"/g, '""');
+                const src = (r.source ?? "").replace(/"/g, '""');
+                chunkText += `"${num}","${src}","${iso}"\n`;
+              }
+            } else {
+              for (const r of chunk) {
+                const num = r.number?.trim();
+                if (num) chunkText += num + "\n";
+              }
+            }
+
+            controller.enqueue(encoder.encode(chunkText));
+            lastId = chunk[chunk.length - 1].id;
+
+            if (chunk.length < CHUNK_SIZE) {
+              done = true;
+            }
+          }
+
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    });
+
+
+    return new NextResponse(stream, {
       status: 200,
       headers: {
         "Content-Type": `${mimeType}; charset=utf-8`,
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "no-store",
+        // Tell the browser we're streaming; no Content-Length known upfront.
+        "Transfer-Encoding": "chunked",
       },
     });
   } catch (err) {

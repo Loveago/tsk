@@ -8,7 +8,7 @@ import { NetworkExportDialog } from "@/components/admin/network-export-dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatGHS } from "@/lib/types";
-import { FileSpreadsheet, Download, RefreshCw, ChevronRight } from "lucide-react";
+import { FileSpreadsheet, Download, RefreshCw, ChevronRight, FileText, CalendarDays } from "lucide-react";
 
 import { useToast } from "@/components/toast";
 
@@ -74,6 +74,43 @@ export default function AdminExportsPage() {
 
   // Dialog state for per-network export
   const [dialogNetwork, setDialogNetwork] = React.useState<string | null>(null);
+
+  // TXT daily orders export
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [txtFrom, setTxtFrom] = React.useState(todayStr);
+  const [txtTo, setTxtTo] = React.useState(todayStr);
+  const [txtNetwork, setTxtNetwork] = React.useState("");
+  const [txtExporting, setTxtExporting] = React.useState(false);
+
+  const handleTxtExport = async () => {
+    setTxtExporting(true);
+    try {
+      const params = new URLSearchParams({ from: txtFrom, to: txtTo });
+      if (txtNetwork) params.set("network", txtNetwork);
+      const url = `/api/admin/orders/txt-export?${params}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        toast(json.error ?? "Failed to export orders", "error");
+        return;
+      }
+      const blob = await res.blob();
+      const fromStr = txtFrom;
+      const toStr = txtTo;
+      const filename = fromStr === toStr ? `orders-${fromStr}.txt` : `orders-${fromStr}-to-${toStr}.txt`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("Orders exported successfully", "success");
+    } catch {
+      toast("Failed to export orders", "error");
+    } finally {
+      setTxtExporting(false);
+    }
+  };
+
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -170,6 +207,88 @@ export default function AdminExportsPage() {
           </Button>
         }
       />
+
+      {/* TXT Daily Orders Export */}
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-white/5 dark:bg-[#0d1526]">
+        <div className="flex items-center gap-2 mb-4">
+          <CalendarDays className="h-4 w-4 text-brand-500" />
+          <h3 className="text-sm font-semibold">Export Orders to TXT</h3>
+          <span className="ml-auto text-xs text-slate-400">Select a day or date range — downloads a plain-text file</span>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">From</label>
+            <input
+              type="date"
+              value={txtFrom}
+              onChange={(e) => setTxtFrom(e.target.value)}
+              max={txtTo || undefined}
+              className={selectCls}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">To</label>
+            <input
+              type="date"
+              value={txtTo}
+              onChange={(e) => setTxtTo(e.target.value)}
+              min={txtFrom || undefined}
+              className={selectCls}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Network (optional)</label>
+            <select
+              className={selectCls}
+              value={txtNetwork}
+              onChange={(e) => setTxtNetwork(e.target.value)}
+            >
+              <option value="">All Networks</option>
+              {NETWORKS.map((n) => (
+                <option key={n} value={n}>
+                  {n === "AIRTELTIGO" ? "AT iShare" : n === "AIRTELTIGO_BIGTIME" ? "AT Big Time" : n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            onClick={handleTxtExport}
+            disabled={txtExporting || !txtFrom || !txtTo}
+            className="gap-1.5"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            {txtExporting ? "Exporting…" : "Download TXT"}
+          </Button>
+          {/* Quick date shortcuts */}
+          <div className="flex flex-wrap gap-1.5 ml-auto">
+            {[
+              { label: "Today", from: new Date().toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) },
+              {
+                label: "Yesterday",
+                from: new Date(Date.now() - 864e5).toISOString().slice(0, 10),
+                to: new Date(Date.now() - 864e5).toISOString().slice(0, 10),
+              },
+              {
+                label: "Last 7 days",
+                from: new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10),
+                to: new Date().toISOString().slice(0, 10),
+              },
+            ].map((r) => (
+              <button
+                key={r.label}
+                type="button"
+                onClick={() => { setTxtFrom(r.from); setTxtTo(r.to); }}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 hover:border-brand-400 hover:text-brand-600 transition dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-brand-400"
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-slate-400">
+          Format: <code className="font-mono">phoneNumber | network | GB | amount | status | date</code>
+        </p>
+      </div>
 
       {/* Per-network queue cards */}
       <div className="grid gap-4 md:grid-cols-3">
