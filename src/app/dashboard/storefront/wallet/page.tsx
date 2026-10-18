@@ -66,10 +66,10 @@ export default async function StorefrontWalletPage({
       </header>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Available" value={wallet.balance} accent="text-emerald-600 dark:text-emerald-400" />
-        <StatCard label="Pending" value={wallet.pendingBalance} accent="text-amber-600 dark:text-amber-400" />
+        <StatCard label="Available" value={Math.max(0, wallet.balance)} accent="text-emerald-600 dark:text-emerald-400" />
+        <StatCard label="Pending" value={Math.max(0, wallet.pendingBalance)} accent="text-amber-600 dark:text-amber-400" />
         <StatCard label="Total withdrawn" value={approvedSum._sum.amount ?? 0} accent="text-slate-900 dark:text-white" />
-        <StatCard label="Lifetime commissions" value={wallet.balance + wallet.pendingBalance + (approvedSum._sum.amount ?? 0)} accent="text-slate-900 dark:text-white" />
+        <StatCard label="Lifetime commissions" value={Math.max(0, wallet.balance) + Math.max(0, wallet.pendingBalance) + (approvedSum._sum.amount ?? 0)} accent="text-slate-900 dark:text-white" />
       </div>
 
       <WithdrawalForm

@@ -71,8 +71,8 @@ export default async function AdminStorefrontWalletsPage() {
   const initialWallets: StorefrontWalletRow[] = users.map((u) => {
     const primaryStorefront =
       u.storefronts.find((s) => !s.isCustomDomain) || u.storefronts[0] || null;
-    const balance = u.storefrontWallet?.balance ?? 0;
-    const pendingBalance = u.storefrontWallet?.pendingBalance ?? 0;
+    const balance = Math.max(0, u.storefrontWallet?.balance ?? 0);
+    const pendingBalance = Math.max(0, u.storefrontWallet?.pendingBalance ?? 0);
 
     const approvedWithdrawals = u.storefrontWithdrawals
       .filter((w) => w.status === "APPROVED")

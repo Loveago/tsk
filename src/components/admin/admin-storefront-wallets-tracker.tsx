@@ -215,7 +215,13 @@ export function AdminStorefrontWalletsTracker({
   const [detailTab, setDetailTab] = React.useState<"ledger" | "withdrawals" | "orders">("ledger");
 
   // Adjustment dialog state
-  const [adjustTargetUser, setAdjustTargetUser] = React.useState<{ id: string; name: string; currentBalanceGHS: number } | null>(null);
+  const [adjustTargetUser, setAdjustTargetUser] = React.useState<{
+    id: string;
+    name: string;
+    currentBalanceGHS: number;
+    currentPendingGHS: number;
+  } | null>(null);
+  const [adjustTarget, setAdjustTarget] = React.useState<"BALANCE" | "PENDING">("BALANCE");
   const [adjustType, setAdjustType] = React.useState<"CREDIT" | "DEBIT">("CREDIT");
   const [adjustAmount, setAdjustAmount] = React.useState("");
   const [adjustReason, setAdjustReason] = React.useState("");
@@ -294,6 +300,7 @@ export function AdminStorefrontWalletsTracker({
         body: JSON.stringify({
           userId: adjustTargetUser.id,
           type: adjustType,
+          target: adjustTarget,
           amountGHS: numAmount,
           reason: adjustReason.trim(),
         }),
@@ -696,6 +703,7 @@ export function AdminStorefrontWalletsTracker({
                             id: w.userId,
                             name: w.userName,
                             currentBalanceGHS: w.balanceGHS,
+                            currentPendingGHS: w.pendingBalanceGHS,
                           })
                         }
                         title="Adjust balance"
@@ -829,6 +837,7 @@ export function AdminStorefrontWalletsTracker({
                       id: userDetail.user.id,
                       name: userDetail.user.name,
                       currentBalanceGHS: userDetail.wallet.balanceGHS,
+                      currentPendingGHS: userDetail.wallet.pendingBalanceGHS,
                     })
                   }
                   className="rounded-xl bg-violet-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-violet-500 transition"
@@ -1119,11 +1128,39 @@ export function AdminStorefrontWalletsTracker({
       >
         {adjustTargetUser && (
           <form onSubmit={handleAdjustSubmit} className="space-y-4 pt-1">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-white/5">
-              <span className="text-slate-500">Current Available Balance:</span>{" "}
-              <strong className="font-mono text-emerald-600 dark:text-emerald-400">
-                GHS {adjustTargetUser.currentBalanceGHS.toFixed(2)}
-              </strong>
+            {/* Target Balance Selection */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Wallet Balance Target</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdjustTarget("BALANCE")}
+                  className={`flex flex-col items-start rounded-xl border p-2.5 text-xs transition ${
+                    adjustTarget === "BALANCE"
+                      ? "border-brand-500 bg-brand-50/50 text-brand-900 dark:border-brand-500 dark:bg-brand-500/10 dark:text-brand-300 font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="font-semibold">Available (Main)</span>
+                  <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                    GHS {adjustTargetUser.currentBalanceGHS.toFixed(2)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdjustTarget("PENDING")}
+                  className={`flex flex-col items-start rounded-xl border p-2.5 text-xs transition ${
+                    adjustTarget === "PENDING"
+                      ? "border-amber-500 bg-amber-50/50 text-amber-900 dark:border-amber-500 dark:bg-amber-500/10 dark:text-amber-300 font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="font-semibold">Pending Balance</span>
+                  <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                    GHS {(adjustTargetUser.currentPendingGHS ?? 0).toFixed(2)}
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* Credit or Debit Type Toggle */}
@@ -1140,7 +1177,7 @@ export function AdminStorefrontWalletsTracker({
                   }`}
                 >
                   <PlusCircle className="h-4 w-4" />
-                  <span>Credit (+ Balance)</span>
+                  <span>Credit (+ {adjustTarget === "PENDING" ? "Pending" : "Available"})</span>
                 </button>
                 <button
                   type="button"
@@ -1152,7 +1189,7 @@ export function AdminStorefrontWalletsTracker({
                   }`}
                 >
                   <MinusCircle className="h-4 w-4" />
-                  <span>Debit (- Balance)</span>
+                  <span>Debit (- {adjustTarget === "PENDING" ? "Pending" : "Available"})</span>
                 </button>
               </div>
             </div>
@@ -1172,12 +1209,14 @@ export function AdminStorefrontWalletsTracker({
               />
               {adjustAmount && !isNaN(parseFloat(adjustAmount)) && (
                 <p className="text-[11px] text-slate-500">
-                  New projected balance:{" "}
+                  New projected {adjustTarget === "PENDING" ? "pending" : "available"} balance:{" "}
                   <strong className="font-mono text-slate-900 dark:text-white">
                     GHS{" "}
                     {Math.max(
                       0,
-                      adjustTargetUser.currentBalanceGHS +
+                      (adjustTarget === "PENDING"
+                        ? (adjustTargetUser.currentPendingGHS ?? 0)
+                        : adjustTargetUser.currentBalanceGHS) +
                         (adjustType === "CREDIT" ? 1 : -1) * parseFloat(adjustAmount)
                     ).toFixed(2)}
                   </strong>

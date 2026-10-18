@@ -93,8 +93,10 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      const balance = user.storefrontWallet?.balance ?? 0;
-      const pendingBalance = user.storefrontWallet?.pendingBalance ?? 0;
+      const rawBalance = user.storefrontWallet?.balance ?? 0;
+      const rawPending = user.storefrontWallet?.pendingBalance ?? 0;
+      const balance = Math.max(0, rawBalance);
+      const pendingBalance = Math.max(0, rawPending);
       const approvedWithdrawals = user.storefrontWithdrawals
         .filter((w) => w.status === "APPROVED")
         .reduce((sum, w) => sum + w.amount, 0);
@@ -250,8 +252,10 @@ export async function GET(request: NextRequest) {
     let wallets = users.map((u) => {
       const primaryStorefront =
         u.storefronts.find((s) => !s.isCustomDomain) || u.storefronts[0] || null;
-      const balance = u.storefrontWallet?.balance ?? 0;
-      const pendingBalance = u.storefrontWallet?.pendingBalance ?? 0;
+      const rawBalance = u.storefrontWallet?.balance ?? 0;
+      const rawPending = u.storefrontWallet?.pendingBalance ?? 0;
+      const balance = Math.max(0, rawBalance);
+      const pendingBalance = Math.max(0, rawPending);
 
       const approvedWithdrawals = u.storefrontWithdrawals
         .filter((w) => w.status === "APPROVED")

@@ -68,8 +68,8 @@ export default async function AdminStorefrontsPage() {
   const storefrontUserIds = new Set(storefronts.map((s) => s.userId));
   const candidates = users.filter((u) => !storefrontUserIds.has(u.id));
 
-  const totalBalanceP = allWallets.reduce((s, w) => s + w.balance, 0);
-  const totalPendingP = allWallets.reduce((s, w) => s + w.pendingBalance, 0);
+  const totalBalanceP = allWallets.reduce((s, w) => s + Math.max(0, w.balance), 0);
+  const totalPendingP = allWallets.reduce((s, w) => s + Math.max(0, w.pendingBalance), 0);
   const totalWithdrawnP = approvedWdAgg._sum.amount ?? 0;
   const totalLifetimeP = totalBalanceP + totalPendingP + totalWithdrawnP;
 
@@ -196,8 +196,8 @@ export default async function AdminStorefrontsPage() {
 
       <AdminStorefrontPanel
         storefronts={storefronts.map((s) => {
-          const balP = s.user.storefrontWallet?.balance ?? 0;
-          const pendP = s.user.storefrontWallet?.pendingBalance ?? 0;
+          const balP = Math.max(0, s.user.storefrontWallet?.balance ?? 0);
+          const pendP = Math.max(0, s.user.storefrontWallet?.pendingBalance ?? 0);
           const approvedWd = s.user.storefrontWithdrawals
             .filter((w) => w.status === "APPROVED")
             .reduce((sum, w) => sum + w.amount, 0);

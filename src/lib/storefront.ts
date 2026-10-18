@@ -341,6 +341,14 @@ export interface LedgerEntry {
   amount: number;
   reference?: string;
   description?: string;
+  /**
+   * For COMMISSION_REVERSAL:
+   * - "BALANCE": Deduct commission from main available balance (used for completed/released orders or refunds)
+   * - "PENDING": Deduct commission from pending balance (used when order was still pending in flight)
+   */
+  reversalSource?: "BALANCE" | "PENDING";
+  /** Optional target for ADJUSTMENT: "BALANCE" | "PENDING" */
+  targetBalance?: "BALANCE" | "PENDING";
 }
 
 export async function applyLedgerEntry(
@@ -350,7 +358,7 @@ export async function applyLedgerEntry(
 ): Promise<void> {
   const wallet = await tx.storefrontWallet.findUniqueOrThrow({ where: { id: walletId } });
   const balanceBefore = wallet.balance;
-  const pendingBefore = wallet.pendingBalance;
+  const pendingBefore = Math.max(0, wallet.pendingBalance);
   let balanceAfter = balanceBefore;
   let pendingAfter = pendingBefore;
 
@@ -361,16 +369,24 @@ export async function applyLedgerEntry(
       break;
     case "COMMISSION_RELEASE":
       // Order completed -> pending becomes withdrawable (§25)
-      pendingAfter -= entry.amount;
+      // Clamped to 0 so pendingBalance can never become negative
+      pendingAfter = Math.max(0, pendingBefore - entry.amount);
       balanceAfter += entry.amount;
       break;
     case "COMMISSION_REVERSAL": {
-      // Refund/failure after crediting — take pending first, then balance (§38).
-      // If the commission was already withdrawn the balance clamps at 0
-      // (platform absorbs it) so the ledger stays consistent.
-      const fromPending = Math.min(pendingBefore, entry.amount);
-      pendingAfter = pendingBefore - fromPending;
-      balanceAfter = Math.max(0, balanceBefore - (entry.amount - fromPending));
+      // Reversal of commission (refund, cancellation, provider failure):
+      // When an order is refunded or was already completed/released, the commission
+      // resides in the main balance (balanceAfter), NOT in pendingBalance.
+      // Reversing it must deduct from the main balance so pendingBalance is NOT stolen from
+      // other in-flight orders.
+      if (entry.reversalSource === "PENDING") {
+        pendingAfter = Math.max(0, pendingBefore - entry.amount);
+      } else {
+        // "BALANCE" or default for refunds:
+        // Deduct from main balance. If already withdrawn, clamps at 0 (§38).
+        balanceAfter = Math.max(0, balanceBefore - entry.amount);
+        pendingAfter = pendingBefore;
+      }
       break;
     }
     case "WITHDRAWAL":
@@ -380,12 +396,16 @@ export async function applyLedgerEntry(
       balanceAfter -= entry.amount; // positive (money comes back)
       break;
     case "ADJUSTMENT":
-      balanceAfter += entry.amount;
+      if (entry.targetBalance === "PENDING") {
+        pendingAfter = Math.max(0, pendingBefore + entry.amount);
+      } else {
+        balanceAfter += entry.amount;
+      }
       break;
   }
 
   await tx.storefrontWallet.update({
-    where: { id: walletId, balance: balanceBefore, pendingBalance: pendingBefore },
+    where: { id: walletId, balance: balanceBefore, pendingBalance: wallet.pendingBalance },
     data: { balance: balanceAfter, pendingBalance: pendingAfter },
   });
 
@@ -406,14 +426,21 @@ export async function applyLedgerEntry(
 
 /**
  * Ensures a wallet exists for the user (created lazily on first use) and
- * returns it.
+ * returns it. Self-heals negative pending balances if any exist.
  */
 export async function ensureWallet(userId: string) {
-  return prisma.storefrontWallet.upsert({
+  const wallet = await prisma.storefrontWallet.upsert({
     where: { userId },
     update: {},
     create: { userId },
   });
+  if (wallet.pendingBalance < 0) {
+    return prisma.storefrontWallet.update({
+      where: { id: wallet.id },
+      data: { pendingBalance: 0 },
+    });
+  }
+  return wallet;
 }
 
 // ---------------------------------------------------------------------------
@@ -465,11 +492,24 @@ export async function syncCommissionForOrder(
         });
       } else if (reversing) {
         if (storeOrder.commissionState !== "REVERSED") {
+          // When refunding a storefront order or reversing an order whose commission
+          // was already released (AVAILABLE or WITHDRAWN), the commission was placed into
+          // the main balance (balance). Therefore, the reversal must be deducted from the
+          // main balance, NOT the pending balance!
+          const isRefund = status === "REFUNDED";
+          const wasReleased =
+            storeOrder.commissionState === "AVAILABLE" ||
+            storeOrder.commissionState === "WITHDRAWN";
+
+          const reversalSource: "BALANCE" | "PENDING" =
+            isRefund || wasReleased ? "BALANCE" : "PENDING";
+
           await applyLedgerEntry(tx, walletRow.id, {
             type: "COMMISSION_REVERSAL",
             amount: storeOrder.commission,
             reference: storefrontOrderCode(storeOrder.seq),
-            description: `Order ${status.toLowerCase()} — commission reversed`,
+            description: `Order ${status.toLowerCase()} — commission reversed from ${reversalSource === "BALANCE" ? "main balance" : "pending balance"}`,
+            reversalSource,
           });
         }
         await tx.storefrontOrder.update({
