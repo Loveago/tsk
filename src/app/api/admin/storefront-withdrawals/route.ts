@@ -123,6 +123,9 @@ export async function GET(request: NextRequest) {
         processedBy: w.processedBy,
         requestedAt: w.requestedAt,
         processedAt: w.processedAt,
+        payoutMethod: w.payoutMethod ?? "MANUAL",
+        paystackTransferCode: w.paystackTransferCode ?? null,
+        paystackRecipientCode: w.paystackRecipientCode ?? null,
       };
     });
 
@@ -150,7 +153,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** Admin: Approve or Reject a storefront withdrawal */
+/** Admin: Approve, Reject, or Pay via Paystack for a storefront withdrawal */
 export async function PATCH(request: NextRequest) {
   try {
     const admin = await requireAdmin();
@@ -158,6 +161,58 @@ export async function PATCH(request: NextRequest) {
     const input = storefrontWithdrawalReviewSchema.parse(body);
     const { id } = body as { id?: string };
     if (!id) return apiError(400, "Withdrawal ID is required");
+
+    if (input.action === "PAYSTACK_PAYOUT") {
+      const wd = await prisma.storefrontWithdrawal.findUnique({ where: { id } });
+      if (!wd) return apiError(404, "Withdrawal not found");
+      if (wd.status !== "PENDING" && wd.status !== "PROCESSING") {
+        return apiError(400, "Only PENDING or PROCESSING withdrawals can be paid via Paystack");
+      }
+
+      const netAmountP = wd.netAmount || (wd.amount - (wd.fee || 100));
+      const ref = wd.reference || `TSK-WD-${String(wd.seq).padStart(5, "0")}`;
+      const executionRef = `${ref}-R${Date.now().toString().slice(-4)}`;
+
+      const { executePaystackWithdrawalPayout } = await import("@/lib/paystack");
+      const payout = await executePaystackWithdrawalPayout({
+        amountPesewas: netAmountP,
+        momoNumber: wd.momoNumber,
+        accountName: wd.accountName,
+        network: wd.network,
+        reference: executionRef,
+        reason: `Storefront payout ${ref}`,
+      });
+
+      if (!payout.success) {
+        await prisma.storefrontWithdrawal.update({
+          where: { id },
+          data: {
+            adminNote: `Manual Paystack payout attempt failed: ${payout.error || "Unknown"}. (Attempted by ${admin.email || admin.id})`,
+          },
+        });
+        return apiError(400, `Paystack transfer failed: ${payout.error || "Unknown error"}`);
+      }
+
+      const updated = await prisma.storefrontWithdrawal.update({
+        where: { id },
+        data: {
+          status: payout.status === "success" ? "APPROVED" : "PROCESSING",
+          payoutMethod: "PAYSTACK_AUTO",
+          paystackTransferCode: payout.transferCode,
+          paystackRecipientCode: payout.recipientCode,
+          processedBy: admin.email || admin.id,
+          processedAt: new Date(),
+          adminNote: `Paid via Paystack by ${admin.email || "admin"}. Transfer Code: ${payout.transferCode || "N/A"}${input.adminNote ? ` | Note: ${input.adminNote}` : ""}`,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        withdrawal: updated,
+        action: input.action,
+        message: "Paystack transfer initiated successfully.",
+      });
+    }
 
     const withdrawal =
       input.action === "APPROVE"

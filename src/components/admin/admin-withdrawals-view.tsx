@@ -48,6 +48,9 @@ export interface WithdrawalItem {
   processedBy: string | null;
   requestedAt: string;
   processedAt: string | null;
+  payoutMethod?: string | null;
+  paystackTransferCode?: string | null;
+  paystackRecipientCode?: string | null;
 }
 
 export interface WithdrawalStats {
@@ -87,7 +90,7 @@ export function AdminWithdrawalsView({
 
   // Modal states for action
   const [selectedWithdrawal, setSelectedWithdrawal] = React.useState<WithdrawalItem | null>(null);
-  const [actionType, setActionType] = React.useState<"APPROVE" | "REJECT" | null>(null);
+  const [actionType, setActionType] = React.useState<"APPROVE" | "REJECT" | "PAYSTACK_PAYOUT" | null>(null);
   const [actionNote, setActionNote] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [feedbackMsg, setFeedbackMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -158,11 +161,16 @@ export function AdminWithdrawalsView({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Failed to ${actionType.toLowerCase()} withdrawal`);
 
+      const actionLabel =
+        actionType === "PAYSTACK_PAYOUT"
+          ? "disbursed via Paystack"
+          : actionType === "APPROVE"
+          ? "approved & marked paid"
+          : "rejected";
+
       setFeedbackMsg({
         kind: "ok",
-        text: `Withdrawal ${selectedWithdrawal.reference} successfully ${
-          actionType === "APPROVE" ? "approved & debited" : "rejected"
-        }!`,
+        text: `Withdrawal ${selectedWithdrawal.reference} successfully ${actionLabel}!`,
       });
       setSelectedWithdrawal(null);
       setActionType(null);
@@ -462,7 +470,18 @@ export function AdminWithdrawalsView({
                     )}
 
                     {isPending && (
-                      <div className="flex items-center gap-2 pt-1">
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedWithdrawal(w);
+                            setActionType("PAYSTACK_PAYOUT");
+                            setActionNote("");
+                          }}
+                          className="flex-1 rounded-xl bg-sky-600 py-2 text-center text-xs font-semibold text-white shadow hover:bg-sky-500"
+                        >
+                          ⚡ Paystack
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -470,9 +489,9 @@ export function AdminWithdrawalsView({
                             setActionType("APPROVE");
                             setActionNote("");
                           }}
-                          className="flex-1 rounded-xl bg-emerald-600 py-2 text-center text-xs font-semibold text-white shadow hover:bg-emerald-500"
+                          className="rounded-xl bg-emerald-600 px-3 py-2 text-center text-xs font-semibold text-white shadow hover:bg-emerald-500"
                         >
-                          Approve &amp; Pay
+                          Manual
                         </button>
                         <button
                           type="button"
@@ -481,7 +500,7 @@ export function AdminWithdrawalsView({
                             setActionType("REJECT");
                             setActionNote("");
                           }}
-                          className="rounded-xl bg-red-600 px-4 py-2 text-center text-xs font-semibold text-white shadow hover:bg-red-500"
+                          className="rounded-xl bg-red-600 px-3 py-2 text-center text-xs font-semibold text-white shadow hover:bg-red-500"
                         >
                           Reject
                         </button>
@@ -628,18 +647,25 @@ export function AdminWithdrawalsView({
 
                         {/* Status */}
                         <td className="px-4 py-3 align-top">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                              isApproved
-                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
-                                : isRejected
-                                ? "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300"
-                                : "bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300"
-                            }`}
-                          >
-                            {isPending && <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />}
-                            {w.status}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                isApproved
+                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+                                  : isRejected
+                                  ? "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300"
+                                  : "bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300"
+                              }`}
+                            >
+                              {isPending && <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />}
+                              {w.status}
+                            </span>
+                            {w.payoutMethod === "PAYSTACK_AUTO" && (
+                              <span className="inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800 dark:bg-sky-500/20 dark:text-sky-300">
+                                ⚡ Paystack
+                              </span>
+                            )}
+                          </div>
 
                           {w.adminNote && (
                             <p className="mt-1 max-w-xs text-[11px] text-slate-500 dark:text-slate-400 italic">
@@ -661,13 +687,26 @@ export function AdminWithdrawalsView({
                               <button
                                 type="button"
                                 onClick={() => {
-                                 setSelectedWithdrawal(w);
-                                 setActionType("APPROVE");
-                                 setActionNote("");
+                                  setSelectedWithdrawal(w);
+                                  setActionType("PAYSTACK_PAYOUT");
+                                  setActionNote("");
                                 }}
-                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors"
+                                className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-500 transition-colors"
+                                title="Disburse directly to MoMo using Paystack"
                               >
-                                Approve &amp; Pay
+                                ⚡ Paystack
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedWithdrawal(w);
+                                  setActionType("APPROVE");
+                                  setActionNote("");
+                                }}
+                                className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors"
+                                title="Approve & mark as paid manually"
+                              >
+                                Manual
                               </button>
                               <button
                                 type="button"
@@ -676,7 +715,7 @@ export function AdminWithdrawalsView({
                                   setActionType("REJECT");
                                   setActionNote("");
                                 }}
-                                className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-500 transition-colors"
+                                className="rounded-lg bg-red-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-500 transition-colors"
                               >
                                 Reject
                               </button>
@@ -727,14 +766,46 @@ export function AdminWithdrawalsView({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-[#0d1526]">
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              {actionType === "APPROVE" ? "Confirm Payout Approval" : "Reject Withdrawal Request"}
+              {actionType === "PAYSTACK_PAYOUT"
+                ? "⚡ Disburse via Paystack MoMo"
+                : actionType === "APPROVE"
+                ? "Confirm Manual Payout Approval"
+                : "Reject Withdrawal Request"}
             </h3>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Reference: <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{selectedWithdrawal.reference}</span>
             </p>
 
-            {actionType === "APPROVE" ? (
-              <div className="mt-4 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5 text-xs dark:border-emerald-500/20 dark:bg-emerald-500/5">
+            {actionType === "PAYSTACK_PAYOUT" ? (
+              <div className="mt-4 space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3.5 text-xs dark:border-sky-500/20 dark:bg-sky-500/5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Reseller:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedWithdrawal.userName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Destination:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedWithdrawal.network} · {selectedWithdrawal.momoNumber} ({selectedWithdrawal.accountName})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Gross Debited from Wallet:</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">GHS {selectedWithdrawal.amountGHS.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Platform Fee Retained:</span>
+                  <span className="font-semibold text-red-500">- GHS {selectedWithdrawal.feeGHS.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-sky-200 pt-2 dark:border-sky-500/20 flex justify-between text-sm font-black text-sky-700 dark:text-sky-300">
+                  <span>Paystack Direct Transfer:</span>
+                  <span>GHS {selectedWithdrawal.netAmountGHS.toFixed(2)}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  This will immediately trigger a transfer from your Paystack account to the reseller&apos;s Mobile Money number.
+                </p>
+              </div>
+            ) : actionType === "APPROVE" ? (
+              <div className="mt-4 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5 text-xs dark:border-emerald-500/20 dark:bg-emerald-50/5">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Reseller:</span>
                   <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedWithdrawal.userName}</span>
@@ -767,13 +838,19 @@ export function AdminWithdrawalsView({
             <form onSubmit={handleReviewSubmit} className="mt-4 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {actionType === "APPROVE" ? "Admin Note / Payment Reference (Optional)" : "Reason for Rejection"}
+                  {actionType === "PAYSTACK_PAYOUT"
+                    ? "Admin Note (Optional)"
+                    : actionType === "APPROVE"
+                    ? "Admin Note / Payment Reference (Optional)"
+                    : "Reason for Rejection"}
                 </label>
                 <input
                   value={actionNote}
                   onChange={(e) => setActionNote(e.target.value)}
                   placeholder={
-                    actionType === "APPROVE"
+                    actionType === "PAYSTACK_PAYOUT"
+                      ? "Optional payout note"
+                      : actionType === "APPROVE"
                       ? "e.g. Paid via MTN MoMo terminal, Trans ID: 12345"
                       : "e.g. Invalid account name or wrong MoMo number"
                   }
@@ -798,12 +875,20 @@ export function AdminWithdrawalsView({
                   type="submit"
                   disabled={submitting}
                   className={`rounded-xl px-5 py-2 text-xs font-semibold text-white shadow transition-colors ${
-                    actionType === "APPROVE"
+                    actionType === "PAYSTACK_PAYOUT"
+                      ? "bg-sky-600 hover:bg-sky-500"
+                      : actionType === "APPROVE"
                       ? "bg-emerald-600 hover:bg-emerald-500"
                       : "bg-red-600 hover:bg-red-500"
                   }`}
                 >
-                  {submitting ? "Processing…" : actionType === "APPROVE" ? "Confirm & Mark Paid" : "Confirm Reject"}
+                  {submitting
+                    ? "Processing…"
+                    : actionType === "PAYSTACK_PAYOUT"
+                    ? "Confirm & Send via Paystack"
+                    : actionType === "APPROVE"
+                    ? "Confirm & Mark Paid"
+                    : "Confirm Reject"}
                 </button>
               </div>
             </form>

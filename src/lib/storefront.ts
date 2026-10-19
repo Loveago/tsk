@@ -931,47 +931,50 @@ export async function reconcileUnsettledStorefrontOrders(hoursBack = 48): Promis
  * - If it was already debited at request time, simply transitions the status to APPROVED.
  */
 export async function approveWithdrawal(withdrawalId: string, adminNote?: string, processedBy?: string) {
-  return prisma.$transaction(async (tx) => {
-    const wd = await tx.storefrontWithdrawal.findUnique({ where: { id: withdrawalId } });
-    if (!wd) throw new Error("Withdrawal not found");
-    if (wd.status !== "PENDING") throw new Error("Withdrawal is not pending review");
+  return prisma.$transaction(
+    async (tx) => {
+      const wd = await tx.storefrontWithdrawal.findUnique({ where: { id: withdrawalId } });
+      if (!wd) throw new Error("Withdrawal not found");
+      if (wd.status !== "PENDING") throw new Error("Withdrawal is not pending review");
 
-    const wallet = await tx.storefrontWallet.findUnique({ where: { userId: wd.userId } });
-    if (!wallet) throw new Error("Storefront wallet not found");
+      const wallet = await tx.storefrontWallet.findUnique({ where: { userId: wd.userId } });
+      if (!wallet) throw new Error("Storefront wallet not found");
 
-    const ref = wd.reference || withdrawalCode(wd.seq);
-    const legacyRef = `CF-WD-${String(wd.seq).padStart(5, "0")}`;
-    const tskRef = `TSK-WD-${String(wd.seq).padStart(5, "0")}`;
+      const ref = wd.reference || withdrawalCode(wd.seq);
+      const legacyRef = `CF-WD-${String(wd.seq).padStart(5, "0")}`;
+      const tskRef = `TSK-WD-${String(wd.seq).padStart(5, "0")}`;
 
-    // Check if this withdrawal has already been debited from the wallet (e.g. at request time)
-    const alreadyDebited = await tx.storefrontWalletTransaction.findFirst({
-      where: {
-        walletId: wallet.id,
-        reference: { in: [ref, legacyRef, tskRef] },
-        type: "WITHDRAWAL",
-      },
-    });
-
-    if (!alreadyDebited) {
-      // Legacy or un-debited withdrawal: debit now, allowing the balance to go into negative if needed
-      await applyLedgerEntry(tx, wallet.id, {
-        type: "WITHDRAWAL",
-        amount: -wd.amount,
-        reference: ref,
-        description: wd.network ? `MoMo payout via ${wd.network}` : "MoMo payout",
+      // Check if this withdrawal has already been debited from the wallet (e.g. at request time)
+      const alreadyDebited = await tx.storefrontWalletTransaction.findFirst({
+        where: {
+          walletId: wallet.id,
+          reference: { in: [ref, legacyRef, tskRef] },
+          type: "WITHDRAWAL",
+        },
       });
-    }
 
-    return tx.storefrontWithdrawal.update({
-      where: { id: withdrawalId },
-      data: {
-        status: "APPROVED",
-        adminNote: adminNote ?? wd.adminNote,
-        processedBy,
-        processedAt: new Date(),
-      },
-    });
-  });
+      if (!alreadyDebited) {
+        // Legacy or un-debited withdrawal: debit now, allowing the balance to go into negative if needed
+        await applyLedgerEntry(tx, wallet.id, {
+          type: "WITHDRAWAL",
+          amount: -wd.amount,
+          reference: ref,
+          description: wd.network ? `MoMo payout via ${wd.network}` : "MoMo payout",
+        });
+      }
+
+      return tx.storefrontWithdrawal.update({
+        where: { id: withdrawalId },
+        data: {
+          status: "APPROVED",
+          adminNote: adminNote ?? wd.adminNote,
+          processedBy,
+          processedAt: new Date(),
+        },
+      });
+    },
+    { maxWait: 15000, timeout: 30000 }
+  );
 }
 
 /**
@@ -980,46 +983,49 @@ export async function approveWithdrawal(withdrawalId: string, adminNote?: string
  * - Flips the withdrawal state to REJECTED.
  */
 export async function rejectWithdrawal(withdrawalId: string, adminNote?: string, processedBy?: string) {
-  return prisma.$transaction(async (tx) => {
-    const wd = await tx.storefrontWithdrawal.findUnique({ where: { id: withdrawalId } });
-    if (!wd) throw new Error("Withdrawal not found");
-    if (wd.status !== "PENDING") throw new Error("Withdrawal is not pending review");
+  return prisma.$transaction(
+    async (tx) => {
+      const wd = await tx.storefrontWithdrawal.findUnique({ where: { id: withdrawalId } });
+      if (!wd) throw new Error("Withdrawal not found");
+      if (wd.status !== "PENDING") throw new Error("Withdrawal is not pending review");
 
-    const wallet = await tx.storefrontWallet.findUnique({ where: { userId: wd.userId } });
+      const wallet = await tx.storefrontWallet.findUnique({ where: { userId: wd.userId } });
 
-    if (wallet) {
-      const ref = wd.reference || withdrawalCode(wd.seq);
-      const legacyRef = `CF-WD-${String(wd.seq).padStart(5, "0")}`;
-      const tskRef = `TSK-WD-${String(wd.seq).padStart(5, "0")}`;
+      if (wallet) {
+        const ref = wd.reference || withdrawalCode(wd.seq);
+        const legacyRef = `CF-WD-${String(wd.seq).padStart(5, "0")}`;
+        const tskRef = `TSK-WD-${String(wd.seq).padStart(5, "0")}`;
 
-      const wasDebited = await tx.storefrontWalletTransaction.findFirst({
-        where: {
-          walletId: wallet.id,
-          reference: { in: [ref, legacyRef, tskRef] },
-          type: "WITHDRAWAL",
+        const wasDebited = await tx.storefrontWalletTransaction.findFirst({
+          where: {
+            walletId: wallet.id,
+            reference: { in: [ref, legacyRef, tskRef] },
+            type: "WITHDRAWAL",
+          },
+        });
+
+        if (wasDebited) {
+          // Refund the deducted amount back to the user's wallet
+          await applyLedgerEntry(tx, wallet.id, {
+            type: "WITHDRAWAL_REVERSAL",
+            amount: Math.abs(wd.amount),
+            reference: ref,
+            description: `Withdrawal request rejected — funds returned to wallet`,
+          });
+        }
+      }
+
+      return tx.storefrontWithdrawal.update({
+        where: { id: withdrawalId },
+        data: {
+          status: "REJECTED",
+          adminNote: adminNote ?? wd.adminNote,
+          processedBy,
+          processedAt: new Date(),
         },
       });
-
-      if (wasDebited) {
-        // Refund the deducted amount back to the user's wallet
-        await applyLedgerEntry(tx, wallet.id, {
-          type: "WITHDRAWAL_REVERSAL",
-          amount: Math.abs(wd.amount),
-          reference: ref,
-          description: `Withdrawal request rejected — funds returned to wallet`,
-        });
-      }
-    }
-
-    return tx.storefrontWithdrawal.update({
-      where: { id: withdrawalId },
-      data: {
-        status: "REJECTED",
-        adminNote: adminNote ?? wd.adminNote,
-        processedBy,
-        processedAt: new Date(),
-      },
-    });
-  });
+    },
+    { maxWait: 15000, timeout: 30000 }
+  );
 }
 

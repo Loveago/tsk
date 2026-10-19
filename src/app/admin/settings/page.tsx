@@ -1939,6 +1939,57 @@ export default function AdminSettingsPage() {
                 </button>
               </div>
 
+              <div className="flex items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    Paystack MoMo Auto-Payout
+                    <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
+                      Automated
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Automatically disburse withdrawal requests directly to the user&apos;s Mobile Money account via Paystack. If OFF, only manual admin payout is allowed.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.storefront_paystack_auto_payout_enabled === "true"}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      storefront_paystack_auto_payout_enabled: s.storefront_paystack_auto_payout_enabled === "true" ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    settings.storefront_paystack_auto_payout_enabled === "true" ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      settings.storefront_paystack_auto_payout_enabled === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {settings.storefront_paystack_auto_payout_enabled === "true" && (
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-slate-800">
+                  <div className="space-y-1.5">
+                    <Label>Max Paystack Auto-Payout Per Request (GHS)</Label>
+                    <Input
+                      type="number"
+                      value={settings.storefront_paystack_max_auto_amount ?? ""}
+                      onChange={(e) => setSettings((s) => ({ ...s, storefront_paystack_max_auto_amount: e.target.value }))}
+                      placeholder="e.g. 500 (Leave empty for no limit)"
+                    />
+                    <p className="text-[11px] text-slate-500">
+                      Withdrawals above this amount will stay PENDING for manual admin approval as a fraud prevention guardrail.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <div className="space-y-1.5">
                   <Label>Withdrawal Fee Percent (%)</Label>

@@ -30,6 +30,60 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
+  // Handle Paystack Transfer Webhooks (Mobile Money Auto-Payouts)
+  if (event.event?.startsWith("transfer.")) {
+    const transferData = event.data as {
+      reference?: string;
+      transfer_code?: string;
+      status?: string;
+      reason?: string;
+    };
+    const ref = transferData.reference;
+    const transferCode = transferData.transfer_code;
+
+    if (ref || transferCode) {
+      try {
+        const wd = await prisma.storefrontWithdrawal.findFirst({
+          where: {
+            OR: [
+              ...(ref ? [{ reference: { startsWith: ref.split("-R")[0] } }] : []),
+              ...(transferCode ? [{ paystackTransferCode: transferCode }] : []),
+            ],
+          },
+        });
+
+        if (wd) {
+          if (event.event === "transfer.success") {
+            await prisma.storefrontWithdrawal.update({
+              where: { id: wd.id },
+              data: {
+                status: "APPROVED",
+                processedBy: "PAYSTACK_WEBHOOK",
+                processedAt: new Date(),
+                adminNote: `Paystack transfer successful (${transferCode || ref})`,
+              },
+            });
+            return NextResponse.json({ received: true, event: event.event, withdrawalId: wd.id });
+          }
+
+          if (event.event === "transfer.failed" || event.event === "transfer.reversed") {
+            // Reversal / failure: refund user wallet
+            const { rejectWithdrawal } = await import("@/lib/storefront");
+            await rejectWithdrawal(
+              wd.id,
+              `Paystack transfer failed/reversed: ${transferData.reason || event.event}`,
+              "PAYSTACK_WEBHOOK"
+            );
+            return NextResponse.json({ received: true, event: event.event, withdrawalId: wd.id, reversed: true });
+          }
+        }
+      } catch (transferErr) {
+        console.error("Error handling transfer webhook:", transferErr);
+      }
+    }
+    return NextResponse.json({ received: true, event: event.event });
+  }
+
   if (event.event !== "charge.success" || !event.data?.reference) {
     return NextResponse.json({ received: true });
   }

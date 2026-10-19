@@ -309,3 +309,181 @@ export async function reconcilePendingPaystackTopups(limit = 10): Promise<{
   return { checked: pendingTxs.length, settled: settledCount };
 }
 
+// ---------------------------------------------------------------------------
+// Paystack Mobile Money Payouts / Transfers (Ghana GHS)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the Paystack bank code for Ghana mobile money networks:
+ * - MTN Mobile Money: "MTN"
+ * - Telecel Cash (Vodafone): "VOD"
+ * - AirtelTigo Money: "ATL"
+ */
+export function getPaystackMomoBankCode(network: string): string {
+  const norm = network.toUpperCase().trim();
+  if (norm === "MTN") return "MTN";
+  if (norm === "TELECEL" || norm === "VODAFONE") return "VOD";
+  if (norm === "AIRTELTIGO" || norm === "AT") return "ATL";
+  throw new Error(`Unsupported network for Paystack mobile money: ${network}`);
+}
+
+export interface PaystackResolvedAccount {
+  account_number: string;
+  account_name: string;
+  bank_id?: number;
+}
+
+/**
+ * Resolves a Ghanaian Mobile Money number against the telco via Paystack
+ * to obtain the registered legal account name.
+ */
+export async function resolveMobileMoneyAccount(
+  accountNumber: string,
+  network: string
+): Promise<PaystackResolvedAccount> {
+  const bankCode = getPaystackMomoBankCode(network);
+  const cleanNumber = accountNumber.replace(/\D/g, "");
+  const normalized =
+    cleanNumber.startsWith("233") && cleanNumber.length === 12
+      ? "0" + cleanNumber.slice(3)
+      : cleanNumber;
+
+  if (normalized.length !== 10 || !normalized.startsWith("0")) {
+    throw new Error("Invalid mobile money number: must be a 10-digit number starting with 0");
+  }
+
+  return paystackRequest<PaystackResolvedAccount>(
+    "GET",
+    `/bank/resolve?account_number=${encodeURIComponent(normalized)}&bank_code=${encodeURIComponent(bankCode)}`
+  );
+}
+
+export interface PaystackTransferRecipient {
+  active: boolean;
+  recipient_code: string;
+  name: string;
+  type: string;
+  details?: {
+    account_number: string;
+    account_name: string;
+    bank_code: string;
+    bank_name: string;
+  };
+}
+
+/**
+ * Creates a Paystack Transfer Recipient for Mobile Money.
+ */
+export async function createTransferRecipient(input: {
+  name: string;
+  accountNumber: string;
+  network: string;
+  description?: string;
+}): Promise<PaystackTransferRecipient> {
+  const bankCode = getPaystackMomoBankCode(input.network);
+  const cleanNumber = input.accountNumber.replace(/\D/g, "");
+  const normalized =
+    cleanNumber.startsWith("233") && cleanNumber.length === 12
+      ? "0" + cleanNumber.slice(3)
+      : cleanNumber;
+
+  return paystackRequest<PaystackTransferRecipient>("POST", "/transferrecipient", {
+    type: "mobile_money",
+    name: input.name,
+    account_number: normalized,
+    bank_code: bankCode,
+    currency: PAYSTACK_CURRENCY,
+    description: input.description || "Storefront withdrawal",
+  });
+}
+
+export interface PaystackTransferResult {
+  reference: string;
+  amount: number;
+  currency: string;
+  source: string;
+  status: string; // "success" | "pending" | "failed" | "otp"
+  transfer_code: string;
+  id: number;
+  reason?: string;
+}
+
+/**
+ * Initiates a Paystack transfer from available GHS balance to a Mobile Money recipient.
+ */
+export async function initiateTransfer(input: {
+  amountPesewas: number;
+  recipientCode: string;
+  reference: string;
+  reason?: string;
+}): Promise<PaystackTransferResult> {
+  return paystackRequest<PaystackTransferResult>("POST", "/transfer", {
+    source: "balance",
+    amount: input.amountPesewas,
+    recipient: input.recipientCode,
+    reference: input.reference,
+    reason: input.reason || "Storefront withdrawal",
+    currency: PAYSTACK_CURRENCY,
+  });
+}
+
+export interface PaystackBalanceItem {
+  currency: string;
+  balance: number; // pesewas
+}
+
+/**
+ * Fetches available Paystack balances (including transfers balance).
+ */
+export async function fetchPaystackBalance(): Promise<PaystackBalanceItem[]> {
+  return paystackRequest<PaystackBalanceItem[]>("GET", "/balance");
+}
+
+/**
+ * Dispatches a complete Mobile Money payout through Paystack:
+ * 1. Creates a transfer recipient
+ * 2. Initiates transfer from balance
+ */
+export async function executePaystackWithdrawalPayout(input: {
+  amountPesewas: number;
+  momoNumber: string;
+  accountName: string;
+  network: string;
+  reference: string;
+  reason?: string;
+}): Promise<{
+  success: boolean;
+  status: string;
+  transferCode?: string;
+  recipientCode?: string;
+  error?: string;
+}> {
+  try {
+    const recipient = await createTransferRecipient({
+      name: input.accountName,
+      accountNumber: input.momoNumber,
+      network: input.network,
+      description: `Storefront payout ${input.reference}`,
+    });
+
+    const transfer = await initiateTransfer({
+      amountPesewas: input.amountPesewas,
+      recipientCode: recipient.recipient_code,
+      reference: input.reference,
+      reason: input.reason || `Storefront withdrawal ${input.reference}`,
+    });
+
+    return {
+      success: transfer.status === "success" || transfer.status === "pending",
+      status: transfer.status,
+      transferCode: transfer.transfer_code,
+      recipientCode: recipient.recipient_code,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      status: "failed",
+      error: err?.message || "Paystack transfer failed",
+    };
+  }
+}

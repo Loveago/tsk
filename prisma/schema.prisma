@@ -541,6 +541,10 @@ model StorefrontWithdrawal {
   requestedAt DateTime  @default(now())
   processedAt DateTime?
 
+  payoutMethod          String?   @default("MANUAL") // MANUAL | PAYSTACK_AUTO
+  paystackTransferCode  String?
+  paystackRecipientCode String?
+
   @@index([userId])
   @@index([status])
 }

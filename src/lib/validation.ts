@@ -345,6 +345,8 @@ export const settingsSchema = z.object({
   storefront_withdrawal_fee_percent: z.string().max(10).optional(),
   storefront_withdrawal_enabled: z.enum(["true", "false"]).optional(),
   storefront_auto_approve_withdrawal: z.enum(["true", "false"]).optional(),
+  storefront_paystack_auto_payout_enabled: z.enum(["true", "false"]).optional(),
+  storefront_paystack_max_auto_amount: z.string().max(20).optional(),
   
   // Reports
   reports_enabled: z.enum(["true", "false"]).optional(),
@@ -492,7 +494,7 @@ export const storefrontWithdrawalSchema = z.object({
 });
 
 export const storefrontWithdrawalReviewSchema = z.object({
-  action: z.enum(["APPROVE", "REJECT"]),
+  action: z.enum(["APPROVE", "REJECT", "PAYSTACK_PAYOUT"]),
   adminNote: z.string().max(300).optional().or(z.literal("")),
 });
 
