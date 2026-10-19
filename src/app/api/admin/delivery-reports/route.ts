@@ -271,12 +271,12 @@ export async function PATCH(request: NextRequest) {
           } else if (input.action === "RESOLVE_REFUNDED") {
             await changeOrderStatus(
               report.orderId,
-              "FAILED",
+              "REFUNDED",
               `Report closed as refunded${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
               actorLabel,
               { force: true }
             );
-            orderUpdated = "FAILED";
+            orderUpdated = "REFUNDED";
             data.status = "REFUNDED";
             data.resolvedAt = new Date();
             data.resolvedBy = actor.email;
@@ -421,15 +421,15 @@ export async function PATCH(request: NextRequest) {
       data.resolvedBy = actor.email;
       if (input.resolutionNote) data.adminNote = input.resolutionNote;
     } else if (input.action === "RESOLVE_REFUNDED") {
-      // Close report as REFUNDED and mark order FAILED (refunds wallet for dashboard orders)
+      // Close report as REFUNDED and mark order REFUNDED (refunds wallet for dashboard orders)
       await changeOrderStatus(
         report.orderId,
-        "FAILED",
+        "REFUNDED",
         `Report closed as refunded${input.resolutionNote ? ` — ${input.resolutionNote}` : ""}`,
         actorLabel,
         { force: true }
       );
-      orderUpdated = "FAILED";
+      orderUpdated = "REFUNDED";
       data.status = "REFUNDED";
       data.resolvedAt = new Date();
       data.resolvedBy = actor.email;

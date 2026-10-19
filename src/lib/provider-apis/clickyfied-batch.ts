@@ -10,6 +10,7 @@ import { ClickyfiedClient, generateClickyfiedReference, type ClickyfiedFilteredO
 import { normalizeGhanaPhoneNumber } from "@/lib/phone-utils";
 import { recordAudit } from "../audit";
 import { recordOrderApiLog } from "../order-api-logs";
+import { changeOrderStatus } from "../orders";
 
 export interface ClickyfiedBatchConfig {
   enabled: boolean;
@@ -907,15 +908,15 @@ async function submitSingleBatchChunk(
 
       const entryRawStatus = matchedEntry?.status;
       const entryId = matchedEntry?.id;
-      let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED";
+      let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | "REFUNDED";
       if (entryRawStatus) {
         const mappedEntry = mapClickyfiedStatus(entryRawStatus);
-        if (["SUCCESS", "FAILED", "CANCELLED"].includes(mappedEntry)) {
+        if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(mappedEntry)) {
           targetStatus = mappedEntry;
         } else {
           targetStatus = "PROCESSING";
         }
-      } else if (["SUCCESS", "FAILED", "CANCELLED"].includes(overallStatus)) {
+      } else if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(overallStatus)) {
         targetStatus = overallStatus;
       } else {
         targetStatus = "PROCESSING";
@@ -926,24 +927,38 @@ async function submitSingleBatchChunk(
           ? `CLICKYFIED:${batchOrderId}:${entryId}`
           : providerRef;
 
-      await prisma.order.update({
-        where: { id: order.id },
-        data: {
-          status: targetStatus,
-          providerReference: orderProviderRef,
-          failureReason: targetStatus === "FAILED" ? `Failed to deliver: ${rawStatus}` : null,
-        },
-      });
+      if (targetStatus === "REFUNDED") {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { providerReference: orderProviderRef },
+        });
+        await changeOrderStatus(
+          order.id,
+          "REFUNDED",
+          `Automated refund: Provider reported ${entryRawStatus || rawStatus || "failed"} in batch #${batchCode}`,
+          { id: "system", label: actorLabel },
+          { force: true }
+        );
+      } else {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: targetStatus,
+            providerReference: orderProviderRef,
+            failureReason: targetStatus === "FAILED" ? `Failed to deliver: ${rawStatus}` : null,
+          },
+        });
 
-      await prisma.orderStatusHistory.create({
-        data: {
-          orderId: order.id,
-          status: targetStatus,
-          previousStatus: "PENDING",
-          note: `Submitted in automated ${groupLabel} batch #${batchCode} (${targetOrders.length} entries, ${totalGb} GB). Status: ${entryRawStatus || rawStatus || targetStatus}`,
-          changedBy: actorLabel,
-        },
-      });
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: targetStatus,
+            previousStatus: "PENDING",
+            note: `Submitted in automated ${groupLabel} batch #${batchCode} (${targetOrders.length} entries, ${totalGb} GB). Status: ${entryRawStatus || rawStatus || targetStatus}`,
+            changedBy: actorLabel,
+          },
+        });
+      }
     }
 
     // Recompute user parent batch statuses
@@ -2198,12 +2213,12 @@ export async function syncClickyfiedBatchStatus(
       const entryRawStatus = matched.status;
       const entryId = matched.id;
 
-      let nextStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" = order.status as any;
+      let nextStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | "REFUNDED" = order.status as any;
       if (entryRawStatus) {
         const mapped = mapClickyfiedStatus(entryRawStatus);
         // Only allow status upgrades to terminal states if the raw status explicitly says so.
         // Never map to SUCCESS from an empty/ambiguous status.
-        if (["SUCCESS", "FAILED", "CANCELLED"].includes(mapped)) {
+        if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(mapped)) {
           nextStatus = mapped as any;
         } else if (mapped === "PROCESSING") {
           // Keep the order in PROCESSING — it's confirmed in-flight on the provider.
@@ -2222,25 +2237,41 @@ export async function syncClickyfiedBatchStatus(
       const refChanged = order.providerReference !== nextProviderRef;
 
       if (statusChanged || refChanged) {
-        await prisma.order.update({
-          where: { id: order.id },
-          data: {
-            status: nextStatus,
-            providerReference: nextProviderRef,
-            failureReason: nextStatus === "FAILED" ? `Reported by provider: ${entryRawStatus}` : null,
-          },
-        });
+        if (refChanged) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { providerReference: nextProviderRef },
+          });
+        }
 
         if (statusChanged) {
-          await prisma.orderStatusHistory.create({
-            data: {
-              orderId: order.id,
-              status: nextStatus,
-              previousStatus: order.status,
-              note: `Status synchronized from Clickyfied (${entryRawStatus || nextStatus}) for batch #${batch.batchCode}`,
-              changedBy: actorLabel,
-            },
-          });
+          if (nextStatus === "REFUNDED") {
+            await changeOrderStatus(
+              order.id,
+              "REFUNDED",
+              `Status synchronized from Clickyfied (${entryRawStatus || nextStatus}) for batch #${batch.batchCode} - automated refund`,
+              { id: "system", label: actorLabel },
+              { force: true }
+            );
+          } else {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: {
+                status: nextStatus,
+                failureReason: nextStatus === "FAILED" ? `Reported by provider: ${entryRawStatus}` : null,
+              },
+            });
+
+            await prisma.orderStatusHistory.create({
+              data: {
+                orderId: order.id,
+                status: nextStatus,
+                previousStatus: order.status,
+                note: `Status synchronized from Clickyfied (${entryRawStatus || nextStatus}) for batch #${batch.batchCode}`,
+                changedBy: actorLabel,
+              },
+            });
+          }
           updatedOrdersCount++;
         }
       }
@@ -2257,20 +2288,16 @@ export async function syncClickyfiedBatchStatus(
         await prisma.order.update({
           where: { id: order.id },
           data: {
-            status: "FAILED",
             providerReference: `CLICKYFIED:${canonicalId}:FILTERED:${filterType.toUpperCase()}`,
-            failureReason: failReason,
           },
         });
-        await prisma.orderStatusHistory.create({
-          data: {
-            orderId: order.id,
-            status: "FAILED",
-            previousStatus: order.status,
-            note: `Excluded from Clickyfied batch #${batch.batchCode}: ${failReason}`,
-            changedBy: actorLabel,
-          },
-        });
+        await changeOrderStatus(
+          order.id,
+          "REFUNDED",
+          `Excluded from Clickyfied batch #${batch.batchCode}: ${failReason} (automated refund)`,
+          { id: "system", label: actorLabel },
+          { force: true }
+        );
         updatedOrdersCount++;
       } else if (order.status === "PROCESSING" || order.status === "PENDING") {
         // Order never existed on Clickyfied in this batch!

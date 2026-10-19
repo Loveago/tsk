@@ -574,12 +574,14 @@ export async function dispatchOrder(
         durationMs,
       });
 
-      // Dispatched to Clickyfied: advance to PROCESSING (or FAILED if filtered out/immediately resolved)
-      const targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" =
+      // Dispatched to Clickyfied: advance to PROCESSING (or REFUNDED if filtered out/immediately resolved as failed)
+      const targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | "REFUNDED" =
         isFilteredOut
-          ? "FAILED"
-          : ["SUCCESS", "FAILED", "CANCELLED"].includes(mappedStatus)
+          ? "REFUNDED"
+          : ["SUCCESS", "CANCELLED", "REFUNDED"].includes(mappedStatus)
           ? mappedStatus
+          : mappedStatus === "FAILED"
+          ? "REFUNDED"
           : "PROCESSING";
 
       if (targetStatus !== order.status) {
@@ -587,7 +589,9 @@ export async function dispatchOrder(
           order.id,
           targetStatus,
           isFilteredOut
-            ? `Order blocked by provider: ${filteredReason}`
+            ? `Order blocked by provider: ${filteredReason} (automated refund)`
+            : targetStatus === "REFUNDED"
+            ? `Delivery failed on provider (${rawStatus || mappedStatus}) - automated refund`
             : `Dispatched for automated delivery (Order: ${orderId}, Status: ${rawStatus || targetStatus})`,
           { id: "system", label: "Automated System" },
           { force: true }
@@ -828,6 +832,14 @@ export async function dispatchOrder(
           { id: "system", label: "GHConnect API" },
           { force: true }
         );
+      } else if (resStatus === "failed" || resStatus === "rejected" || resStatus === "error" || resStatus === "refunded") {
+        await changeOrderStatus(
+          order.id,
+          "REFUNDED",
+          `Failed via GHConnect API (${purchaseRes.message || resStatus}) - automated refund`,
+          { id: "system", label: "GHConnect API" },
+          { force: true }
+        );
       } else {
         await changeOrderStatus(
           order.id,
@@ -955,11 +967,11 @@ export async function dispatchOrder(
           { id: "system", label: "Bigwin Telecel API" },
           { force: true }
         );
-      } else if (resStatus === "failed" || resStatus === "error") {
+      } else if (resStatus === "failed" || resStatus === "error" || resStatus === "refunded") {
         await changeOrderStatus(
           order.id,
-          "FAILED",
-          `Failed via Bigwin Telecel API (${sendRes.message || "Failed"})`,
+          "REFUNDED",
+          `Failed via Bigwin Telecel API (${sendRes.message || "Failed"}) - automated refund`,
           { id: "system", label: "Bigwin Telecel API" },
           { force: true }
         );
@@ -1052,18 +1064,19 @@ export function mapClickyfiedStatus(
     error?: number;
   } | null,
   processedAt?: string | Date | null
-): "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" {
+): "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | "REFUNDED" {
   const s = (rawStatus || "").trim().toLowerCase();
 
   // 1. Terminal statuses (completed / delivered / sent / processed / success)
   if (["completed", "delivered", "sent", "processed", "success"].includes(s)) {
     return "SUCCESS";
   }
-  if (["failed", "rejected", "error", "unsuccessful"].includes(s)) {
-    return "FAILED";
+  // When provider reports failed, rejected, error, unsuccessful, or refunded -> auto-refund!
+  if (["failed", "rejected", "error", "unsuccessful", "refunded"].includes(s)) {
+    return "REFUNDED";
   }
   if (["cancelled", "canceled"].includes(s)) {
-    return "CANCELLED";
+    return "REFUNDED";
   }
 
   // 2. Direct 1-to-1 match with Clickyfied's primary status
@@ -1088,12 +1101,12 @@ export function mapClickyfiedStatus(
     const processing = entrySummary.processing ?? 0;
 
     if (sent >= total) return "SUCCESS";
-    if (error >= total) return "FAILED";
+    if (error >= total) return "REFUNDED";
     if (processing > 0 || sent > 0) return "PROCESSING";
     return "PENDING";
   }
 
-  if (processedAt && !["failed", "rejected", "error", "unsuccessful", "cancelled", "canceled"].includes(s)) {
+  if (processedAt && !["failed", "rejected", "error", "unsuccessful", "cancelled", "canceled", "refunded"].includes(s)) {
     return "SUCCESS";
   }
 
@@ -1612,23 +1625,23 @@ export async function syncClickyfiedOrder(
           }
         }
 
-        let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED";
+        let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | "REFUNDED";
         if (entryStatus) {
           const mappedEntry = mapClickyfiedStatus(entryStatus);
-          if (["SUCCESS", "FAILED", "CANCELLED"].includes(mappedEntry)) {
+          if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(mappedEntry)) {
             targetStatus = mappedEntry;
           } else {
             // Any active entry in Clickyfied is PROCESSING
             targetStatus = "PROCESSING";
           }
-        } else if (["SUCCESS", "FAILED", "CANCELLED"].includes(overallTargetStatus)) {
+        } else if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(overallTargetStatus)) {
           targetStatus = overallTargetStatus;
         } else {
           targetStatus = "PROCESSING";
         }
 
         if (targetStatus && targetStatus !== ord.status) {
-          if (targetStatus === "FAILED") {
+          if (targetStatus === "FAILED" || targetStatus === "REFUNDED") {
             await recordOrderApiLog({
               orderId: ord.id,
               provider: "CLICKYFIED",
@@ -1637,7 +1650,7 @@ export async function syncClickyfiedOrder(
               method: "GET",
               statusCode: 200,
               success: false,
-              errorMessage: `Order marked as failed by Clickyfied (Status: ${entryStatus || rawStatus})`,
+              errorMessage: `Order marked as ${entryStatus || rawStatus || targetStatus} by Clickyfied (automated refund)`,
               responsePayload: rawAny,
               providerReference: ord.providerReference,
             });
@@ -1646,7 +1659,9 @@ export async function syncClickyfiedOrder(
           await changeOrderStatus(
             ord.id,
             targetStatus,
-            `Delivery status synced (${entryStatus || rawStatus || targetStatus})`,
+            targetStatus === "REFUNDED"
+              ? `Delivery status synced (${entryStatus || rawStatus || targetStatus}) - automated refund`
+              : `Delivery status synced (${entryStatus || rawStatus || targetStatus})`,
             { id: "system", label: actorLabel },
             { force: true }
           );
@@ -1780,11 +1795,11 @@ export async function syncBigwindataOrder(
     const statusRes = await client.getOrderStatus(reference);
     const rawStatus = (statusRes.status || "").toLowerCase().trim();
 
-    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | null = null;
+    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "REFUNDED" | null = null;
     if (rawStatus === "delivered" || rawStatus === "success" || rawStatus === "completed") {
       targetStatus = "SUCCESS";
     } else if (rawStatus === "failed" || rawStatus === "refunded" || rawStatus === "error" || rawStatus === "cancelled") {
-      targetStatus = "FAILED";
+      targetStatus = "REFUNDED";
     } else if (rawStatus === "processing" || rawStatus === "placed" || rawStatus === "accepted" || rawStatus === "in_progress") {
       targetStatus = "PROCESSING";
     } else if (rawStatus === "pending") {
@@ -1792,7 +1807,7 @@ export async function syncBigwindataOrder(
     }
 
     if (targetStatus && targetStatus !== order.status) {
-      if (targetStatus === "FAILED") {
+      if (targetStatus === "REFUNDED") {
         await recordOrderApiLog({
           orderId: order.id,
           provider: "BIGWINDATA",
@@ -1801,7 +1816,7 @@ export async function syncBigwindataOrder(
           method: "GET",
           statusCode: 200,
           success: false,
-          errorMessage: `Order marked as failed by Bigwindata (Status: ${rawStatus})`,
+          errorMessage: `Order marked as ${rawStatus} by Bigwindata (automated refund)`,
           responsePayload: statusRes.raw,
           providerReference: order.providerReference,
         });
@@ -1822,7 +1837,9 @@ export async function syncBigwindataOrder(
       await changeOrderStatus(
         order.id,
         targetStatus,
-        `Delivery status synced from Bigwindata (${rawStatus})`,
+        targetStatus === "REFUNDED"
+          ? `Delivery status synced from Bigwindata (${rawStatus}) - automated refund`
+          : `Delivery status synced from Bigwindata (${rawStatus})`,
         { id: "system", label: actorLabel },
         { force: true }
       );
@@ -1912,11 +1929,11 @@ export async function syncGhconnectOrder(
     const statusRes = await client.checkOrderStatus(reference);
     const rawStatus = (statusRes.status || "").toLowerCase().trim();
 
-    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | null = null;
+    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "REFUNDED" | null = null;
     if (rawStatus === "completed" || rawStatus === "success" || rawStatus === "delivered") {
       targetStatus = "SUCCESS";
-    } else if (rawStatus === "failed" || rawStatus === "rejected" || rawStatus === "error") {
-      targetStatus = "FAILED";
+    } else if (rawStatus === "failed" || rawStatus === "rejected" || rawStatus === "error" || rawStatus === "refunded" || rawStatus === "cancelled") {
+      targetStatus = "REFUNDED";
     } else if (rawStatus === "processing" || rawStatus === "in_progress") {
       targetStatus = "PROCESSING";
     } else if (rawStatus === "pending") {
@@ -1924,7 +1941,7 @@ export async function syncGhconnectOrder(
     }
 
     if (targetStatus && targetStatus !== order.status) {
-      if (targetStatus === "FAILED") {
+      if (targetStatus === "REFUNDED") {
         await recordOrderApiLog({
           orderId: order.id,
           provider: "GHCONNECT",
@@ -1933,7 +1950,7 @@ export async function syncGhconnectOrder(
           method: "GET",
           statusCode: 200,
           success: false,
-          errorMessage: `Order marked as failed by GHConnect (Status: ${rawStatus})`,
+          errorMessage: `Order marked as ${rawStatus} by GHConnect (automated refund)`,
           responsePayload: statusRes.raw,
           providerReference: order.providerReference,
         });
@@ -1942,7 +1959,9 @@ export async function syncGhconnectOrder(
       await changeOrderStatus(
         order.id,
         targetStatus,
-        `Delivery status synced from GHConnect (${rawStatus})`,
+        targetStatus === "REFUNDED"
+          ? `Delivery status synced from GHConnect (${rawStatus}) - automated refund`
+          : `Delivery status synced from GHConnect (${rawStatus})`,
         { id: "system", label: actorLabel },
         { force: true }
       );
@@ -2037,11 +2056,11 @@ export async function syncBigwinTelecelOrder(
 
     const rawStatus = (statusRes.status || "").toLowerCase().trim();
 
-    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | null = null;
+    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "REFUNDED" | null = null;
     if (rawStatus === "delivered" || rawStatus === "success" || rawStatus === "completed") {
       targetStatus = "SUCCESS";
     } else if (rawStatus === "failed" || rawStatus === "refunded" || rawStatus === "error" || rawStatus === "cancelled") {
-      targetStatus = "FAILED";
+      targetStatus = "REFUNDED";
     } else if (rawStatus === "processing" || rawStatus === "placed" || rawStatus === "accepted" || rawStatus === "in_progress" || rawStatus === "pending") {
       targetStatus = "PROCESSING";
     }
@@ -2056,7 +2075,7 @@ export async function syncBigwinTelecelOrder(
         method: "GET",
         statusCode: 200,
         success: targetStatus === "SUCCESS",
-        errorMessage: targetStatus === "FAILED" ? `Order marked as ${rawStatus} by Bigwin Telecel` : null,
+        errorMessage: targetStatus === "REFUNDED" ? `Order marked as ${rawStatus} by Bigwin Telecel (automated refund)` : null,
         responsePayload: statusRes.raw,
         providerReference: order.providerReference,
       });
@@ -2064,7 +2083,9 @@ export async function syncBigwinTelecelOrder(
       await changeOrderStatus(
         order.id,
         targetStatus,
-        `Delivery status synced from Bigwin Telecel (${rawStatus})`,
+        targetStatus === "REFUNDED"
+          ? `Delivery status synced from Bigwin Telecel (${rawStatus}) - automated refund`
+          : `Delivery status synced from Bigwin Telecel (${rawStatus})`,
         { id: "system", label: actorLabel },
         { force: true }
       );
@@ -2512,7 +2533,7 @@ export async function syncClickyfiedDeliveryReport(
         },
       });
 
-      // If order failed/refunded, update order to FAILED (which refunds wallet or flags storefront)
+      // If order failed/refunded, update order to REFUNDED (which refunds wallet or flags storefront)
       if (newStatus === "REFUNDED" && report.order.id) {
         try {
           const refundReason =
@@ -2520,7 +2541,7 @@ export async function syncClickyfiedDeliveryReport(
             (report.order.amount ? `Refunded GHS ${report.order.amount.toFixed(2)}` : "Order was refunded");
           await changeOrderStatus(
             report.order.id,
-            "FAILED",
+            "REFUNDED",
             refundReason,
             { id: "system", label: actorLabel },
             { force: true }

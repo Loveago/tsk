@@ -552,11 +552,15 @@ export async function changeOrderStatus(
   // refund/failure. No-op for ordinary orders.
   await syncCommissionForOrder(orderId, target);
 
-  // If order is REFUNDED or FAILED:
+  // If order is REFUNDED, FAILED, or CANCELLED:
   // Ordinary orders (WEB / API): refund to user's wallet balance if not already refunded.
   // Storefront orders: DO NOT credit the agent's wallet — customer is refunded via Paystack/manual.
-  if (target === "REFUNDED" || target === "FAILED") {
-    if (order.source !== "STOREFRONT" && order.userId) {
+  if (target === "REFUNDED" || target === "FAILED" || target === "CANCELLED") {
+    const isStorefront =
+      order.source === "STOREFRONT" ||
+      Boolean(await prisma.storefrontOrder.findUnique({ where: { underlyingOrderId: orderId } }));
+
+    if (!isStorefront && order.userId) {
       const existingRefund = await prisma.walletTransaction.findFirst({
         where: {
           userId: order.userId,
@@ -577,12 +581,12 @@ export async function changeOrderStatus(
               amount: order.amount,
               status: "APPROVED",
               reference: `REF-ORDER-${order.id}`,
-              note: `Refund for ${target === "FAILED" ? "Failed" : "Refunded"} Order #${order.id} (${order.phoneNumber})`,
+              note: `Refund for ${target === "FAILED" ? "Failed" : target === "CANCELLED" ? "Cancelled" : "Refunded"} Order #${order.id} (${order.phoneNumber})`,
             },
           }),
         ]);
       }
-    } else if (order.source === "STOREFRONT") {
+    } else if (isStorefront) {
       const curReason = order.failureReason || reason || "";
       if (!curReason.toLowerCase().includes("refund")) {
         await prisma.order.update({

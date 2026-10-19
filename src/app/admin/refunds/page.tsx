@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   RotateCcw,
   Search,
@@ -28,6 +29,7 @@ import { useToast } from "@/components/toast";
 import { PageHeader, StatCard } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
+import { RefundedOrdersTab } from "@/components/admin/refunded-orders-tab";
 
 interface MatchedOrder {
   orderId: number;
@@ -95,6 +97,12 @@ const SAMPLE_TEXT = `053308873 2gb
 
 export default function AdminRefundsPage() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+
+  const [activeTab, setActiveTab] = React.useState<"refunded" | "scanner">(() => {
+    return tabParam === "scanner" ? "scanner" : "refunded";
+  });
 
   const [date, setDate] = React.useState<string>(getTodayString);
   const [inputText, setInputText] = React.useState<string>("");
@@ -275,9 +283,9 @@ export default function AdminRefundsPage() {
               <RotateCcw className="h-5 w-5" />
             </div>
             <div>
-              <span className="text-xl font-bold tracking-tight">Bulk Refund Scanner</span>
+              <span className="text-xl font-bold tracking-tight">Order Refunds &amp; Reversals</span>
               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-normal">
-                <span>Smart phone &amp; GB scanner with Paystack storefront ID extractor</span>
+                <span>Automated refund registry, Paystack storefront reversals, and bulk phone scanner</span>
               </div>
             </div>
           </div>
@@ -305,8 +313,43 @@ export default function AdminRefundsPage() {
         }
       />
 
-      {/* Input & Scanner Panel */}
-      <Card className="p-5 shadow-xs">
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
+        <button
+          type="button"
+          onClick={() => setActiveTab("refunded")}
+          className={cn(
+            "flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer",
+            activeTab === "refunded"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          )}
+        >
+          <RotateCcw className="h-4 w-4" />
+          <span>Refunded Orders</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("scanner")}
+          className={cn(
+            "flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer",
+            activeTab === "scanner"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          )}
+        >
+          <Search className="h-4 w-4" />
+          <span>Bulk Refund Scanner</span>
+        </button>
+      </div>
+
+      {activeTab === "refunded" && <RefundedOrdersTab />}
+
+      {activeTab === "scanner" && (
+        <div className="space-y-6">
+          {/* Input & Scanner Panel */}
+          <Card className="p-5 shadow-xs">
         <div className="space-y-4">
           {/* Controls Bar: Date Picker, Quick Buttons & Filter */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-white/10">
@@ -823,6 +866,8 @@ export default function AdminRefundsPage() {
           )}
         </div>
       )}
+    </div>
+  )}
 
       {/* Confirmation Dialog for 1-Click Refund */}
       <Dialog

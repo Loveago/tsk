@@ -479,9 +479,9 @@ export async function POST(request: NextRequest) {
                 (targetOrder.amount ? `Refunded GHS ${targetOrder.amount.toFixed(2)}` : "Order was refunded");
               await changeOrderStatus(
                 targetOrder.id,
-                "FAILED",
+                "REFUNDED",
                 refundReason,
-                { id: "system", label: "System Sync" },
+                { id: "system", label: "Clickyfied Webhook" },
                 { force: true }
               );
             } catch (err) {
@@ -660,10 +660,10 @@ export async function POST(request: NextRequest) {
         }
 
         const hasExplicitBatchStatus = rawStatus !== "";
-        let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | null = null;
+        let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" | "REFUNDED" | null = null;
         if (entryStatus) {
           const mapped = mapClickyfiedStatus(entryStatus);
-          if (["SUCCESS", "FAILED", "CANCELLED"].includes(mapped)) {
+          if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(mapped)) {
             targetStatus = mapped;
           } else {
             // Any active entry reported by Clickyfied is PROCESSING
@@ -683,7 +683,7 @@ export async function POST(request: NextRequest) {
           ) {
             continue;
           }
-          if (["SUCCESS", "FAILED", "CANCELLED"].includes(overallTargetStatus)) {
+          if (["SUCCESS", "FAILED", "CANCELLED", "REFUNDED"].includes(overallTargetStatus)) {
             targetStatus = overallTargetStatus;
           } else {
             targetStatus = "PROCESSING";

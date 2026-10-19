@@ -78,12 +78,12 @@ export async function POST(request: NextRequest) {
         reason = "Delivered via Bigwindata";
         break;
       case "order.failed":
-        targetStatus = "FAILED";
-        reason = payload?.reason || "Delivery failed via Bigwindata";
+        targetStatus = "REFUNDED";
+        reason = payload?.reason || "Delivery failed via Bigwindata (automated refund)";
         break;
       case "order.refunded":
         targetStatus = "REFUNDED";
-        reason = "Refunded by Bigwindata provider";
+        reason = "Refunded by Bigwindata provider (automated refund)";
         break;
       case "order.placed":
         targetStatus = "PROCESSING";

@@ -112,8 +112,8 @@ export function deliveryReportCode(seq: number | null | undefined): string {
 
 /** Allowed order status transitions (§16). `true` = allowed without override, "OVERRIDE" = admin override required. */
 export const ALLOWED_ORDER_TRANSITIONS: Record<OrderStatus, Partial<Record<OrderStatus, true | "OVERRIDE">>> = {
-  PENDING: { PROCESSING: true, SUCCESS: "OVERRIDE", FAILED: true, CANCELLED: true },
-  PROCESSING: { SUCCESS: true, PENDING: "OVERRIDE", FAILED: true, CANCELLED: true },
+  PENDING: { PROCESSING: true, SUCCESS: "OVERRIDE", FAILED: true, CANCELLED: true, REFUNDED: "OVERRIDE" },
+  PROCESSING: { SUCCESS: true, PENDING: "OVERRIDE", FAILED: true, CANCELLED: true, REFUNDED: "OVERRIDE" },
   SUCCESS: { REFUNDED: "OVERRIDE", FAILED: "OVERRIDE" },
   FAILED: { PROCESSING: true, PENDING: true, SUCCESS: "OVERRIDE", REFUNDED: "OVERRIDE" },
   CANCELLED: { REFUNDED: "OVERRIDE", SUCCESS: "OVERRIDE" },
@@ -239,17 +239,17 @@ export const STATUS_META: Record<
     dot: "bg-slate-400",
   },
   REFUNDED: {
-    label: "Refund",
+    label: "Refunded",
     className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
     dot: "bg-violet-500",
   },
   REFUND: {
-    label: "Refund",
+    label: "Refunded",
     className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
     dot: "bg-violet-500",
   },
   Refund: {
-    label: "Refund",
+    label: "Refunded",
     className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
     dot: "bg-violet-500",
   },
