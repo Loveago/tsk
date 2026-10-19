@@ -436,11 +436,20 @@ export default function AdminOrdersPage() {
         toast(json.error ?? "Failed to export orders to TXT", "error");
         return;
       }
-      if (json.fileName && json.fileBase64) {
+      if (json.exports && Array.isArray(json.exports) && json.exports.length > 0) {
+        for (const exp of json.exports) {
+          if (exp.fileName && exp.fileBase64) {
+            downloadBase64(exp.fileName, exp.fileBase64);
+          }
+        }
+      } else if (json.fileName && json.fileBase64) {
         downloadBase64(json.fileName, json.fileBase64);
       }
+
+      const count = json.count ?? orderIds.length;
+      const exportCodes = json.exportCode ? ` (${json.exportCode})` : "";
       toast(
-        `Exported ${json.count} order(s) to TXT — moved to Processing.`,
+        `Exported ${count} order(s) to TXT${exportCodes} — moved to Processing. Saved to Exported Files.`,
         "success"
       );
       setSelectedOrderIds(new Set());
@@ -470,11 +479,20 @@ export default function AdminOrdersPage() {
         toast(json.error ?? "Failed to export batches to TXT", "error");
         return;
       }
-      if (json.fileName && json.fileBase64) {
+      if (json.exports && Array.isArray(json.exports) && json.exports.length > 0) {
+        for (const exp of json.exports) {
+          if (exp.fileName && exp.fileBase64) {
+            downloadBase64(exp.fileName, exp.fileBase64);
+          }
+        }
+      } else if (json.fileName && json.fileBase64) {
         downloadBase64(json.fileName, json.fileBase64);
       }
+
+      const count = json.count ?? batchIds.length;
+      const exportCodes = json.exportCode ? ` (${json.exportCode})` : "";
       toast(
-        `Exported ${json.count} order(s) to TXT — moved to Processing.`,
+        `Exported batch orders to TXT (${count} order(s))${exportCodes} — moved to Processing. Saved to Exported Files.`,
         "success"
       );
       setSelectedBatchIds(new Set());

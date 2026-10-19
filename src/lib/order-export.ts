@@ -86,6 +86,8 @@ export interface ExportOrdersInput {
   volumeMinMb?: number;
   /** Maximum volume filter in MB (inclusive). */
   volumeMaxMb?: number;
+  /** Format of the exported file: "excel" (default) or "txt". */
+  format?: "excel" | "txt";
 }
 
 export interface ExportOrdersResult {
@@ -161,27 +163,40 @@ export async function exportOrdersToExcel(
   const totalGb = orders.reduce((s, o) => s + o.gbAmount, 0);
   const totalAmount = orders.reduce((s, o) => s + o.amount, 0);
   // File name starts with the network: MTN_EX-0001.xlsx, Telecel_EX-0002.xlsx, ...
-  const fileName = `${input.network}_${exportCode}.xlsx`;
+  const format = input.format ?? "excel";
+  const ext = format === "txt" ? "txt" : "xlsx";
+  const fileName = `${input.network}_${exportCode}.${ext}`;
   const batchIds = [...new Set(orders.map((o) => o.batchId).filter(Boolean))] as string[];
 
-  // 3. Generate the Excel file FIRST — failure here leaves orders untouched
-  const buffer = await buildOrdersWorkbook(
-    orders.map((o) => ({
-      id: o.id,
-      phoneNumber: o.phoneNumber,
-      gbAmount: o.gbAmount,
-      amount: o.amount,
-      packageName: o.dataPackage?.name ?? null,
-      batchCode: o.batch?.batchCode ?? null,
-    })),
-    {
-      network: input.network,
-      exportCode,
-      exportedBy: input.actor.label,
-      exportedAt,
-      isReexport,
-    }
-  );
+  // 3. Generate the file FIRST — failure here leaves orders untouched
+  let buffer: Buffer;
+  if (format === "txt") {
+    const lines = orders.map((o) => {
+      const gb = Number.isInteger(o.gbAmount)
+        ? String(o.gbAmount)
+        : o.gbAmount.toFixed(3).replace(/\.?0+$/, "");
+      return `${o.phoneNumber} ${gb}`;
+    });
+    buffer = Buffer.from(lines.join("\n"), "utf8");
+  } else {
+    buffer = await buildOrdersWorkbook(
+      orders.map((o) => ({
+        id: o.id,
+        phoneNumber: o.phoneNumber,
+        gbAmount: o.gbAmount,
+        amount: o.amount,
+        packageName: o.dataPackage?.name ?? null,
+        batchCode: o.batch?.batchCode ?? null,
+      })),
+      {
+        network: input.network,
+        exportCode,
+        exportedBy: input.actor.label,
+        exportedAt,
+        isReexport,
+      }
+    );
+  }
 
   // 4. Status update only after successful file generation (§31)
   const exportBatch = await prisma.$transaction(async (tx) => {
@@ -194,7 +209,7 @@ export async function exportOrdersToExcel(
         totalRecipients: orders.length,
         totalGb,
         totalAmount,
-        status: "PROCESSING",
+        status: (input.targetStatus ?? "PROCESSING") as any,
         fileName,
         isReexport,
         note: input.reason ?? null,
@@ -228,7 +243,7 @@ export async function exportOrdersToExcel(
             orderId: order.id,
             status: nextStatus,
             previousStatus,
-            note: `Exported in ${exportCode} by ${input.actor.label}`,
+            note: `Exported to ${format.toUpperCase()} in ${exportCode} by ${input.actor.label}`,
             changedBy: input.actor.label,
           },
         });

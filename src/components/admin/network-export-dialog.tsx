@@ -195,7 +195,7 @@ export function NetworkExportDialog({
 
       downloadBase64(json.fileName, json.fileBase64);
       toast(
-        `Exported ${json.count} order(s) to TXT${targetStatus !== "PENDING" ? ` — moved to ${targetStatus}` : ""}`,
+        `Export ${json.exportCode ?? ""} created — ${json.count} order(s) moved to ${targetStatus}`,
         "success"
       );
       onClose();

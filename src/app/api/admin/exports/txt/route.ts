@@ -2,23 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
+import { exportOrdersToExcel } from "@/lib/order-export";
 
 /**
  * POST /api/admin/exports/txt
  *
- * Generates a plain-text TXT file for the selected orders.
- * Format: one line per order — `<phoneNumber> <gbAmount>` (no "GB" suffix).
+ * Generates a plain-text TXT file for the selected orders AND creates a tracked ExportBatch
+ * so the export appears on the Export Center (/admin/exports) page for status updates & tracking.
  *
- * Body (all optional — at least one filter required):
- *   orderIds      : number[]   — specific order IDs
- *   batchIds      : string[]   — order-batch IDs (all orders inside)
- *   network       : string     — restrict to a single network
- *   userId        : string     — filter by user ID
- *   status        : string[]   — restrict to these statuses
- *   targetStatus  : string     — optionally update exported orders to this status (e.g. "PROCESSING")
- *   volumeExactMb : number     — exact volume in MB
- *   volumeMinMb   : number     — minimum volume in MB
- *   volumeMaxMb   : number     — maximum volume in MB
+ * Format: one line per order — `<phoneNumber> <gbAmount>` (no "GB" suffix).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -29,134 +21,124 @@ export async function POST(request: NextRequest) {
       batchIds?: string[];
       network?: string;
       userId?: string;
+      packageId?: string;
+      from?: string;
+      to?: string;
       status?: string[];
       targetStatus?: string;
+      isReexport?: boolean;
+      reason?: string;
       volumeExactMb?: number;
       volumeMinMb?: number;
       volumeMaxMb?: number;
     };
 
-    const where: Record<string, unknown> = { isSandbox: false };
+    // If network was not specified, but specific orderIds or batchIds were provided,
+    // determine the network(s) of the matching orders and export each network.
+    if (!body.network && (body.orderIds?.length || body.batchIds?.length)) {
+      const orderWhere: Record<string, unknown> = { isSandbox: false };
+      if (body.orderIds?.length) orderWhere.id = { in: body.orderIds };
+      if (body.batchIds?.length) orderWhere.batchId = { in: body.batchIds };
 
-    if (body.orderIds?.length) {
-      where.id = { in: body.orderIds };
-      where.status = body.status?.length
-        ? { in: body.status }
-        : { notIn: ["CANCELLED", "REFUNDED"] };
-    } else if (body.batchIds?.length) {
-      where.batchId = { in: body.batchIds };
-      where.status = body.status?.length
-        ? { in: body.status }
-        : { notIn: ["CANCELLED", "REFUNDED"] };
-    } else if (body.network) {
-      where.network = body.network;
-      where.status = body.status?.length
-        ? { in: body.status }
-        : "PENDING";
-    } else {
-      return apiError(400, "Provide at least one of: orderIds, batchIds, or network.");
-    }
+      const matchingOrders = await prisma.order.findMany({
+        where: orderWhere,
+        select: { id: true, network: true },
+      });
 
-    if (body.network && (body.orderIds?.length || body.batchIds?.length)) {
-      where.network = body.network;
-    }
-
-    if (body.userId) {
-      where.userId = body.userId;
-    }
-
-    // Volume filters: exact overrides min/max (MB to GB)
-    if (body.volumeExactMb !== undefined && !Number.isNaN(body.volumeExactMb)) {
-      where.gbAmount = body.volumeExactMb / 1024;
-    } else if (
-      (body.volumeMinMb !== undefined && !Number.isNaN(body.volumeMinMb)) ||
-      (body.volumeMaxMb !== undefined && !Number.isNaN(body.volumeMaxMb))
-    ) {
-      const gbFilter: Record<string, number> = {};
-      if (body.volumeMinMb !== undefined && !Number.isNaN(body.volumeMinMb)) {
-        gbFilter.gte = body.volumeMinMb / 1024;
+      if (matchingOrders.length === 0) {
+        return apiError(400, "No eligible orders found for the selected items.");
       }
-      if (body.volumeMaxMb !== undefined && !Number.isNaN(body.volumeMaxMb)) {
-        gbFilter.lte = body.volumeMaxMb / 1024;
+
+      const networkGroups = new Map<string, number[]>();
+      for (const o of matchingOrders) {
+        if (!networkGroups.has(o.network)) networkGroups.set(o.network, []);
+        networkGroups.get(o.network)!.push(o.id);
       }
-      where.gbAmount = gbFilter;
-    }
 
-    const orders = await prisma.order.findMany({
-      where,
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        phoneNumber: true,
-        gbAmount: true,
-        network: true,
-        status: true,
-      },
-    });
-
-    if (orders.length === 0) {
-      return apiError(404, "No matching orders found.");
-    }
-
-    // If targetStatus is requested and differs, update orders and create status history
-    const targetStatus = body.targetStatus;
-    if (targetStatus && targetStatus !== "PENDING") {
-      const orderIdsToUpdate = orders
-        .filter((o) => o.status !== targetStatus)
-        .map((o) => o.id);
-
-      if (orderIdsToUpdate.length > 0) {
-        await prisma.$transaction(async (tx) => {
-          await tx.order.updateMany({
-            where: { id: { in: orderIdsToUpdate } },
-            data: {
-              status: targetStatus as any,
-              lastExportedAt: new Date(),
-              lastExportedBy: actor.email,
-              exportCount: { increment: 1 },
-            },
-          });
-
-          await tx.orderStatusHistory.createMany({
-            data: orders
-              .filter((o) => o.status !== targetStatus)
-              .map((o) => ({
-                orderId: o.id,
-                status: targetStatus as any,
-                previousStatus: o.status as any,
-                note: `Exported to TXT by ${actor.email}`,
-                changedBy: actor.email,
-              })),
-          });
+      const results = [];
+      for (const [net, ids] of networkGroups.entries()) {
+        const res = await exportOrdersToExcel({
+          network: net,
+          actor: { id: actor.id, label: actor.email },
+          orderIds: ids,
+          isReexport: body.isReexport,
+          reason: body.reason || undefined,
+          targetStatus: body.targetStatus || "PROCESSING",
+          format: "txt",
+        });
+        results.push({
+          exportBatchId: res.exportBatchId,
+          exportCode: res.exportCode,
+          network: net,
+          count: res.count,
+          totalGb: res.totalGb,
+          totalAmount: res.totalAmount,
+          fileName: res.fileName,
+          fileBase64: res.buffer.toString("base64"),
         });
       }
+
+      if (results.length === 1) {
+        return NextResponse.json({
+          ...results[0],
+          exports: results,
+        });
+      }
+
+      return NextResponse.json({
+        exportBatchId: results[0].exportBatchId,
+        exportCode: results.map((r) => r.exportCode).join(", "),
+        count: results.reduce((sum, r) => sum + r.count, 0),
+        totalGb: results.reduce((sum, r) => sum + r.totalGb, 0),
+        totalAmount: results.reduce((sum, r) => sum + r.totalAmount, 0),
+        fileName: results.map((r) => r.fileName).join(", "),
+        fileBase64: results[0].fileBase64,
+        exports: results,
+      });
     }
 
-    // Build TXT file — one line per order: "<phone> <gb>"
-    // gbAmount is stored as a number (e.g. 1, 2.5, 10). We strip trailing zeros.
-    const lines = orders.map((o) => {
-      const gb =
-        Number.isInteger(o.gbAmount)
-          ? String(o.gbAmount)
-          : o.gbAmount.toFixed(3).replace(/\.?0+$/, "");
-      return `${o.phoneNumber} ${gb}`;
+    if (!body.network) {
+      return apiError(400, "Provide network or specific orderIds/batchIds.");
+    }
+
+    const result = await exportOrdersToExcel({
+      network: body.network,
+      actor: { id: actor.id, label: actor.email },
+      orderIds: body.orderIds,
+      batchIds: body.batchIds,
+      userId: body.userId || undefined,
+      packageId: body.packageId || undefined,
+      from: body.from || undefined,
+      to: body.to || undefined,
+      isReexport: body.isReexport,
+      reason: body.reason || undefined,
+      targetStatus: body.targetStatus || "PROCESSING",
+      volumeExactMb: body.volumeExactMb,
+      volumeMinMb: body.volumeMinMb,
+      volumeMaxMb: body.volumeMaxMb,
+      format: "txt",
     });
 
-    const text = lines.join("\n");
-    const base64 = Buffer.from(text, "utf8").toString("base64");
-
-    // Derive filename
-    const networks = [...new Set(orders.map((o) => o.network))].sort();
-    const networkTag = networks.join("_") || "EXPORT";
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const fileName = `${networkTag}_${date}.txt`;
-
     return NextResponse.json({
-      fileName,
-      fileBase64: base64,
-      count: orders.length,
-      networks,
-      targetStatus: targetStatus ?? null,
+      exportBatchId: result.exportBatchId,
+      exportCode: result.exportCode,
+      count: result.count,
+      totalGb: result.totalGb,
+      totalAmount: result.totalAmount,
+      fileName: result.fileName,
+      fileBase64: result.buffer.toString("base64"),
+      exports: [
+        {
+          exportBatchId: result.exportBatchId,
+          exportCode: result.exportCode,
+          network: body.network,
+          count: result.count,
+          totalGb: result.totalGb,
+          totalAmount: result.totalAmount,
+          fileName: result.fileName,
+          fileBase64: result.buffer.toString("base64"),
+        },
+      ],
     });
   } catch (err) {
     return handleRouteError(err);

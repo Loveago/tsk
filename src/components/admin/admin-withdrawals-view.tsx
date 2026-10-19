@@ -760,7 +760,7 @@ export function AdminWithdrawalsView({
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50/50 p-3.5 text-xs text-red-800 dark:border-red-500/20 dark:bg-red-500/5 dark:text-red-300">
-                Rejecting will keep the funds in the reseller's wallet balance. You can provide a reason below.
+                Rejecting will refund the requested withdrawal amount back to the reseller&apos;s available wallet balance. You can provide a reason below.
               </div>
             )}
 

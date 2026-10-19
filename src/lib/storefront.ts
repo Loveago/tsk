@@ -377,14 +377,12 @@ export async function applyLedgerEntry(
       // Reversal of commission (refund, cancellation, provider failure):
       // When an order is refunded or was already completed/released, the commission
       // resides in the main balance (balanceAfter), NOT in pendingBalance.
-      // Reversing it must deduct from the main balance so pendingBalance is NOT stolen from
-      // other in-flight orders.
+      // Reversing it deducts from the main balance. If funds were already withdrawn,
+      // balance can go negative so future commissions will naturally recover the deficit.
       if (entry.reversalSource === "PENDING") {
         pendingAfter = Math.max(0, pendingBefore - entry.amount);
       } else {
-        // "BALANCE" or default for refunds:
-        // Deduct from main balance. If already withdrawn, clamps at 0 (§38).
-        balanceAfter = Math.max(0, balanceBefore - entry.amount);
+        balanceAfter = balanceBefore - entry.amount;
         pendingAfter = pendingBefore;
       }
       break;
@@ -393,7 +391,7 @@ export async function applyLedgerEntry(
       balanceAfter += entry.amount; // negative
       break;
     case "WITHDRAWAL_REVERSAL":
-      balanceAfter -= entry.amount; // positive (money comes back)
+      balanceAfter += Math.abs(entry.amount); // positive (money comes back)
       break;
     case "ADJUSTMENT":
       if (entry.targetBalance === "PENDING") {
@@ -927,8 +925,10 @@ export async function reconcileUnsettledStorefrontOrders(hoursBack = 48): Promis
 }
 
 /**
- * Approves a withdrawal: debits the wallet balance, writes the ledger row and
- * flips the request state — all atomically (§28).
+ * Approves a withdrawal:
+ * - If the withdrawal was not yet debited from the wallet (legacy or pending from before request-time deduction),
+ *   debits the wallet balance now, allowing the balance to go negative so future commissions can recover it.
+ * - If it was already debited at request time, simply transitions the status to APPROVED.
  */
 export async function approveWithdrawal(withdrawalId: string, adminNote?: string, processedBy?: string) {
   return prisma.$transaction(async (tx) => {
@@ -937,14 +937,30 @@ export async function approveWithdrawal(withdrawalId: string, adminNote?: string
     if (wd.status !== "PENDING") throw new Error("Withdrawal is not pending review");
 
     const wallet = await tx.storefrontWallet.findUnique({ where: { userId: wd.userId } });
-    if (!wallet || wallet.balance < wd.amount) throw new Error("Insufficient wallet balance");
+    if (!wallet) throw new Error("Storefront wallet not found");
 
-    await applyLedgerEntry(tx, wallet.id, {
-      type: "WITHDRAWAL",
-      amount: -wd.amount,
-      reference: withdrawalCode(wd.seq),
-      description: wd.network ? `MoMo payout via ${wd.network}` : "MoMo payout",
+    const ref = wd.reference || withdrawalCode(wd.seq);
+    const legacyRef = `CF-WD-${String(wd.seq).padStart(5, "0")}`;
+    const tskRef = `TSK-WD-${String(wd.seq).padStart(5, "0")}`;
+
+    // Check if this withdrawal has already been debited from the wallet (e.g. at request time)
+    const alreadyDebited = await tx.storefrontWalletTransaction.findFirst({
+      where: {
+        walletId: wallet.id,
+        reference: { in: [ref, legacyRef, tskRef] },
+        type: "WITHDRAWAL",
+      },
     });
+
+    if (!alreadyDebited) {
+      // Legacy or un-debited withdrawal: debit now, allowing the balance to go into negative if needed
+      await applyLedgerEntry(tx, wallet.id, {
+        type: "WITHDRAWAL",
+        amount: -wd.amount,
+        reference: ref,
+        description: wd.network ? `MoMo payout via ${wd.network}` : "MoMo payout",
+      });
+    }
 
     return tx.storefrontWithdrawal.update({
       where: { id: withdrawalId },
@@ -958,19 +974,52 @@ export async function approveWithdrawal(withdrawalId: string, adminNote?: string
   });
 }
 
-/** Rejects a pending withdrawal without touching the wallet (§28). */
+/**
+ * Rejects a pending withdrawal:
+ * - If the withdrawal was debited at request time, refunds the amount back to the wallet balance.
+ * - Flips the withdrawal state to REJECTED.
+ */
 export async function rejectWithdrawal(withdrawalId: string, adminNote?: string, processedBy?: string) {
-  const wd = await prisma.storefrontWithdrawal.findUnique({ where: { id: withdrawalId } });
-  if (!wd) throw new Error("Withdrawal not found");
-  if (wd.status !== "PENDING") throw new Error("Withdrawal is not pending review");
-  return prisma.storefrontWithdrawal.update({
-    where: { id: withdrawalId },
-    data: {
-      status: "REJECTED",
-      adminNote: adminNote ?? wd.adminNote,
-      processedBy,
-      processedAt: new Date(),
-    },
+  return prisma.$transaction(async (tx) => {
+    const wd = await tx.storefrontWithdrawal.findUnique({ where: { id: withdrawalId } });
+    if (!wd) throw new Error("Withdrawal not found");
+    if (wd.status !== "PENDING") throw new Error("Withdrawal is not pending review");
+
+    const wallet = await tx.storefrontWallet.findUnique({ where: { userId: wd.userId } });
+
+    if (wallet) {
+      const ref = wd.reference || withdrawalCode(wd.seq);
+      const legacyRef = `CF-WD-${String(wd.seq).padStart(5, "0")}`;
+      const tskRef = `TSK-WD-${String(wd.seq).padStart(5, "0")}`;
+
+      const wasDebited = await tx.storefrontWalletTransaction.findFirst({
+        where: {
+          walletId: wallet.id,
+          reference: { in: [ref, legacyRef, tskRef] },
+          type: "WITHDRAWAL",
+        },
+      });
+
+      if (wasDebited) {
+        // Refund the deducted amount back to the user's wallet
+        await applyLedgerEntry(tx, wallet.id, {
+          type: "WITHDRAWAL_REVERSAL",
+          amount: Math.abs(wd.amount),
+          reference: ref,
+          description: `Withdrawal request rejected — funds returned to wallet`,
+        });
+      }
+    }
+
+    return tx.storefrontWithdrawal.update({
+      where: { id: withdrawalId },
+      data: {
+        status: "REJECTED",
+        adminNote: adminNote ?? wd.adminNote,
+        processedBy,
+        processedAt: new Date(),
+      },
+    });
   });
 }
 

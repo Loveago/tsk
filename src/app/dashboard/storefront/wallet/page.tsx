@@ -66,11 +66,23 @@ export default async function StorefrontWalletPage({
       </header>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Available" value={Math.max(0, wallet.balance)} accent="text-emerald-600 dark:text-emerald-400" />
+        <StatCard
+          label="Available"
+          value={wallet.balance}
+          accent={wallet.balance < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}
+        />
         <StatCard label="Pending" value={Math.max(0, wallet.pendingBalance)} accent="text-amber-600 dark:text-amber-400" />
         <StatCard label="Total withdrawn" value={approvedSum._sum.amount ?? 0} accent="text-slate-900 dark:text-white" />
         <StatCard label="Lifetime commissions" value={Math.max(0, wallet.balance) + Math.max(0, wallet.pendingBalance) + (approvedSum._sum.amount ?? 0)} accent="text-slate-900 dark:text-white" />
       </div>
+
+      {wallet.balance < 0 && (
+        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-xs text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+          <strong>Negative Balance Notice:</strong> Your available balance is currently{" "}
+          <strong>GHS {fromPesewas(wallet.balance).toFixed(2)}</strong> due to order refunds on previous payouts.
+          Incoming sales commissions will automatically offset this negative balance until it recovers.
+        </div>
+      )}
 
       <WithdrawalForm
         available={wallet.balance}

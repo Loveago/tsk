@@ -12,6 +12,8 @@ import {
   fromPesewas,
   approveWithdrawal,
   rejectWithdrawal,
+  withdrawalCode,
+  applyLedgerEntry,
 } from "@/lib/storefront";
 
 const activeWithdrawalUsers = new Set<string>();
@@ -113,7 +115,9 @@ export async function POST(request: NextRequest) {
       }
 
       const seq = await nextStorefrontSeq(tx, "storefrontWithdrawal");
-      return tx.storefrontWithdrawal.create({
+      const ref = withdrawalCode(seq);
+
+      const createdWd = await tx.storefrontWithdrawal.create({
         data: {
           seq,
           userId: user.id,
@@ -124,10 +128,21 @@ export async function POST(request: NextRequest) {
           momoNumber: input.momoNumber,
           accountName: input.accountName,
           status: "PENDING",
+          reference: ref,
           note: `Withdrawal request of GHS ${fromPesewas(amount).toFixed(2)} (Fee: GHS ${fromPesewas(feeP).toFixed(2)}, Net Payout: GHS ${fromPesewas(payoutAmountP).toFixed(2)})`,
           adminNote: `Net payout to send: GHS ${fromPesewas(payoutAmountP).toFixed(2)} (Fee: GHS ${fromPesewas(feeP).toFixed(2)})`,
         },
       });
+
+      // Deduct the requested amount from the wallet IMMEDIATELY so it is not left in the account
+      await applyLedgerEntry(tx, freshWallet.id, {
+        type: "WITHDRAWAL",
+        amount: -totalDebitP,
+        reference: ref,
+        description: `MoMo withdrawal request (${input.network} ${input.momoNumber})`,
+      });
+
+      return createdWd;
     });
 
     const autoApproveSetting = await prisma.systemSetting.findUnique({

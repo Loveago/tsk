@@ -37,6 +37,94 @@ export async function GET(request: NextRequest) {
       if (to) (where.createdAt as Record<string, Date>).lte = new Date(to);
     }
 
+    // Self-heal: recover any orders exported to TXT before ExportBatch tracking was added
+    try {
+      const orphanedTxtOrders = await prisma.order.findMany({
+        where: {
+          exportBatchId: null,
+          status: { in: ["PROCESSING", "SUCCESS", "FAILED"] },
+          OR: [
+            {
+              history: {
+                some: { note: { contains: "Exported to TXT" } },
+              },
+            },
+            {
+              lastExportedBy: { not: null },
+              lastExportedAt: { gte: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+            },
+          ],
+        },
+        include: {
+          history: {
+            where: { note: { contains: "Exported to TXT" } },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+      if (orphanedTxtOrders.length > 0) {
+        const netGroups = new Map<string, typeof orphanedTxtOrders>();
+        for (const o of orphanedTxtOrders) {
+          const net = o.network || "MTN";
+          if (!netGroups.has(net)) netGroups.set(net, []);
+          netGroups.get(net)!.push(o);
+        }
+
+        for (const [net, orders] of netGroups.entries()) {
+          const { nextExportCode } = await import("@/lib/batches");
+          const exportCode = await nextExportCode();
+          const firstHistory = orders[0].history[0];
+          const adminEmail = firstHistory?.changedBy || orders[0].lastExportedBy || "admin@tskconnect.com";
+          const createdAt = firstHistory?.createdAt || orders[0].lastExportedAt || new Date();
+          const totalGb = orders.reduce((s, o) => s + o.gbAmount, 0);
+          const totalAmount = orders.reduce((s, o) => s + o.amount, 0);
+          const fileName = `${net}_${exportCode}.txt`;
+          const batchIds = [...new Set(orders.map((o) => o.batchId).filter(Boolean))] as string[];
+
+          const adminUser = await prisma.user.findFirst({
+            where: { email: adminEmail },
+            select: { id: true },
+          });
+
+          const created = await prisma.exportBatch.create({
+            data: {
+              exportCode,
+              network: net,
+              adminId: adminUser?.id || orders[0].userId,
+              adminLabel: adminEmail,
+              totalRecipients: orders.length,
+              totalGb,
+              totalAmount,
+              status: "PROCESSING",
+              fileName,
+              createdAt,
+              note: "Recovered TXT export batch",
+            },
+          });
+
+          await prisma.order.updateMany({
+            where: { id: { in: orders.map((o) => o.id) } },
+            data: {
+              exportBatchId: created.id,
+              providerReference: `MANUAL_EXPORT:${exportCode}`,
+            },
+          });
+
+          if (batchIds.length > 0) {
+            await prisma.exportBatch.update({
+              where: { id: created.id },
+              data: { batches: { set: batchIds.map((id) => ({ id })) } },
+            });
+          }
+        }
+      }
+    } catch (recoverErr) {
+      console.error("Error during orphaned TXT exports recovery:", recoverErr);
+    }
+
     const [data, total] = await Promise.all([
       prisma.exportBatch.findMany({
         where,
@@ -135,6 +223,7 @@ export async function POST(request: NextRequest) {
           isReexport: input.isReexport,
           reason: input.reason || undefined,
           targetStatus: input.targetStatus || "PROCESSING",
+          format: input.format,
         });
         results.push({
           exportBatchId: res.exportBatchId,
@@ -183,6 +272,7 @@ export async function POST(request: NextRequest) {
       volumeExactMb: input.volumeExactMb,
       volumeMinMb: input.volumeMinMb,
       volumeMaxMb: input.volumeMaxMb,
+      format: input.format,
     });
 
     return NextResponse.json({

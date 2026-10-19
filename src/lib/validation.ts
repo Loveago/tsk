@@ -143,6 +143,8 @@ export const exportOrdersSchema = z
     volumeMinMb: z.coerce.number().positive().optional(),
     /** Maximum volume filter in MB (inclusive). */
     volumeMaxMb: z.coerce.number().positive().optional(),
+    /** Format: excel or txt. Defaults to excel. */
+    format: z.enum(["excel", "txt"]).optional().default("excel"),
   })
   .refine(
     (data) => Boolean(data.network || (data.orderIds && data.orderIds.length > 0) || (data.batchIds && data.batchIds.length > 0)),
