@@ -10,12 +10,15 @@ import { handleRouteError, apiError } from "@/lib/api-helpers";
  * keeping the original export code / meta block intact.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireStaff();
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const format = searchParams.get("format")?.toLowerCase();
+
     const exportBatch = await prisma.exportBatch.findUnique({
       where: { id },
       include: {
@@ -29,6 +32,27 @@ export async function GET(
       },
     });
     if (!exportBatch) return apiError(404, "Export batch not found");
+
+    if (format === "txt") {
+      const lines = exportBatch.orders.map((o) => {
+        const gb = Number.isInteger(o.gbAmount)
+          ? String(o.gbAmount)
+          : o.gbAmount.toFixed(3).replace(/\.?0+$/, "");
+        return `${o.phoneNumber} ${gb}`;
+      });
+      const text = lines.join("\n");
+      const txtFileName = exportBatch.fileName.endsWith(".xlsx")
+        ? exportBatch.fileName.replace(/\.xlsx$/i, ".txt")
+        : `${exportBatch.network}_${exportBatch.exportCode}.txt`;
+
+      return new NextResponse(text, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${txtFileName}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
 
     const buffer = await buildOrdersWorkbook(
       exportBatch.orders.map((o) => ({

@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import { formatDateTime, formatGHS, BATCH_ACTION_ELIGIBLE } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet, FileText } from "lucide-react";
 
 type ExportAction = "MARK_PENDING" | "MARK_PROCESSING" | "MARK_COMPLETED" | "MARK_FAILED" | "CANCEL" | "Pending" | "Processing" | "Processed" | "Refund";
 
@@ -216,9 +216,15 @@ export function ExportDetailSheet({
             <div className="flex flex-wrap items-center gap-2">
               <a
                 href={`/api/admin/exports/${e.id}/download`}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white transition hover:bg-brand-700"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white transition hover:bg-emerald-700"
               >
-                <Download className="h-3.5 w-3.5" /> Excel file
+                <FileSpreadsheet className="h-3.5 w-3.5" /> Excel file
+              </a>
+              <a
+                href={`/api/admin/exports/${e.id}/download?format=txt`}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-semibold text-white transition hover:bg-sky-700"
+              >
+                <FileText className="h-3.5 w-3.5" /> TXT file
               </a>
               {ACTIONS.map((a) => (
                 <Button

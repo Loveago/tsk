@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { X, FileSpreadsheet } from "lucide-react";
+import { X, FileSpreadsheet, FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Label } from "@/components/ui/input";
 import { Spinner } from "@/components/shared";
@@ -62,6 +62,7 @@ export function NetworkExportDialog({
 
   // Export state
   const [exporting, setExporting] = React.useState(false);
+  const [exportingTxt, setExportingTxt] = React.useState(false);
 
   // Close on Escape
   React.useEffect(() => {
@@ -161,6 +162,49 @@ export function NetworkExportDialog({
     }
   };
 
+  const handleExportTxt = async () => {
+    setExportingTxt(true);
+    try {
+      const body: Record<string, unknown> = {
+        network,
+        targetStatus,
+      };
+      if (userId) body.userId = userId;
+      if (volumeExact) {
+        body.volumeExactMb = Number(volumeExact);
+      } else {
+        if (volumeMin) body.volumeMinMb = Number(volumeMin);
+        if (volumeMax) body.volumeMaxMb = Number(volumeMax);
+      }
+
+      const res = await fetch("/api/admin/exports/txt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        toast(json.error ?? "Export to TXT failed", "error");
+        return;
+      }
+      if (!json.count) {
+        toast("No matching PENDING orders found with the selected filters", "error");
+        return;
+      }
+
+      downloadBase64(json.fileName, json.fileBase64);
+      toast(
+        `Exported ${json.count} order(s) to TXT${targetStatus !== "PENDING" ? ` — moved to ${targetStatus}` : ""}`,
+        "success"
+      );
+      onClose();
+      onExported();
+    } finally {
+      setExportingTxt(false);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -188,8 +232,7 @@ export function NetworkExportDialog({
               </span>
             </h2>
             <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
-              Export matching order lines to Excel and create a tracked batch. Use
-              filters below to narrow by role, user, or volume (MB).
+              Export matching order lines to Excel or TXT. Use filters below to narrow by role, user, or volume (MB).
             </p>
             <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
               {pendingCount} pending · {pendingGb} GB · {formatGHS(pendingAmount)}.
@@ -336,13 +379,26 @@ export function NetworkExportDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-slate-100 p-4 dark:border-white/5">
-          <Button variant="outline" onClick={onClose} disabled={exporting}>
+        <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-100 p-4 dark:border-white/5">
+          <Button variant="outline" onClick={onClose} disabled={exporting || exportingTxt}>
             Cancel
           </Button>
           <Button
+            variant="outline"
+            onClick={handleExportTxt}
+            disabled={exporting || exportingTxt || pendingCount === 0}
+            className="border-sky-500/40 text-sky-700 hover:bg-sky-50 hover:text-sky-800 dark:border-sky-500/40 dark:text-sky-400 dark:hover:bg-sky-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            {exportingTxt ? (
+              <Spinner className="h-4 w-4" />
+            ) : (
+              <FileText className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+            )}
+            {exportingTxt ? "Exporting TXT…" : "Export to TXT"}
+          </Button>
+          <Button
             onClick={handleExport}
-            disabled={exporting || pendingCount === 0}
+            disabled={exporting || exportingTxt || pendingCount === 0}
             className="gap-1.5"
           >
             {exporting ? (
@@ -350,7 +406,7 @@ export function NetworkExportDialog({
             ) : (
               <FileSpreadsheet className="h-4 w-4" />
             )}
-            {exporting ? "Exporting…" : "Export"}
+            {exporting ? "Exporting Excel…" : "Export to Excel"}
           </Button>
         </div>
       </div>

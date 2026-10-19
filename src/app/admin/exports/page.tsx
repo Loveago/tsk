@@ -560,13 +560,20 @@ export default function AdminExportsPage() {
                     </td>
                     <td className="hidden px-4 py-3 text-xs text-slate-500 lg:table-cell">{e.adminLabel}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex items-center justify-end gap-1.5" onClick={(ev) => ev.stopPropagation()}>
                         <a
                           href={`/api/admin/exports/${e.id}/download`}
-                          onClick={(ev) => ev.stopPropagation()}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5"
+                          className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-50/60 px-2 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100/80 dark:border-emerald-500/30 dark:bg-emerald-950/30 dark:text-emerald-400"
+                          title="Download Excel spreadsheet"
                         >
-                          <Download className="h-3.5 w-3.5" /> Download
+                          <FileSpreadsheet className="h-3 w-3" /> Excel
+                        </a>
+                        <a
+                          href={`/api/admin/exports/${e.id}/download?format=txt`}
+                          className="inline-flex h-7 items-center gap-1 rounded-md border border-sky-500/40 bg-sky-50/60 px-2 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-100/80 dark:border-sky-500/30 dark:bg-sky-950/30 dark:text-sky-400"
+                          title="Download TXT file (phone and GB)"
+                        >
+                          <FileText className="h-3 w-3" /> TXT
                         </a>
                         <ChevronRight className="h-4 w-4 text-slate-300" />
                       </div>

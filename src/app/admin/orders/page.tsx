@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet, ShieldAlert, RotateCcw } from "lucide-react";
+import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet, FileText, ShieldAlert, RotateCcw } from "lucide-react";
 import { downloadBase64 } from "@/components/batches/batch-ui";
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
@@ -90,6 +90,7 @@ export default function AdminOrdersPage() {
   const [dispatchingToApi, setDispatchingToApi] = React.useState(false);
   const [bulkUpdatingStatus, setBulkUpdatingStatus] = React.useState(false);
   const [exportingToExcel, setExportingToExcel] = React.useState(false);
+  const [exportingToTxt, setExportingToTxt] = React.useState(false);
 
   // ── storefront orders state ──────────────────────────────────
   const [sfOrders, setSfOrders] = React.useState<StorefrontOrderRow[]>([]);
@@ -416,6 +417,75 @@ export default function AdminOrdersPage() {
       setExportingToExcel(false);
     }
   };
+
+  const handleBulkExportToTxt = async () => {
+    if (selectedOrderIds.size === 0 || exportingToTxt || exportingToExcel || bulkUpdatingStatus || dispatchingToApi) return;
+    try {
+      setExportingToTxt(true);
+      const orderIds = Array.from(selectedOrderIds);
+      const res = await fetch("/api/admin/exports/txt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderIds,
+          targetStatus: "PROCESSING",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to export orders to TXT", "error");
+        return;
+      }
+      if (json.fileName && json.fileBase64) {
+        downloadBase64(json.fileName, json.fileBase64);
+      }
+      toast(
+        `Exported ${json.count} order(s) to TXT — moved to Processing.`,
+        "success"
+      );
+      setSelectedOrderIds(new Set());
+      await load();
+    } catch (err: any) {
+      toast(err?.message || "Failed to export orders to TXT", "error");
+    } finally {
+      setExportingToTxt(false);
+    }
+  };
+
+  const handleBulkBatchExportToTxt = async () => {
+    if (selectedBatchIds.size === 0 || exportingToTxt || exportingToExcel || bulkUpdatingStatus) return;
+    try {
+      setExportingToTxt(true);
+      const batchIds = Array.from(selectedBatchIds);
+      const res = await fetch("/api/admin/exports/txt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batchIds,
+          targetStatus: "PROCESSING",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to export batches to TXT", "error");
+        return;
+      }
+      if (json.fileName && json.fileBase64) {
+        downloadBase64(json.fileName, json.fileBase64);
+      }
+      toast(
+        `Exported ${json.count} order(s) to TXT — moved to Processing.`,
+        "success"
+      );
+      setSelectedBatchIds(new Set());
+      await load();
+    } catch (err: any) {
+      toast(err?.message || "Failed to export batches to TXT", "error");
+    } finally {
+      setExportingToTxt(false);
+    }
+  };
+
 
   // ── storefront reconciliation action ─────────────────────────
   const handleReconcileStorefront = async () => {
@@ -798,9 +868,28 @@ export default function AdminOrdersPage() {
                 </>
               )}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUpdatingStatus || exportingToTxt || exportingToExcel}
+              onClick={handleBulkBatchExportToTxt}
+              className="border-sky-500/40 text-sky-700 hover:bg-sky-50 hover:text-sky-800 dark:border-sky-500/40 dark:text-sky-400 dark:hover:bg-sky-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              {exportingToTxt ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-sky-600" />
+                  <span>Exporting...</span>
+                </>
+              ) : (
+                <>
+                  <FileText className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                  <span>Export to TXT</span>
+                </>
+              )}
+            </Button>
             <button
               type="button"
-              disabled={bulkUpdatingStatus || exportingToExcel}
+              disabled={bulkUpdatingStatus || exportingToExcel || exportingToTxt}
               onClick={() => setSelectedBatchIds(new Set())}
               className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -888,8 +977,27 @@ export default function AdminOrdersPage() {
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToTxt || exportingToExcel}
+              onClick={handleBulkExportToTxt}
+              className="border-sky-500/40 text-sky-700 hover:bg-sky-50 hover:text-sky-800 dark:border-sky-500/40 dark:text-sky-400 dark:hover:bg-sky-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              {exportingToTxt ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-sky-600" />
+                  <span>Exporting...</span>
+                </>
+              ) : (
+                <>
+                  <FileText className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                  <span>Export to TXT</span>
+                </>
+              )}
+            </Button>
+            <Button
+              size="sm"
               variant="default"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || exportingToTxt}
               onClick={handleBulkDispatchToApi}
               className="bg-brand-600 hover:bg-brand-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5 cursor-pointer"
             >
@@ -904,7 +1012,7 @@ export default function AdminOrdersPage() {
             </Button>
             <button
               type="button"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || exportingToTxt}
               onClick={() => setSelectedOrderIds(new Set())}
               className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
