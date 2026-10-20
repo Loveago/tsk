@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { formatDateTime, formatGHS } from "@/lib/types";
 import { orderCode } from "@/lib/utils";
-import { FileWarning, Image as ImageIcon, RefreshCw, Pause, Play, Clock, Loader2, CheckSquare } from "lucide-react";
+import { FileWarning, Image as ImageIcon, RefreshCw, Pause, Play, Clock, Loader2, CheckSquare, Download } from "lucide-react";
 import { useToast } from "@/components/toast";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import { OrderDateFilter, getTodayRange, getAllTimeRange, type DateFilterValue } from "@/components/orders/order-date-filter";
@@ -213,6 +213,21 @@ export default function DeliveryReportsPage() {
                 {isManuallyPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
               </button>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (dateFilter.from) params.set("from", dateFilter.from);
+                if (dateFilter.to) params.set("to", dateFilter.to);
+                window.open(`/api/admin/delivery-reports/export-txt?${params}`, "_blank");
+              }}
+              className="gap-1.5"
+              title="Download not received reports as TXT (number + GB)"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export TXT
+            </Button>
             <Button
               size="sm"
               variant="outline"
