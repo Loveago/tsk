@@ -5,7 +5,8 @@ import { handleRouteError } from "@/lib/api-helpers";
 
 /**
  * Admin export: downloads a .txt file of Not Received reports (phone number + GB per line).
- * Supports optional date filtering via `from` and `to` query params (ISO strings).
+ * Supports optional date filtering via `from` and `to` query params (ISO strings)
+ * and optional status filtering via the `status` query param.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
+    const status = searchParams.get("status");
 
     const where: Record<string, unknown> = {};
     if (from || to) {
@@ -20,6 +22,15 @@ export async function GET(request: NextRequest) {
       if (from) createdAt.gte = new Date(from);
       if (to) createdAt.lte = new Date(to);
       where.createdAt = createdAt;
+    }
+    if (status) {
+      if (status === "CONFIRM_SENT" || status === "DELIVERED") {
+        where.status = { in: ["CONFIRM_SENT", "DELIVERED"] };
+      } else if (status === "UNDER_REVIEW" || status === "OPEN") {
+        where.status = { in: ["UNDER_REVIEW", "OPEN", "INVESTIGATING"] };
+      } else {
+        where.status = status;
+      }
     }
 
     const reports = await prisma.deliveryReport.findMany({

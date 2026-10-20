@@ -220,6 +220,7 @@ export default function DeliveryReportsPage() {
                 const params = new URLSearchParams();
                 if (dateFilter.from) params.set("from", dateFilter.from);
                 if (dateFilter.to) params.set("to", dateFilter.to);
+                if (status) params.set("status", status);
                 window.open(`/api/admin/delivery-reports/export-txt?${params}`, "_blank");
               }}
               className="gap-1.5"
