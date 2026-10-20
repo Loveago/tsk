@@ -22,6 +22,14 @@ export async function POST(request: NextRequest) {
 
     const verificationEnabled = await isMtnVerificationEnabled();
 
+    // If verification enforcement is disabled, accept all numbers immediately
+    if (!verificationEnabled) {
+      return NextResponse.json({
+        verificationEnabled: false,
+        unverifiedNumbers: [],
+      });
+    }
+
     // Normalize and filter valid Ghanaian phone numbers (including ported numbers)
     const mtnNumbersMap = new Map<string, string>(); // normalized -> original
     for (const raw of phoneNumbers) {

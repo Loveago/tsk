@@ -324,13 +324,13 @@ export default function SendOrderPage() {
         if (checkRes.ok) {
           const checkData = await checkRes.json();
           const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
-          if (unverifiedList.length > 0) {
+          if (Boolean(checkData.verificationEnabled) && unverifiedList.length > 0) {
             const unverifiedSet = new Set(unverifiedList);
             setPendingUnverified({
               toAdd,
               unverifiedNumbers: unverifiedList,
               verifiedItems: toAdd.filter((item) => !unverifiedSet.has(item.phoneNumber)),
-              verificationEnabled: checkData.verificationEnabled ?? true,
+              verificationEnabled: true,
               rawText: source === "pasted text" ? (rawText ?? null) : null,
               mode: "add",
             });
@@ -719,7 +719,7 @@ export default function SendOrderPage() {
           if (checkRes.ok) {
             const checkData = await checkRes.json();
             const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
-            if (unverifiedList.length > 0) {
+            if (Boolean(checkData.verificationEnabled) && unverifiedList.length > 0) {
               isSubmittingRef.current = false;
               setSubmitting(false);
               const unverifiedSet = new Set(unverifiedList);
@@ -727,7 +727,7 @@ export default function SendOrderPage() {
                 toAdd: ordersToSubmit,
                 unverifiedNumbers: unverifiedList,
                 verifiedItems: ordersToSubmit.filter((l) => !unverifiedSet.has(l.phoneNumber)),
-                verificationEnabled: checkData.verificationEnabled ?? true,
+                verificationEnabled: true,
                 rawText: null,
                 mode: "submit",
               });
@@ -1288,9 +1288,7 @@ export default function SendOrderPage() {
                 {pendingUnverified?.unverifiedNumbers.length} MTN number(s) have not been verified yet.
               </p>
               <p>
-                {pendingUnverified?.verificationEnabled
-                  ? "MTN Number Verification is currently enforced on the platform. Orders for unverified numbers cannot be placed."
-                  : "These numbers are not on the verified MTN list. You can remove them or proceed anyway (they will be logged for review)."}
+                MTN Number Verification is currently enforced on the platform. Orders for unverified numbers cannot be placed.
               </p>
             </div>
           </div>
@@ -1349,17 +1347,6 @@ export default function SendOrderPage() {
                 className="bg-brand-600 hover:bg-brand-700 text-white"
               >
                 Remove Unverified &amp; Proceed ({pendingUnverified.verifiedItems.length})
-              </Button>
-            )}
-            {pendingUnverified && !pendingUnverified.verificationEnabled && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => confirmUnverifiedAddition(true)}
-                className="border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-600/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
-              >
-                Proceed with All ({pendingUnverified.toAdd.length})
               </Button>
             )}
           </div>

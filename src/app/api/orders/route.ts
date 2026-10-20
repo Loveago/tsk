@@ -323,7 +323,9 @@ export async function POST(request: NextRequest) {
           .filter((o) => !acceptedSet.has(normalizeGhanaPhoneNumber(o.phoneNumber)))
           .map((o) => ({ number: o.phoneNumber, userId: user.id }));
         if (unverifiedItems.length > 0) {
-          await recordUnverifiedMtnNumbersBatch(unverifiedItems);
+          await recordUnverifiedMtnNumbersBatch(unverifiedItems).catch((err) => {
+            console.error("Failed to record unverified MTN numbers during order submission:", err);
+          });
         }
       }
     }
