@@ -11,7 +11,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
     "check:allocation": "tsx scripts/check-order-allocation.ts",
-    "set:allocation": "tsx scripts/set-order-allocation.ts"
+    "set:allocation": "tsx scripts/set-order-allocation.ts",
+    "clean:processing-not-received": "tsx scripts/delete-processing-not-received.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
