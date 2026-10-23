@@ -147,18 +147,11 @@ async function main() {
   );
   console.log(`${"=".repeat(80)}\n`);
 
-  const whereClause: Record<string, any> = {
-    status: "REFUNDED",
-  };
-
-  if (!ALL_TIME) {
-    const since = new Date(Date.now() - LOOKBACK_HOURS * 3600_000);
-    whereClause.createdAt = { gte: since };
-  }
-
-  // Fetch all refunded orders in scope with user and storefront relations
+  // Fetch candidate orders:
+  // For intended refunds: we expect them to be REFUNDED
+  // For actual/processed ones: they may be SUCCESS, PROCESSING, etc.
   const allCandidates = await prisma.order.findMany({
-    where: whereClause,
+    where: ALL_TIME ? {} : { createdAt: { gte: new Date(Date.now() - LOOKBACK_HOURS * 3600_000) } },
     include: {
       user: { select: { id: true, email: true, name: true, balance: true } },
       storefrontOrder: {
@@ -178,21 +171,35 @@ async function main() {
     orderBy: { createdAt: "desc" },
   });
 
-  console.log(`Found ${allCandidates.length} total REFUNDED orders in candidate window.\n`);
+  console.log(`Found ${allCandidates.length} total orders in candidate window.\n`);
 
   const usedOrderIds = new Set<number>();
 
-  function matchPairs(pairs: typeof INTENDED_REFUND_PAIRS) {
+  function matchPairs(pairs: typeof INTENDED_REFUND_PAIRS, preferStatus?: string) {
     const matched: (typeof allCandidates[0] & { matchedGb: number })[] = [];
     const unmatched: typeof pairs = [];
 
     for (const pair of pairs) {
-      const order = allCandidates.find(
-        (o) =>
-          !usedOrderIds.has(o.id) &&
-          o.phoneNumber === pair.phone &&
-          Math.abs(o.gbAmount - pair.gb) < 0.01
-      );
+      // First try matching preferred status
+      let order = preferStatus
+        ? allCandidates.find(
+            (o) =>
+              !usedOrderIds.has(o.id) &&
+              o.phoneNumber === pair.phone &&
+              Math.abs(o.gbAmount - pair.gb) < 0.01 &&
+              o.status === preferStatus
+          )
+        : null;
+
+      // If not found with preferred status, find any status
+      if (!order) {
+        order = allCandidates.find(
+          (o) =>
+            !usedOrderIds.has(o.id) &&
+            o.phoneNumber === pair.phone &&
+            Math.abs(o.gbAmount - pair.gb) < 0.01
+        );
+      }
 
       if (order) {
         usedOrderIds.add(order.id);
@@ -204,10 +211,10 @@ async function main() {
     return { matched, unmatched };
   }
 
-  // 1. Match Intended Refunds
-  const intended = matchPairs(INTENDED_REFUND_PAIRS);
+  // 1. Match Intended Refunds (expect REFUNDED)
+  const intended = matchPairs(INTENDED_REFUND_PAIRS, "REFUNDED");
 
-  // 2. Match Accidental Refunds
+  // 2. Match Actual / Processed Orders
   const accidental = matchPairs(ACCIDENTAL_REFUND_PAIRS);
 
   // ──────────────────────────────────────────────────────────────
@@ -282,17 +289,19 @@ async function main() {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // SECTION B: ACCIDENTAL REFUNDS (TO REVERT)
+  // SECTION B: ACTUAL / PROCESSED ORDERS (STOREFRONT AUDIT)
   // ──────────────────────────────────────────────────────────────
   console.log(`\n${"─".repeat(80)}`);
-  console.log(`🔄 [SECTION 2] ACCIDENTAL REFUNDS (TO BE REVERTED BACK TO PROCESSING)`);
+  console.log(`📊 [SECTION 2] ACTUAL / PROCESSED ORDERS (STOREFRONT DETAILS)`);
   console.log(`Total Expected: ${ACCIDENTAL_REFUND_PAIRS.length} | Matched: ${accidental.matched.length} | Unmatched: ${accidental.unmatched.length}`);
   console.log(`${"─".repeat(80)}`);
 
   const accidentalStorefrontMap = new Map<string, { count: number; name: string; slug: string; orders: number[] }>();
   let accidentalNonStorefrontCount = 0;
+  const statusCounts: Record<string, number> = {};
 
   for (const o of accidental.matched) {
+    statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
     const sf = o.storefrontOrder?.storefront;
     if (sf) {
       const existing = accidentalStorefrontMap.get(sf.id) || {
@@ -307,17 +316,22 @@ async function main() {
 
       const code = storefrontOrderCode(o.storefrontOrder!.seq);
       console.log(
-        `  • Order #${o.id.toString().padEnd(6)} | ${o.phoneNumber} (${o.gbAmount} GB) | Storefront: [${sf.id}] ${sf.name} (${sf.slug}) | Ref: ${code}`
+        `  • Order #${o.id.toString().padEnd(6)} [Status: ${o.status}] | ${o.phoneNumber} (${o.gbAmount} GB) | Storefront: [${sf.id}] ${sf.name} (${sf.slug}) | Ref: ${code}`
       );
     } else {
       accidentalNonStorefrontCount++;
       console.log(
-        `  • Order #${o.id.toString().padEnd(6)} | ${o.phoneNumber} (${o.gbAmount} GB) | Source: ${o.source} | User: ${o.user?.email || "Unknown"}`
+        `  • Order #${o.id.toString().padEnd(6)} [Status: ${o.status}] | ${o.phoneNumber} (${o.gbAmount} GB) | Source: ${o.source} | User: ${o.user?.email || "Unknown"}`
       );
     }
   }
 
-  console.log(`\n  ➡️ UNIQUE STOREFRONT IDs (Accidental Refunds to Revert):`);
+  console.log(`\n  ➡️ STATUS BREAKDOWN OF THESE ORDERS:`);
+  for (const [st, cnt] of Object.entries(statusCounts)) {
+    console.log(`     - ${st}: ${cnt} orders`);
+  }
+
+  console.log(`\n  ➡️ UNIQUE STOREFRONT IDs (Actual / Processed Orders):`);
   if (accidentalStorefrontMap.size === 0) {
     console.log(`     (None - all matched orders were direct portal/API orders)`);
   } else {
@@ -331,37 +345,34 @@ async function main() {
   console.log(`     Direct Portal / API orders: ${accidentalNonStorefrontCount}`);
 
   if (accidental.unmatched.length > 0) {
-    console.log(`\n  ⚠️ Unmatched Accidental Refund Pairs (Not found with status REFUNDED):`);
-    const unmatchedPhones = accidental.unmatched.map((p) => p.phone);
-    const existingOrders = await prisma.order.findMany({
-      where: { phoneNumber: { in: unmatchedPhones } },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, phoneNumber: true, status: true, gbAmount: true, createdAt: true },
-    });
-    const orderMap = new Map<string, typeof existingOrders[0]>();
-    for (const o of existingOrders) {
-      if (!orderMap.has(o.phoneNumber)) orderMap.set(o.phoneNumber, o);
-    }
+    console.log(`\n  ⚠️ Unmatched Pairs:`);
     for (const p of accidental.unmatched) {
-      const existing = orderMap.get(p.phone);
-      if (existing) {
-        console.log(`     ${p.phone} (${p.gb} GB) -> Found in DB as Order #${existing.id} with status "${existing.status}" (${existing.gbAmount} GB)`);
-      } else {
-        console.log(`     ${p.phone} (${p.gb} GB) -> Not found in DB`);
-      }
+      console.log(`     ${p.phone} (${p.gb} GB) -> Not found in DB`);
     }
   }
 
   // ──────────────────────────────────────────────────────────────
-  // SECTION C: EXECUTION (REVERT ACCIDENTAL REFUNDS)
+  // SECTION C: EXECUTION (REVERT ONLY THOSE CURRENTLY REFUNDED)
   // ──────────────────────────────────────────────────────────────
   console.log(`\n${"─".repeat(80)}`);
   console.log(`⚙️ [SECTION 3] REVERSAL EXECUTION`);
   console.log(`${"─".repeat(80)}`);
 
+  const actuallyRefundedToRevert = accidental.matched.filter((o) => o.status === "REFUNDED");
+
+  if (actuallyRefundedToRevert.length === 0) {
+    console.log(`\n  ✅ GOOD NEWS: None of the actual/processed orders are currently in "REFUNDED" status!`);
+    console.log(`  All ${accidental.matched.length} orders are already in active states (e.g., SUCCESS).`);
+    console.log(`  No orders need to be reverted in the database.\n`);
+    await prisma.$disconnect();
+    return;
+  }
+
+  console.log(`Found ${actuallyRefundedToRevert.length} order(s) currently REFUNDED that need reversal to PROCESSING.`);
+
   if (DRY_RUN) {
     console.log(`\n  ℹ️ DRY-RUN: No changes made to database.`);
-    console.log(`  To commit changes and revert all ${accidental.matched.length} orders back to PROCESSING, run:`);
+    console.log(`  To commit changes and revert ${actuallyRefundedToRevert.length} order(s) back to PROCESSING, run:`);
     console.log(`     npx tsx scripts/revert-accidental-refunds.ts --execute\n`);
     await prisma.$disconnect();
     return;
@@ -373,7 +384,7 @@ async function main() {
   let reportReopens = 0;
   let errors = 0;
 
-  for (const order of accidental.matched) {
+  for (const order of actuallyRefundedToRevert) {
     const isStorefront = order.source === "STOREFRONT" || Boolean(order.storefrontOrder);
     const refTx = `REF-ORDER-${order.id}`;
 
