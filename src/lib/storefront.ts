@@ -375,10 +375,10 @@ export async function applyLedgerEntry(
       break;
     case "COMMISSION_REVERSAL": {
       // Reversal of commission (refund, cancellation, provider failure):
-      // When an order is refunded or was already completed/released, the commission
-      // resides in the main balance (balanceAfter), NOT in pendingBalance.
-      // Reversing it deducts from the main balance. If funds were already withdrawn,
-      // balance can go negative so future commissions will naturally recover the deficit.
+      // - If reversalSource is "PENDING", the order was still in flight/processing, so commission
+      //   is deducted from pendingBalance without touching main balance.
+      // - If reversalSource is "BALANCE", the commission was already completed/released, so it
+      //   is deducted from the main withdrawable balance (which can go negative if already withdrawn).
       if (entry.reversalSource === "PENDING") {
         pendingAfter = Math.max(0, pendingBefore - entry.amount);
       } else {
@@ -490,17 +490,11 @@ export async function syncCommissionForOrder(
         });
       } else if (reversing) {
         if (storeOrder.commissionState !== "REVERSED") {
-          // When refunding a storefront order or reversing an order whose commission
-          // was already released (AVAILABLE or WITHDRAWN), the commission was placed into
-          // the main balance (balance). Therefore, the reversal must be deducted from the
-          // main balance, NOT the pending balance!
-          const isRefund = status === "REFUNDED";
-          const wasReleased =
-            storeOrder.commissionState === "AVAILABLE" ||
-            storeOrder.commissionState === "WITHDRAWN";
-
+          // If commission is still PENDING (in flight / processing), it has not been
+          // credited to the withdrawable balance yet. The reversal must deduct from pendingBalance.
+          // Only if it was already released (AVAILABLE or WITHDRAWN) must the reversal deduct from main balance.
           const reversalSource: "BALANCE" | "PENDING" =
-            isRefund || wasReleased ? "BALANCE" : "PENDING";
+            storeOrder.commissionState === "PENDING" ? "PENDING" : "BALANCE";
 
           await applyLedgerEntry(tx, walletRow.id, {
             type: "COMMISSION_REVERSAL",
