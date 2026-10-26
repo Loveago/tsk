@@ -64,15 +64,13 @@ export async function POST(
       }
       storeScope = { OR: orConditions };
     } else {
-      // Exclude diverted Data Deals orders and phones from Lofaq and other stores so they only track on Data Deals
+      // Exclude diverted Data Deals payment references from Lofaq and other stores
+      // (only block by reference — phone may still have a legitimate order on this storefront)
       const andConditions: Prisma.StorefrontOrderWhereInput = {
         storefrontId: storefront.id,
       };
       if (allDivertedRefs.length > 0) {
         andConditions.paymentReference = { notIn: allDivertedRefs };
-      }
-      if (divertedPhones.length > 0) {
-        andConditions.customerPhone = { notIn: divertedPhones };
       }
       storeScope = andConditions;
     }
