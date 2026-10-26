@@ -30,18 +30,52 @@ export async function POST(
       return apiError(404, "Store not found");
     }
 
-    const { getDivertedReferences } = await import("@/lib/order-allocation");
-    const divertedRefs = slug === "data-deals" ? await getDivertedReferences() : [];
+    const isDataDeals =
+      storefront.slug === "data-deals" ||
+      storefront.slug === "data-dealsgh" ||
+      storefront.slug === "data-deqls" ||
+      storefront.name.toLowerCase().includes("data-deals") ||
+      storefront.name.toLowerCase().includes("data deals") ||
+      Boolean(storefront.customDomain?.includes("data-deals"));
 
-    const storeScope: Prisma.StorefrontOrderWhereInput =
-      divertedRefs.length > 0
-        ? {
-            OR: [
-              { storefrontId: storefront.id },
-              { paymentReference: { in: divertedRefs } },
-            ],
-          }
-        : { storefrontId: storefront.id };
+    const { getDivertedReferences } = await import("@/lib/order-allocation");
+    const allDivertedRefs = await getDivertedReferences();
+
+    let divertedPhones: string[] = [];
+    try {
+      const rawPhones = await prisma.systemSetting.findUnique({
+        where: { key: "datadeals_diverted_phones" },
+      });
+      if (rawPhones?.value) {
+        divertedPhones = JSON.parse(rawPhones.value);
+      }
+    } catch {}
+
+    let storeScope: Prisma.StorefrontOrderWhereInput;
+    if (isDataDeals) {
+      const orConditions: Prisma.StorefrontOrderWhereInput[] = [
+        { storefrontId: storefront.id },
+      ];
+      if (allDivertedRefs.length > 0) {
+        orConditions.push({ paymentReference: { in: allDivertedRefs } });
+      }
+      if (divertedPhones.length > 0) {
+        orConditions.push({ customerPhone: { in: divertedPhones } });
+      }
+      storeScope = { OR: orConditions };
+    } else {
+      // Exclude diverted Data Deals orders and phones from Lofaq and other stores so they only track on Data Deals
+      const andConditions: Prisma.StorefrontOrderWhereInput = {
+        storefrontId: storefront.id,
+      };
+      if (allDivertedRefs.length > 0) {
+        andConditions.paymentReference = { notIn: allDivertedRefs };
+      }
+      if (divertedPhones.length > 0) {
+        andConditions.customerPhone = { notIn: divertedPhones };
+      }
+      storeScope = andConditions;
+    }
 
     const q = query.trim();
     const digits = q.replace(/\D/g, "");

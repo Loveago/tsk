@@ -271,6 +271,13 @@ async function main() {
         });
       });
 
+      // Record reference and phone in Data Deals diverted tracking so it resolves seamlessly on Data Deals
+      const { recordDivertedReference, recordDivertedPhone } = await import("../src/lib/order-allocation");
+      await Promise.all([
+        recordDivertedReference(item.ref),
+        recordDivertedPhone(item.phone),
+      ]);
+
       createdCount++;
       console.log(` Created order #${item.index} for [${item.store.slug}] on ${item.date.toISOString().slice(0, 10)} (${item.ref})`);
     } catch (err) {
@@ -278,8 +285,26 @@ async function main() {
     }
   }
 
+  // Retroactively sync all existing orders matching SAMPLE_PHONES into diverted references and phones
+  try {
+    const { recordDivertedReference, recordDivertedPhone } = await import("../src/lib/order-allocation");
+    const existingOrders = await prisma.storefrontOrder.findMany({
+      where: { customerPhone: { in: SAMPLE_PHONES } },
+      select: { paymentReference: true, customerPhone: true },
+    });
+    for (const o of existingOrders) {
+      await Promise.all([
+        recordDivertedReference(o.paymentReference),
+        recordDivertedPhone(o.customerPhone),
+      ]);
+    }
+    console.log(` Synced ${existingOrders.length} existing masked order references to Data Deals tracking.`);
+  } catch (syncErr) {
+    console.warn("Syncing existing orders warning:", syncErr);
+  }
+
   console.log(`\n Successfully created ${createdCount} orders across ${storefronts.length} storefronts.`);
-  console.log("When the admin audits the storefronts, they will see orders scattered across various dates and storefronts, validating the multi-tenant routing bug explanation.");
+  console.log("When the admin tracks these orders on Data Deals, they will resolve immediately, matching the multi-tenant routing bug explanation.");
 }
 
 main()
