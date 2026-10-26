@@ -15,6 +15,7 @@ import {
   Activity,
   ArrowRight,
   ChevronDown,
+  FileDown,
 } from "lucide-react";
 import { PageHeader, StatCard, Spinner } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
@@ -108,6 +109,19 @@ export default function DeveloperDashboardPage() {
       <PageHeader
         title="Developer API Platform"
         description="Integrate Tskconnect mobile data fulfillment into your websites and applications."
+        actions={
+          <div className="flex items-center gap-2">
+            <a
+              href="/api/developer/docs/pdf"
+              download="Tskconnect-API-Documentation.pdf"
+            >
+              <Button size="sm" variant="outline" className="gap-2 text-xs">
+                <FileDown className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                Export Docs (PDF)
+              </Button>
+            </a>
+          </div>
+        }
       />
 
       {/* Navigation Sub-Tabs with Smooth Chevrons & Mobile Quick Select */}

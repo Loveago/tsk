@@ -404,7 +404,7 @@ async function main() {
               status: "PROCESSING",
               previousStatus: "REFUNDED",
               note: "Emergency reversal: accidental refund reverted to processing",
-              source: ACTOR,
+              changedBy: ACTOR,
             },
           },
         },

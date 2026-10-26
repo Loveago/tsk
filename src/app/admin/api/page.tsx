@@ -23,6 +23,7 @@ import {
   Shield,
   Eye,
   ExternalLink,
+  FileDown,
   ShieldAlert,
   ChevronDown,
   ChevronLeft,
@@ -1392,16 +1393,25 @@ export default function AdminApiManagementPage() {
           {/* TAB 10: DOCS */}
           {activeTab === "docs" && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <div>
-                  <h3 className="text-base font-bold">OpenAPI 3.1.0 Specification</h3>
-                  <p className="text-xs text-slate-500">Public contract for automated SDK and documentation generation.</p>
+                  <h3 className="text-base font-bold">Tskconnect Developer Documentation & Contracts</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Comprehensive reference manual for external developers, partners, and API consumers.
+                  </p>
                 </div>
-                <a href="/v1/openapi.json" target="_blank" download="openapi.json">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <ExternalLink className="h-4 w-4" /> Download openapi.json
-                  </Button>
-                </a>
+                <div className="flex flex-wrap items-center gap-2">
+                  <a href="/api/developer/docs/pdf" download="Tskconnect-API-Documentation.pdf">
+                    <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm">
+                      <FileDown className="h-4 w-4" /> Download API Docs (PDF)
+                    </Button>
+                  </a>
+                  <a href="/v1/openapi.json" target="_blank" download="openapi.json">
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <ExternalLink className="h-4 w-4" /> Download openapi.json
+                    </Button>
+                  </a>
+                </div>
               </div>
             </div>
           )}

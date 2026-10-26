@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, Copy, Check, Terminal, Code2, Globe, Shield, Zap, AlertCircle, Play } from "lucide-react";
+import { Download, Copy, Check, Terminal, Code2, Globe, Shield, Zap, AlertCircle, Play, FileDown, ExternalLink, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
 import { useToast } from "@/components/toast";
@@ -308,9 +308,42 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
               Complete reference for integrating automated mobile data fulfillment into your apps.
             </p>
           </div>
-          <a href="/v1/openapi.json" target="_blank" download="openapi.json">
-            <Button variant="outline" size="sm" className="gap-2">
-              <Download className="h-4 w-4" /> Download OpenAPI Spec (JSON)
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/api/developer/docs/pdf"
+              download="Tskconnect-API-Documentation.pdf"
+            >
+              <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm">
+                <FileDown className="h-4 w-4" /> Export to PDF
+              </Button>
+            </a>
+            <a
+              href="/api/developer/docs/pdf?view=true"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline" size="sm" className="gap-2" title="Preview PDF in a new tab">
+                <ExternalLink className="h-4 w-4" /> View PDF
+              </Button>
+            </a>
+            <a href="/v1/openapi.json" target="_blank" download="openapi.json">
+              <Button variant="outline" size="sm" className="gap-2" title="Machine-readable OpenAPI 3.1 specification">
+                <Download className="h-4 w-4" /> OpenAPI Spec (JSON)
+              </Button>
+            </a>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3.5 text-xs text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white font-bold text-[10px]">i</span>
+            <p>
+              <strong>Handing off to external developers?</strong> Use the <strong>Export to PDF</strong> button to download the official 7-page technical guide with all endpoint signatures, idempotency rules, webhook security snippets, and error tables.
+            </p>
+          </div>
+          <a href="/api/developer/docs/pdf" download="Tskconnect-API-Documentation.pdf" className="shrink-0 self-end sm:self-center">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/50">
+              <FileDown className="h-3.5 w-3.5" /> Download PDF
             </Button>
           </a>
         </div>
