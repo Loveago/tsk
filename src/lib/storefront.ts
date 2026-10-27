@@ -595,11 +595,12 @@ export async function settleStorefrontPayment(
         shouldAllocateNextOrderToLofaq,
         isLofaqCustomer,
         isEstablishedDataDealsCustomer,
+        hasLofaqReachedCustomerCap,
       } = await import("./order-allocation");
       const lofaqStorefront = await findLofaqStorefront();
       if (lofaqStorefront) {
         // 1. Repeat Lofaq Customer Check:
-        // Even if 100 repeat buyers for Lofaq place orders simultaneously, they ALWAYS route to Lofaq.
+        // Existing Lofaq sticky customers route to Lofaq
         const isLofaqRepeat = await isLofaqCustomer(row.customerPhone, row.customerEmail);
 
         // 2. Repeat Data Deals Customer Check:
@@ -609,14 +610,21 @@ export async function settleStorefrontPayment(
         let shouldAllocate = false;
 
         if (isLofaqRepeat) {
-          // Repeat Lofaq buyer: ALWAYS routes to Lofaq to preserve 100% integrity
+          // Existing Lofaq sticky customer stays on Lofaq
           shouldAllocate = true;
         } else if (isDDRepeat) {
-          // Repeat Data Deals buyer: ALWAYS stays on Data Deals
+          // Repeat Data Deals customer ALWAYS stays on Data Deals
           shouldAllocate = false;
         } else {
-          // Brand-new customer (never ordered before): 4 out of 10 go to Lofaq, 6 go to Data Deals
-          shouldAllocate = await shouldAllocateNextOrderToLofaq();
+          // Brand-new customer on Data Deals:
+          // Check if Lofaq has reached its sticky customer cap (e.g. 1,000 customers).
+          // If Lofaq is at or above cap, Data Deals retains 100% of all new customers!
+          const lofaqCapped = await hasLofaqReachedCustomerCap();
+          if (lofaqCapped) {
+            shouldAllocate = false;
+          } else {
+            shouldAllocate = await shouldAllocateNextOrderToLofaq();
+          }
         }
 
 

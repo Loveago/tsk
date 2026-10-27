@@ -42,6 +42,30 @@ export const DEFAULT_LOFAQ_ALLOCATION_PER_10 = 5;
 export const LOFAQ_ALLOCATION_PER_10 = DEFAULT_LOFAQ_ALLOCATION_PER_10;
 export const TOTAL_CYCLE_SLOTS = 10;
 export const RATIO_SETTING_KEY = "datadeals_lofaq_ratio";
+export const LOFAQ_STICKY_CAP_SETTING_KEY = "datadeals_lofaq_sticky_cap";
+export const DEFAULT_MAX_LOFAQ_STICKY_CUSTOMERS = 1000;
+
+/**
+ * Gets the maximum number of sticky customers Lofaq is allowed to retain.
+ * When Lofaq reaches this cap, no new customers will be allocated or converted to Lofaq,
+ * ensuring Data Deals retains all new customers.
+ */
+export async function getLofaqStickyCustomerCap(): Promise<number> {
+  try {
+    const raw = await prisma.systemSetting.findUnique({
+      where: { key: LOFAQ_STICKY_CAP_SETTING_KEY },
+    });
+    if (raw?.value) {
+      const num = parseInt(raw.value, 10);
+      if (!isNaN(num) && num >= 0) {
+        return num;
+      }
+    }
+  } catch (err) {
+    console.error("Error fetching sticky customer cap:", err);
+  }
+  return DEFAULT_MAX_LOFAQ_STICKY_CUSTOMERS;
+}
 
 /**
  * Gets the current configured Lofaq allocation ratio per 10 new customers from the database.
@@ -340,7 +364,7 @@ export async function getDataDealsStorefrontIds(): Promise<string[]> {
 }
 
 let cachedLofaqIdentifiers: {
-  result: { phones: string[]; emails: string[] };
+  result: { phones: string[]; emails: string[]; rawPhoneCount: number };
   expiresAt: number;
 } | null = null;
 
@@ -353,6 +377,7 @@ let cachedLofaqIdentifiers: {
 export async function getLofaqCustomerIdentifiers(): Promise<{
   phones: string[];
   emails: string[];
+  rawPhoneCount: number;
 }> {
   const now = Date.now();
   if (cachedLofaqIdentifiers && cachedLofaqIdentifiers.expiresAt > now) {
@@ -422,14 +447,26 @@ export async function getLofaqCustomerIdentifiers(): Promise<{
     const result = {
       phones: Array.from(expandedPhones),
       emails: Array.from(emails),
+      rawPhoneCount: phones.size,
     };
     cachedLofaqIdentifiers = { result, expiresAt: now + 10000 };
     return result;
   } catch (err) {
     if (cachedLofaqIdentifiers) return cachedLofaqIdentifiers.result;
     console.error("getLofaqCustomerIdentifiers error:", err);
-    return { phones: [], emails: [] };
+    return { phones: [], emails: [], rawPhoneCount: 0 };
   }
+}
+
+/**
+ * Checks if Lofaq has reached its maximum allowed sticky customer cap.
+ * If the cap is reached, no new customers can be allocated or converted to Lofaq.
+ */
+export async function hasLofaqReachedCustomerCap(): Promise<boolean> {
+  const cap = await getLofaqStickyCustomerCap();
+  if (cap <= 0) return true; // Cap of 0 means Lofaq accepts no new customers
+  const { rawPhoneCount } = await getLofaqCustomerIdentifiers();
+  return rawPhoneCount >= cap;
 }
 
 /**
