@@ -1,6 +1,7 @@
 import { prisma } from "../src/lib/prisma";
 
-const MOVE_COUNT = 400;
+const countArg = process.argv.find((a) => a.startsWith("--count="));
+const MOVE_COUNT = countArg ? parseInt(countArg.split("=")[1], 10) : 400;
 const DRY_RUN = process.argv.includes("--dry-run");
 
 async function run() {
