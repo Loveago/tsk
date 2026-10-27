@@ -488,11 +488,6 @@ export async function isEstablishedDataDealsCustomer(
 ): Promise<boolean> {
   if (!phone && !email) return false;
 
-  // If already recognized as a Lofaq customer, they belong to Lofaq
-  if (await isLofaqCustomer(phone, email)) {
-    return false;
-  }
-
   const dataDealsIds = await getDataDealsStorefrontIds();
   if (dataDealsIds.length === 0) return false;
 
