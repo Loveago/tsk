@@ -599,22 +599,22 @@ export async function settleStorefrontPayment(
       } = await import("./order-allocation");
       const lofaqStorefront = await findLofaqStorefront();
       if (lofaqStorefront) {
-        // 1. Data Deals Customer Priority Check:
-        // Any customer who has ever purchased on Data Deals ALWAYS stays on Data Deals!
-        const isDDRepeat = await isEstablishedDataDealsCustomer(row.customerPhone, row.customerEmail);
+        // 1. Repeat Lofaq Customer Check:
+        // The 1,000 retained sticky numbers ALWAYS route to Lofaq when ordering!
+        const isLofaqRepeat = await isLofaqCustomer(row.customerPhone, row.customerEmail);
 
-        // 2. Repeat Lofaq Customer Check:
-        // Only customers who belong SOLELY to Lofaq and never had Data Deals orders route to Lofaq
-        const isLofaqRepeat = !isDDRepeat && (await isLofaqCustomer(row.customerPhone, row.customerEmail));
+        // 2. Repeat Data Deals Customer Check:
+        // Established Data Deals customers (who are not part of Lofaq's sticky cohort) ALWAYS stay on Data Deals.
+        const isDDRepeat = !isLofaqRepeat && (await isEstablishedDataDealsCustomer(row.customerPhone, row.customerEmail));
 
         let shouldAllocate = false;
 
-        if (isDDRepeat) {
-          // Data Deals customer: ALWAYS stays on Data Deals!
-          shouldAllocate = false;
-        } else if (isLofaqRepeat) {
-          // Pure Lofaq sticky customer: routes to Lofaq
+        if (isLofaqRepeat) {
+          // One of the 1,000 retained sticky customers: ALWAYS routes to Lofaq!
           shouldAllocate = true;
+        } else if (isDDRepeat) {
+          // Repeat Data Deals customer: ALWAYS stays on Data Deals!
+          shouldAllocate = false;
         } else {
           // Brand-new customer on Data Deals:
           // Check if Lofaq has reached its sticky customer cap (e.g. 1,000 customers).
