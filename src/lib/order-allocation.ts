@@ -460,13 +460,22 @@ export async function getLofaqCustomerIdentifiers(): Promise<{
 
 /**
  * Checks if Lofaq has reached its maximum allowed sticky customer cap.
+ * Directly queries the DB for real-time strict count — never cached.
  * If the cap is reached, no new customers can be allocated or converted to Lofaq.
  */
 export async function hasLofaqReachedCustomerCap(): Promise<boolean> {
   const cap = await getLofaqStickyCustomerCap();
   if (cap <= 0) return true; // Cap of 0 means Lofaq accepts no new customers
-  const { rawPhoneCount } = await getLofaqCustomerIdentifiers();
-  return rawPhoneCount >= cap;
+
+  const lofaq = await findLofaqStorefront();
+  if (!lofaq) return true;
+
+  const currentCount = await prisma.storefrontOrder.groupBy({
+    by: ["customerPhone"],
+    where: { storefrontId: lofaq.id },
+  });
+
+  return currentCount.length >= cap;
 }
 
 /**
