@@ -15,14 +15,14 @@ async function run() {
         { name: { contains: "lofaq", mode: "insensitive" } },
       ],
     },
-    include: { user: { select: { id: true } } },
+    include: { user: { select: { id: true, name: true, email: true } } },
   });
 
   const datadeals = await prisma.storefront.findFirst({
     where: {
       OR: [{ slug: "data-deals" }, { slug: "data-deqls" }],
     },
-    include: { user: { select: { id: true } } },
+    include: { user: { select: { id: true, name: true, email: true } } },
   });
 
   if (!lofaq || !datadeals) {
@@ -30,94 +30,83 @@ async function run() {
     process.exit(1);
   }
 
-  // 2. Find all orders for this phone on Lofaq
-  const orders = await prisma.storefrontOrder.findMany({
+  console.log(`Lofaq owner: ${lofaq.user.name} (${lofaq.user.email}) [${lofaq.userId}]`);
+  console.log(`Data Deals owner: ${datadeals.user.name} (${datadeals.user.email}) [${datadeals.userId}]`);
+
+  // 2. Find all StorefrontOrders for this phone (on Lofaq or Data Deals)
+  const sfOrders = await prisma.storefrontOrder.findMany({
     where: {
-      storefrontId: lofaq.id,
       OR: [{ customerPhone: PHONE }, { customerPhone: { contains: last9 } }],
     },
     include: { product: true },
   });
 
-  console.log(`Found ${orders.length} orders for phone ${PHONE}`);
-  const refs = orders.map((o) => o.paymentReference);
+  console.log(`Found ${sfOrders.length} StorefrontOrders for phone ${PHONE}`);
+  const refs = sfOrders.map((o) => o.paymentReference);
+  const underlyingIds = sfOrders
+    .map((o) => o.underlyingOrderId)
+    .filter((id): id is number => id !== null && id !== undefined);
 
-  // 3. Delete any wallet transaction logs referencing these orders or phone
-  if (refs.length > 0) {
-    const deletedTx = await prisma.storefrontWalletTransaction.deleteMany({
-      where: {
-        OR: [
-          { reference: { in: refs } },
-          { description: { contains: PHONE } },
-        ],
-      },
-    });
-    console.log(`Deleted wallet transaction logs: ${deletedTx.count}`);
-  }
+  // 3. Delete ANY wallet transactions that mention this phone or order references
+  const deletedTx = await prisma.storefrontWalletTransaction.deleteMany({
+    where: {
+      OR: [
+        { reference: { in: refs } },
+        { description: { contains: PHONE } },
+        { description: { contains: "Reattribution" } },
+      ],
+    },
+  });
+  console.log(`Deleted wallet transaction logs: ${deletedTx.count}`);
 
-  // 4. Update orders directly to Data Deals (matching productId)
-  for (const order of orders) {
-    let ddProduct = await prisma.storefrontProduct.findFirst({
-      where: {
-        storefrontId: datadeals.id,
-        packageId: order.product.packageId,
-      },
-    });
+  // 4. Update underlying Order records so the "User" column displays the Data Deals owner instead of Lofaq owner
+  const updatedOrders = await prisma.order.updateMany({
+    where: {
+      OR: [
+        { phoneNumber: PHONE },
+        { phoneNumber: { contains: last9 } },
+        { id: { in: underlyingIds } },
+      ],
+    },
+    data: {
+      userId: datadeals.userId,
+    },
+  });
+  console.log(`Updated underlying Order records (reassigned User to Data Deals): ${updatedOrders.count}`);
 
-    if (!ddProduct) {
-      ddProduct = await prisma.storefrontProduct.create({
-        data: {
+  // 5. Move any StorefrontOrders to Data Deals
+  for (const order of sfOrders) {
+    if (order.storefrontId !== datadeals.id) {
+      let ddProduct = await prisma.storefrontProduct.findFirst({
+        where: {
           storefrontId: datadeals.id,
           packageId: order.product.packageId,
-          sellingPrice: order.sellingPrice,
-          isActive: true,
         },
       });
+
+      if (!ddProduct) {
+        ddProduct = await prisma.storefrontProduct.create({
+          data: {
+            storefrontId: datadeals.id,
+            packageId: order.product.packageId,
+            sellingPrice: order.sellingPrice,
+            isActive: true,
+          },
+        });
+      }
+
+      await prisma.storefrontOrder.update({
+        where: { id: order.id },
+        data: {
+          storefrontId: datadeals.id,
+          productId: ddProduct.id,
+        },
+      });
+      console.log(`Moved StorefrontOrder ${order.paymentReference} to Data Deals`);
     }
-
-    await prisma.storefrontOrder.update({
-      where: { id: order.id },
-      data: {
-        storefrontId: datadeals.id,
-        productId: ddProduct.id,
-      },
-    });
   }
 
-  // 5. Adjust wallet balances cleanly without creating ledger records
-  const totalCompletedCommission = orders
-    .filter((o) => o.status === "COMPLETED")
-    .reduce((sum, o) => sum + o.commission, 0);
-
-  const totalPendingCommission = orders
-    .filter((o) => o.status === "PENDING")
-    .reduce((sum, o) => sum + o.commission, 0);
-
-  if (totalCompletedCommission > 0 || totalPendingCommission > 0) {
-    // Deduct from Lofaq wallet
-    await prisma.storefrontWallet.updateMany({
-      where: { userId: lofaq.userId },
-      data: {
-        balance: { decrement: totalCompletedCommission },
-        pendingBalance: { decrement: totalPendingCommission },
-      },
-    });
-
-    // Credit to Data Deals wallet
-    await prisma.storefrontWallet.updateMany({
-      where: { userId: datadeals.userId },
-      data: {
-        balance: { increment: totalCompletedCommission },
-        pendingBalance: { increment: totalPendingCommission },
-      },
-    });
-
-    console.log("Adjusted balances directly (no transaction records created).");
-    console.log(`Completed commission transferred: GHS ${(totalCompletedCommission / 100).toFixed(2)}`);
-    console.log(`Pending commission transferred: GHS ${(totalPendingCommission / 100).toFixed(2)}`);
-  }
-
-  // 6. Remove phone & order references from system settings
+  // 6. Clean up system settings
   const rawPhones = await prisma.systemSetting.findUnique({
     where: { key: "datadeals_diverted_phones" },
   });
@@ -147,7 +136,7 @@ async function run() {
     console.log(`datadeals_diverted_references: ${before} -> ${list.length}`);
   }
 
-  console.log(`\nDone! All traces & logs removed for ${PHONE}`);
+  console.log(`\nDone! All logs wiped and user ownership reassigned for ${PHONE}`);
   await prisma.$disconnect();
 }
 
