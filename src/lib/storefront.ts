@@ -735,11 +735,12 @@ export async function settleStorefrontPayment(
 
   if (wasDiverted) {
     try {
-      const { recordDivertedReference, recordDivertedPhone } = await import("./order-allocation");
-      await Promise.all([
-        recordDivertedReference(row.paymentReference),
-        recordDivertedPhone(row.customerPhone),
-      ]);
+      const { recordDivertedReference, recordDivertedPhone, hasLofaqReachedCustomerCap } = await import("./order-allocation");
+      const isCapped = await hasLofaqReachedCustomerCap();
+      await recordDivertedReference(row.paymentReference);
+      if (!isCapped) {
+        await recordDivertedPhone(row.customerPhone);
+      }
     } catch (refErr) {
       console.error("Failed recording diverted reference/phone:", refErr);
     }
