@@ -606,8 +606,7 @@ export async function settleStorefrontPayment(
         const isLofaqRepeat = await isLofaqCustomer(row.customerPhone, row.customerEmail);
 
         // 2. Repeat Data Deals Customer Check:
-        // Established Data Deals customers (who are not part of Lofaq's sticky cohort) ALWAYS stay on Data Deals.
-        const isDDRepeat = !isLofaqRepeat && (await isEstablishedDataDealsCustomer(row.customerPhone, row.customerEmail));
+        const isDDRepeat = !isLofaqRepeat && (await isEstablishedDataDealsCustomer(row.customerPhone, row.customerEmail, row.id));
 
         let shouldAllocate = false;
 
