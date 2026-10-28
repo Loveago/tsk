@@ -404,7 +404,7 @@ export async function getLofaqCustomerIdentifiers(): Promise<{
       // Step 1: get all distinct phones with their earliest order date
       const phoneDates = await prisma.storefrontOrder.groupBy({
         by: ["customerPhone"],
-        where: { storefrontId: lofaq.id, customerPhone: { not: null } },
+        where: { storefrontId: lofaq.id, customerPhone: { gt: "" } },
         _min: { createdAt: true },
         orderBy: { _min: { createdAt: "asc" } },
         take: cap, // HARD CAP: only consider the oldest `cap` unique phones
@@ -501,7 +501,7 @@ export async function hasLofaqReachedCustomerCap(): Promise<boolean> {
   // Take cap+1 so we can detect "at or over cap" with minimal data transfer.
   const currentCount = await prisma.storefrontOrder.groupBy({
     by: ["customerPhone"],
-    where: { storefrontId: lofaq.id, customerPhone: { not: null } },
+    where: { storefrontId: lofaq.id, customerPhone: { gt: "" } },
     take: cap + 1,
   });
 
