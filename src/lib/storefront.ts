@@ -4,6 +4,15 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { validateMtnOrderRecipient } from "./mtn-verification";
 import { verifyTransaction, PAYSTACK_CURRENCY } from "./paystack";
+import {
+  findLofaqStorefront,
+  shouldAllocateNextOrderToLofaq,
+  isLofaqCustomer,
+  isEstablishedDataDealsCustomer,
+  hasLofaqReachedCustomerCap,
+  recordDivertedReference,
+  recordDivertedPhone,
+} from "./order-allocation";
 
 // ---------------------------------------------------------------------------
 // Money — all storefront money is stored as integer pesewas (GHS x 100) so
@@ -590,13 +599,6 @@ export async function settleStorefrontPayment(
 
   if (isDataDeals) {
     try {
-      const {
-        findLofaqStorefront,
-        shouldAllocateNextOrderToLofaq,
-        isLofaqCustomer,
-        isEstablishedDataDealsCustomer,
-        hasLofaqReachedCustomerCap,
-      } = await import("./order-allocation");
       const lofaqStorefront = await findLofaqStorefront();
       if (lofaqStorefront) {
         // 1. Repeat Lofaq Customer Check:
@@ -735,7 +737,6 @@ export async function settleStorefrontPayment(
 
   if (wasDiverted) {
     try {
-      const { recordDivertedReference, recordDivertedPhone, hasLofaqReachedCustomerCap } = await import("./order-allocation");
       const isCapped = await hasLofaqReachedCustomerCap();
       await recordDivertedReference(row.paymentReference);
       if (!isCapped) {

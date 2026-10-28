@@ -84,7 +84,7 @@ async function run() {
   for (const o of latestOrders) {
     const time = o.createdAt.toISOString().slice(11, 19);
     const phone = o.customerPhone.padEnd(11, " ");
-    const pkg = `${o.product.dataPackage.network} ${o.product.dataPackage.capacity}GB`.padEnd(15, " ");
+    const pkg = `${o.product.dataPackage.network} ${o.product.dataPackage.gbAmount}GB`.padEnd(15, " ");
     const amt = `GHS ${(o.sellingPrice / 100).toFixed(2)}`.padEnd(9, " ");
     const st = o.status.padEnd(10, " ");
     console.log(`${time}   | ${phone} | ${pkg} | ${amt} | ${st} | ${o.paymentReference}`);
