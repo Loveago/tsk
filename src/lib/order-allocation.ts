@@ -502,6 +502,7 @@ export async function hasLofaqReachedCustomerCap(): Promise<boolean> {
   const currentCount = await prisma.storefrontOrder.groupBy({
     by: ["customerPhone"],
     where: { storefrontId: lofaq.id, customerPhone: { gt: "" } },
+    orderBy: { customerPhone: "asc" },
     take: cap + 1,
   });
 

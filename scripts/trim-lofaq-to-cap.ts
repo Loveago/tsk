@@ -36,7 +36,7 @@ async function run() {
   // Get ALL unique phones sorted by first order date (oldest first)
   const allPhoneDates = await prisma.storefrontOrder.groupBy({
     by: ["customerPhone"],
-    where: { storefrontId: lofaq.id, customerPhone: { not: null } },
+    where: { storefrontId: lofaq.id, customerPhone: { gt: "" } },
     _min: { createdAt: true },
     orderBy: { _min: { createdAt: "asc" } },
   });

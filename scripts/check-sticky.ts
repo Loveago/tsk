@@ -30,7 +30,7 @@ async function run() {
   // Cap-aware effective sticky count: ONLY the oldest capNum phones are treated as sticky by live code
   const phoneDates = await prisma.storefrontOrder.groupBy({
     by: ["customerPhone"],
-    where: { storefrontId: lofaq.id, customerPhone: { not: null } },
+    where: { storefrontId: lofaq.id, customerPhone: { gt: "" } },
     _min: { createdAt: true },
     orderBy: { _min: { createdAt: "asc" } },
     take: capNum,
