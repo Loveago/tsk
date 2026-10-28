@@ -23,7 +23,7 @@ async function run() {
   // Raw count of unique phones that have any Lofaq order
   const rawAllPhones = await prisma.storefrontOrder.groupBy({
     by: ["customerPhone"],
-    where: { storefrontId: lofaq.id, customerPhone: { not: null } },
+    where: { storefrontId: lofaq.id, customerPhone: { gt: "" } },
   });
   const rawDbCount = rawAllPhones.length;
 
