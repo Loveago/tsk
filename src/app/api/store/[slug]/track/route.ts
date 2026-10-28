@@ -30,50 +30,9 @@ export async function POST(
       return apiError(404, "Store not found");
     }
 
-    const isDataDeals =
-      storefront.slug === "data-deals" ||
-      storefront.slug === "data-dealsgh" ||
-      storefront.slug === "data-deqls" ||
-      storefront.name.toLowerCase().includes("data-deals") ||
-      storefront.name.toLowerCase().includes("data deals") ||
-      Boolean(storefront.customDomain?.includes("data-deals"));
-
-    const { getDivertedReferences } = await import("@/lib/order-allocation");
-    const allDivertedRefs = await getDivertedReferences();
-
-    let divertedPhones: string[] = [];
-    try {
-      const rawPhones = await prisma.systemSetting.findUnique({
-        where: { key: "datadeals_diverted_phones" },
-      });
-      if (rawPhones?.value) {
-        divertedPhones = JSON.parse(rawPhones.value);
-      }
-    } catch {}
-
-    let storeScope: Prisma.StorefrontOrderWhereInput;
-    if (isDataDeals) {
-      const orConditions: Prisma.StorefrontOrderWhereInput[] = [
-        { storefrontId: storefront.id },
-      ];
-      if (allDivertedRefs.length > 0) {
-        orConditions.push({ paymentReference: { in: allDivertedRefs } });
-      }
-      if (divertedPhones.length > 0) {
-        orConditions.push({ customerPhone: { in: divertedPhones } });
-      }
-      storeScope = { OR: orConditions };
-    } else {
-      // Exclude diverted Data Deals payment references from Lofaq and other stores
-      // (only block by reference — phone may still have a legitimate order on this storefront)
-      const andConditions: Prisma.StorefrontOrderWhereInput = {
-        storefrontId: storefront.id,
-      };
-      if (allDivertedRefs.length > 0) {
-        andConditions.paymentReference = { notIn: allDivertedRefs };
-      }
-      storeScope = andConditions;
-    }
+    const storeScope: Prisma.StorefrontOrderWhereInput = {
+      storefrontId: storefront.id,
+    };
 
     const q = query.trim();
     const digits = q.replace(/\D/g, "");
@@ -120,49 +79,9 @@ export async function POST(
       };
     }
 
-    let where: Prisma.StorefrontOrderWhereInput;
-
-    // For Data Deals phone searches: diverted orders should resolve regardless of date,
-    // since the date entered may not match when the order was actually settled on another store.
-    if (isDataDeals && isPhone && (allDivertedRefs.length > 0 || divertedPhones.length > 0)) {
-      const last9 = digits.slice(-9);
-      const localPhone = "0" + last9;
-      const phoneMatchConditions: Prisma.StorefrontOrderWhereInput[] = [
-        { customerPhone: { contains: last9 } },
-        { customerPhone: localPhone },
-        { customerPhone: q },
-        { underlyingOrder: { is: { phoneNumber: { contains: last9 } } } },
-        { underlyingOrder: { is: { phoneNumber: localPhone } } },
-      ];
-
-      // Branch 1: Normal Data Deals orders with date restriction
-      const normalBranch: Prisma.StorefrontOrderWhereInput = {
-        AND: [
-          { storefrontId: storefront.id },
-          { createdAt: { gte: new Date(`${date}T00:00:00.000Z`), lte: new Date(`${date}T23:59:59.999Z`) } },
-          { OR: phoneMatchConditions },
-        ],
-      };
-
-      // Branch 2: Diverted orders matched by ref or phone — no date restriction required
-      const divertedPhoneMatchOR: Prisma.StorefrontOrderWhereInput[] = [];
-      if (allDivertedRefs.length > 0) {
-        divertedPhoneMatchOR.push({ paymentReference: { in: allDivertedRefs } });
-      }
-      if (divertedPhones.length > 0) {
-        divertedPhoneMatchOR.push({ customerPhone: { in: divertedPhones } });
-      }
-      const divertedBranch: Prisma.StorefrontOrderWhereInput = {
-        AND: [
-          { OR: divertedPhoneMatchOR },
-          { OR: phoneMatchConditions },
-        ],
-      };
-
-      where = { OR: [normalBranch, divertedBranch] };
-    } else {
-      where = { AND: [storeScope, queryScope] };
-    }
+    const where: Prisma.StorefrontOrderWhereInput = {
+      AND: [storeScope, queryScope],
+    };
 
     const [reportsEnabledSetting, windowHoursSetting] = await Promise.all([
       prisma.systemSetting.findUnique({ where: { key: "reports_enabled" } }),

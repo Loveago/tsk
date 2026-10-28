@@ -26,27 +26,11 @@ export async function GET(
     }
 
     // Verify ownership via StorefrontOrder paymentReference
-    const isDataDeals =
-      slug === "data-deals" ||
-      slug === "data-dealsgh" ||
-      slug === "data-deqls" ||
-      storefront.slug === "data-deals" ||
-      Boolean(storefront.customDomain?.includes("data-deals"));
-
-    const { isDivertedReference } = await import("@/lib/order-allocation");
-    const isDiverted = await isDivertedReference(reference);
-
-    if (!isDataDeals && isDiverted) {
-      return apiError(404, "Order not found for this store");
-    }
-
     const storefrontOrder = await prisma.storefrontOrder.findFirst({
-      where: isDiverted
-        ? { paymentReference: reference }
-        : {
-            storefrontId: storefront.id,
-            paymentReference: reference,
-          },
+      where: {
+        storefrontId: storefront.id,
+        paymentReference: reference,
+      },
       select: { underlyingOrderId: true },
     });
 

@@ -54,12 +54,6 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-
-      const { isDivertedReference } = await import("@/lib/order-allocation");
-      if (await isDivertedReference(reference)) {
-        slug = "data-deals";
-        customDomain = process.env.ADMIN_CUSTOM_DOMAIN || "data-deals.com";
-      }
     }
   } catch (err) {
     console.error("Storefront Paystack callback error:", err);

@@ -4,15 +4,6 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { validateMtnOrderRecipient } from "./mtn-verification";
 import { verifyTransaction, PAYSTACK_CURRENCY } from "./paystack";
-import {
-  findLofaqStorefront,
-  shouldAllocateNextOrderToLofaq,
-  isLofaqCustomer,
-  isEstablishedDataDealsCustomer,
-  hasLofaqReachedCustomerCap,
-  recordDivertedReference,
-  recordDivertedPhone,
-} from "./order-allocation";
 
 // ---------------------------------------------------------------------------
 // Money — all storefront money is stored as integer pesewas (GHS x 100) so
@@ -583,96 +574,7 @@ export async function settleStorefrontPayment(
   });
   if (!storefront) return { settled: false, reason: "storefront missing" };
 
-  let targetStorefrontId = storefront.id;
-  let targetUserId = storefront.userId;
-  let targetProductId = row.productId;
-  let targetProductCost = row.productCost;
-  let targetCommission = row.commission;
-  let wasDiverted = false;
-
-  // 5-in-10 (50/50) randomized diversion from data-deals to Lofaq Data Hub for new customers
-  const isDataDeals =
-    storefront.slug === "data-deals" ||
-    storefront.slug === "data-dealsgh" ||
-    storefront.slug === "data-deqls" ||
-    Boolean(storefront.customDomain?.includes("data-deals"));
-
-  if (isDataDeals) {
-    try {
-      const lofaqStorefront = await findLofaqStorefront();
-      if (lofaqStorefront) {
-        // 1. Repeat Lofaq Customer Check:
-        // The 1,000 retained sticky numbers ALWAYS route to Lofaq when ordering!
-        const isLofaqRepeat = await isLofaqCustomer(row.customerPhone, row.customerEmail);
-
-        // 2. Repeat Data Deals Customer Check:
-        const isDDRepeat = !isLofaqRepeat && (await isEstablishedDataDealsCustomer(row.customerPhone, row.customerEmail, row.id));
-
-        let shouldAllocate = false;
-
-        if (isLofaqRepeat) {
-          // One of the 1,000 retained sticky customers: ALWAYS routes to Lofaq!
-          shouldAllocate = true;
-        } else if (isDDRepeat) {
-          // Repeat Data Deals customer: ALWAYS stays on Data Deals!
-          shouldAllocate = false;
-        } else {
-          // Brand-new customer on Data Deals:
-          // Check if Lofaq has reached its sticky customer cap (e.g. 1,000 customers).
-          // If Lofaq is at or above cap, Data Deals retains 100% of all new customers!
-          const lofaqCapped = await hasLofaqReachedCustomerCap();
-          if (lofaqCapped) {
-            shouldAllocate = false;
-          } else {
-            shouldAllocate = await shouldAllocateNextOrderToLofaq();
-          }
-        }
-
-
-
-
-
-        if (shouldAllocate) {
-          // Find or create Lofaq's matching StorefrontProduct for this packageId
-          let lofaqProduct = await prisma.storefrontProduct.findFirst({
-            where: {
-              storefrontId: lofaqStorefront.id,
-              packageId: row.product.packageId,
-            },
-          });
-          if (!lofaqProduct) {
-            lofaqProduct = await prisma.storefrontProduct.create({
-              data: {
-                storefrontId: lofaqStorefront.id,
-                packageId: row.product.packageId,
-                sellingPrice: row.sellingPrice,
-                isActive: true,
-              },
-            });
-          }
-
-          const { resolveUserWholesalePrice } = await import("./orders");
-          const lofaqCostGhs = await resolveUserWholesalePrice(
-            lofaqStorefront.user || lofaqStorefront.userId,
-            row.product.dataPackage
-          );
-          const lofaqCostPesewas = toPesewas(lofaqCostGhs);
-          const lofaqCommission = Math.max(0, row.sellingPrice - lofaqCostPesewas);
-
-          targetStorefrontId = lofaqStorefront.id;
-          targetUserId = lofaqStorefront.userId;
-          targetProductId = lofaqProduct.id;
-          targetProductCost = lofaqCostPesewas;
-          targetCommission = lofaqCommission;
-          wasDiverted = true;
-        }
-      }
-    } catch (allocErr) {
-      console.error("Order allocation to Lofaq error:", allocErr);
-    }
-  }
-
-  const wallet = await ensureWallet(targetUserId);
+  const wallet = await ensureWallet(storefront.userId);
 
   // Central MTN Number Verification Check (§16, §17)
   // Check verification but never block a paid order from being created for admin fulfillment
@@ -681,7 +583,7 @@ export async function settleStorefrontPayment(
     const mtnCheck = await validateMtnOrderRecipient(
       row.customerPhone,
       row.product.dataPackage.network,
-      targetUserId,
+      storefront.userId,
       { recordUnverified: true }
     );
     if (!mtnCheck.allowed) {
@@ -696,7 +598,7 @@ export async function settleStorefrontPayment(
       // 1. Underlying Tskconnect order so the order lifecycle stays uniform.
       const order = await tx.order.create({
         data: {
-          userId: targetUserId, // fulfilled via the store owner's account (Lofaq owner if diverted)
+          userId: storefront.userId,
           packageId: row.product.packageId,
           phoneNumber: row.customerPhone,
           network: row.product.dataPackage.network,
@@ -716,35 +618,19 @@ export async function settleStorefrontPayment(
           status: "PENDING",
           underlyingOrderId: order.id,
           paidAt: input.paidAt ?? new Date(),
-          storefrontId: targetStorefrontId,
-          productId: targetProductId,
-          productCost: targetProductCost,
-          commission: targetCommission,
         },
       });
 
       // 3. Commission enters the wallet as pending (§25).
       await applyLedgerEntry(tx, wallet.id, {
         type: "COMMISSION",
-        amount: targetCommission,
+        amount: row.commission,
         reference: storefrontOrderCode(row.seq),
         description: `Storefront sale ${storefrontOrderCode(row.seq)}`,
       });
     },
     { maxWait: 15000, timeout: 30000 }
   );
-
-  if (wasDiverted) {
-    try {
-      const isCapped = await hasLofaqReachedCustomerCap();
-      await recordDivertedReference(row.paymentReference);
-      if (!isCapped) {
-        await recordDivertedPhone(row.customerPhone);
-      }
-    } catch (refErr) {
-      console.error("Failed recording diverted reference/phone:", refErr);
-    }
-  }
 
   return { settled: true };
 }

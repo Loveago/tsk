@@ -87,26 +87,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Eliminate any trace of data-deals past orders for customers allocated/associated with Lofaq Data Hub
-    const { getLofaqCustomerIdentifiers, getDataDealsStorefrontIds } = await import("@/lib/order-allocation");
-    const { phones: lofaqPhones } = await getLofaqCustomerIdentifiers();
-    const dataDealsIds = await getDataDealsStorefrontIds();
-
-    if (dataDealsIds.length > 0 && lofaqPhones.length > 0) {
-      where.NOT = {
-        AND: [
-          { phoneNumber: { in: lofaqPhones } },
-          {
-            storefrontOrder: {
-              is: {
-                storefrontId: { in: dataDealsIds },
-              },
-            },
-          },
-        ],
-      };
-    }
-
     const [data, total] = await Promise.all([
       prisma.order.findMany({
         where,

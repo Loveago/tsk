@@ -27,13 +27,6 @@ async function run() {
   console.log(" - Commission:      ", order.commission);
   console.log(" - Status:          ", order.status);
 
-  // Check where the order was placed: was it placed on Data Deals or somewhere else?
-  const rawRefs = await prisma.systemSetting.findUnique({
-    where: { key: "datadeals_diverted_references" },
-  });
-  const divertedRefs: string[] = rawRefs?.value ? JSON.parse(rawRefs.value) : [];
-  console.log(" - In diverted_references setting:", divertedRefs.includes(ref));
-
   await prisma.$disconnect();
 }
 

@@ -98,9 +98,6 @@ export default async function StorefrontOrderPage({
     },
   });
 
-  const { isDivertedReference } = await import("@/lib/order-allocation");
-  let isDiverted = slug === "data-deals" && (await isDivertedReference(reference));
-
   // Guard: if not standard storefront order, check if Google Gemini Pro order
   if (!order) {
     let geminiOrder = await prisma.geminiProOrder.findUnique({
@@ -270,10 +267,10 @@ export default async function StorefrontOrderPage({
     );
   }
 
-  // If not belonging to this slug, only allow if this order was placed on data-deals and diverted
-  if (order.storefront.slug !== slug && !isDiverted) {
-    // If order is pending settlement and requested on data-deals, attempt auto-settle first
-    if (!order.underlyingOrderId && slug === "data-deals") {
+  // If not belonging to this slug, 404
+  if (order.storefront.slug !== slug) {
+    // If order is pending settlement, attempt auto-settle first
+    if (!order.underlyingOrderId) {
       const autoSettle = await verifyAndSettleStorefrontOrder(reference);
       if (autoSettle.settled) {
         const refreshed = await prisma.storefrontOrder.findUnique({
@@ -288,11 +285,10 @@ export default async function StorefrontOrderPage({
         });
         if (refreshed) {
           order = refreshed;
-          isDiverted = slug === "data-deals" && (await isDivertedReference(reference));
         }
       }
     }
-    if (order.storefront.slug !== slug && !isDiverted) notFound();
+    if (order.storefront.slug !== slug) notFound();
   }
 
   // Self-healing fallback: If customer paid on Paystack but the callback or redirect failed,
@@ -312,7 +308,6 @@ export default async function StorefrontOrderPage({
       });
       if (refreshed) {
         order = refreshed;
-        isDiverted = slug === "data-deals" && (await isDivertedReference(reference));
       }
     }
   }
@@ -355,7 +350,7 @@ export default async function StorefrontOrderPage({
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        Back to {isDiverted ? "Data Deals" : order.storefront.name}
+        Back to {order.storefront.name}
       </Link>
 
       {/* Status card */}
@@ -382,7 +377,7 @@ export default async function StorefrontOrderPage({
           <div className="flex items-start justify-between gap-4">
             <dt className="font-medium text-slate-500 dark:text-slate-400">Store</dt>
             <dd className="font-semibold text-slate-900 text-right dark:text-white">
-              {isDiverted ? "Data Deals" : order.storefront.name}
+              {order.storefront.name}
             </dd>
           </div>
 
