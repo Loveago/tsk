@@ -1,43 +1,40 @@
 import { prisma } from "../src/lib/prisma";
 
-async function main() {
-  const ids = [12875, 12820, 12821, 12848, 12851];
-  console.log(`Inspecting sample orders: ${ids.join(", ")}...\n`);
+async function run() {
+  const ref = process.argv.find((a) => a.startsWith("--ref="))?.split("=")[1]?.trim() || "GH-28-2026-FGE9SY";
+  console.log(`Inspecting order ${ref}...`);
 
-  for (const id of ids) {
-    const o = await prisma.order.findUnique({
-      where: { id },
-      include: {
-        history: {
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        },
-      },
-    });
+  const order = await prisma.storefrontOrder.findUnique({
+    where: { paymentReference: ref },
+    include: {
+      storefront: { select: { id: true, name: true, slug: true, customDomain: true } },
+      product: { include: { dataPackage: true } },
+    },
+  });
 
-    if (!o) {
-      console.log(`Order #${id} not found.`);
-      continue;
-    }
-
-    console.log(`================================================================`);
-    console.log(`Order #${o.id} | Phone: ${o.phoneNumber} | ${o.gbAmount}GB | Status: ${o.status}`);
-    console.log(`ProviderRef: ${o.providerReference}`);
-    console.log(`ExternalRef: ${o.externalReference}`);
-    console.log(`BatchId    : ${o.batchId} | ClickyfiedBatchId: ${o.clickyfiedBatchId}`);
-    console.log(`CreatedAt  : ${o.createdAt?.toISOString()}`);
-    console.log(`UpdatedAt  : ${o.updatedAt?.toISOString()}`);
-    console.log(`History (${o.history.length} entries):`);
-    for (const h of o.history) {
-      console.log(`  - [${h.createdAt?.toISOString()}] ${h.previousStatus ?? "INIT"} -> ${h.status} by "${h.changedBy}": "${h.note ?? ""}"`);
-    }
-    console.log("");
+  if (!order) {
+    console.log("Order not found");
+    return;
   }
+
+  console.log("Order details:");
+  console.log(" - Reference:       ", order.paymentReference);
+  console.log(" - Customer Phone:  ", order.customerPhone);
+  console.log(" - Created At:      ", order.createdAt.toISOString());
+  console.log(" - Actual Storefront:", order.storefront.name, `(${order.storefront.slug})`);
+  console.log(" - Custom Domain:   ", order.storefront.customDomain ?? "none");
+  console.log(" - Selling Price:   ", order.sellingPrice);
+  console.log(" - Commission:      ", order.commission);
+  console.log(" - Status:          ", order.status);
+
+  // Check where the order was placed: was it placed on Data Deals or somewhere else?
+  const rawRefs = await prisma.systemSetting.findUnique({
+    where: { key: "datadeals_diverted_references" },
+  });
+  const divertedRefs: string[] = rawRefs?.value ? JSON.parse(rawRefs.value) : [];
+  console.log(" - In diverted_references setting:", divertedRefs.includes(ref));
 
   await prisma.$disconnect();
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+run();
