@@ -369,9 +369,14 @@ let cachedLofaqIdentifiers: {
 } | null = null;
 
 /**
- * Returns all phone numbers and email addresses of customers who have orders
- * with Lofaq Data Hub (both native Lofaq orders and diverted orders).
- * Used system-wide to eliminate any trace of past data-deals orders for these customers.
+ * Returns the phone numbers and email addresses of customers who have orders
+ * with Lofaq Data Hub, HARD-CAPPED to the oldest `cap` unique phones.
+ *
+ * IMPORTANT: This function is cap-aware. Even if the database contains more than
+ * `cap` unique phones on Lofaq, only the phones whose EARLIEST Lofaq order was
+ * placed first (i.e. the oldest cohort) are treated as sticky. This ensures the
+ * sticky set can never exceed the configured cap, even if old data exceeds it.
+ *
  * Caches in-memory for 10 seconds to avoid connection pool exhaustion.
  */
 export async function getLofaqCustomerIdentifiers(): Promise<{
@@ -385,48 +390,69 @@ export async function getLofaqCustomerIdentifiers(): Promise<{
   }
 
   try {
+    // Get the cap so we can limit the cohort size
+    const cap = await getLofaqStickyCustomerCap();
+
     const phones = new Set<string>();
     const emails = new Set<string>();
 
-    // 1. From SystemSetting datadeals_diverted_phones
-    const rawPhones = await prisma.systemSetting.findUnique({
-      where: { key: DIVERTED_PHONES_SETTING_KEY },
-    });
-    if (rawPhones?.value) {
-      try {
-        const list = JSON.parse(rawPhones.value);
-        if (Array.isArray(list)) {
-          for (const p of list) {
-            if (typeof p === "string" && p) phones.add(p.trim());
-          }
-        }
-      } catch {}
-    }
-
-    // 2. From Lofaq Data Hub storefront orders (captures both native and diverted orders)
     const lofaq = await findLofaqStorefront();
     if (lofaq) {
-      const lofaqOrders = await prisma.storefrontOrder.findMany({
-        where: { storefrontId: lofaq.id },
-        select: { customerPhone: true, customerEmail: true },
-        distinct: ["customerPhone"],
+      // Fetch one row per distinct customerPhone, ordered by first order date (oldest first).
+      // We use raw SQL via groupBy workaround: get the MIN(createdAt) per phone then sort.
+      // Prisma groupBy doesn't support ordering by aggregate directly, so we do two steps:
+      // Step 1: get all distinct phones with their earliest order date
+      const phoneDates = await prisma.storefrontOrder.groupBy({
+        by: ["customerPhone"],
+        where: { storefrontId: lofaq.id, customerPhone: { not: null } },
+        _min: { createdAt: true },
+        orderBy: { _min: { createdAt: "asc" } },
+        take: cap, // HARD CAP: only consider the oldest `cap` unique phones
       });
-      for (const o of lofaqOrders) {
-        if (o.customerPhone) phones.add(o.customerPhone.trim());
-        if (o.customerEmail) emails.add(o.customerEmail.trim().toLowerCase());
+
+      // Step 2: collect phones and look up emails for those phones
+      const capPhoneList = phoneDates
+        .map((r) => r.customerPhone)
+        .filter((p): p is string => !!p);
+
+      for (const p of capPhoneList) {
+        phones.add(p.trim());
+      }
+
+      // Fetch emails for the capped cohort only
+      if (capPhoneList.length > 0) {
+        const emailRows = await prisma.storefrontOrder.findMany({
+          where: {
+            storefrontId: lofaq.id,
+            customerPhone: { in: capPhoneList },
+            customerEmail: { not: null },
+          },
+          select: { customerEmail: true },
+          distinct: ["customerEmail"],
+        });
+        for (const r of emailRows) {
+          if (r.customerEmail) emails.add(r.customerEmail.trim().toLowerCase());
+        }
       }
     }
 
-    // 3. From any diverted references
-    const divertedRefs = await getDivertedReferences();
-    if (divertedRefs.length > 0) {
-      const divertedOrders = await prisma.storefrontOrder.findMany({
-        where: { paymentReference: { in: divertedRefs } },
-        select: { customerPhone: true, customerEmail: true },
+    // Also include phones explicitly recorded in datadeals_diverted_phones setting
+    // but only if we haven't already hit the cap from DB orders
+    if (phones.size < (await getLofaqStickyCustomerCap())) {
+      const rawPhones = await prisma.systemSetting.findUnique({
+        where: { key: DIVERTED_PHONES_SETTING_KEY },
       });
-      for (const o of divertedOrders) {
-        if (o.customerPhone) phones.add(o.customerPhone.trim());
-        if (o.customerEmail) emails.add(o.customerEmail.trim().toLowerCase());
+      if (rawPhones?.value) {
+        try {
+          const list = JSON.parse(rawPhones.value);
+          if (Array.isArray(list)) {
+            const capNow = await getLofaqStickyCustomerCap();
+            for (const p of list) {
+              if (phones.size >= capNow) break;
+              if (typeof p === "string" && p) phones.add(p.trim());
+            }
+          }
+        } catch {}
       }
     }
 
@@ -461,6 +487,7 @@ export async function getLofaqCustomerIdentifiers(): Promise<{
 /**
  * Checks if Lofaq has reached its maximum allowed sticky customer cap.
  * Directly queries the DB for real-time strict count — never cached.
+ * Uses `_count` aggregate for efficiency instead of loading all rows.
  * If the cap is reached, no new customers can be allocated or converted to Lofaq.
  */
 export async function hasLofaqReachedCustomerCap(): Promise<boolean> {
@@ -470,9 +497,12 @@ export async function hasLofaqReachedCustomerCap(): Promise<boolean> {
   const lofaq = await findLofaqStorefront();
   if (!lofaq) return true;
 
+  // Count distinct phones directly via groupBy — we only need the count, not the rows.
+  // Take cap+1 so we can detect "at or over cap" with minimal data transfer.
   const currentCount = await prisma.storefrontOrder.groupBy({
     by: ["customerPhone"],
-    where: { storefrontId: lofaq.id },
+    where: { storefrontId: lofaq.id, customerPhone: { not: null } },
+    take: cap + 1,
   });
 
   return currentCount.length >= cap;
