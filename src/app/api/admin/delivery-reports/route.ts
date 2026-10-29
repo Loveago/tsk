@@ -28,7 +28,11 @@ export async function GET(request: NextRequest) {
     await requireStaff();
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
-    const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 15)));
+    const pageSizeRaw = searchParams.get("pageSize");
+    const isAll = pageSizeRaw === "all" || pageSizeRaw === "0" || Number(pageSizeRaw) >= 10000;
+    const pageSize = isAll
+      ? 10000
+      : Math.min(500, Math.max(1, Number(pageSizeRaw ?? 15)));
     const status = searchParams.get("status");
     const network = searchParams.get("network");
     const q = searchParams.get("q");
@@ -65,7 +69,7 @@ export async function GET(request: NextRequest) {
       prisma.deliveryReport.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
+        skip: isAll ? 0 : (page - 1) * pageSize,
         take: pageSize,
         select: {
           id: true,
@@ -167,7 +171,7 @@ export async function GET(request: NextRequest) {
       total,
       page,
       pageSize,
-      pages: Math.max(1, Math.ceil(total / pageSize)),
+      pages: isAll ? 1 : Math.max(1, Math.ceil(total / pageSize)),
     });
   } catch (err) {
     return handleRouteError(err);

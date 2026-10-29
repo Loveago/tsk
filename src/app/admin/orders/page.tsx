@@ -831,6 +831,7 @@ export default function AdminOrdersPage() {
               <option value={50}>50 / page</option>
               <option value={100}>100 / page</option>
               <option value={200}>200 / page</option>
+              <option value={10000}>Show All</option>
             </select>
           </div>
 
@@ -1144,7 +1145,7 @@ export default function AdminOrdersPage() {
           setSelectedBatchIds(new Set());
         }}
         pageSize={pageSize}
-        pageSizeOptions={[15, 25, 50, 100, 200]}
+        pageSizeOptions={[15, 25, 50, 100, 200, { value: 10000, label: "Show All" }]}
         onPageSizeChange={(newSize) => {
           setPageSize(newSize);
           setPage(1);

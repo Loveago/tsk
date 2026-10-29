@@ -58,6 +58,7 @@ export default function DeliveryReportsPage() {
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(15);
   const [status, setStatus] = React.useState("");
   const [q, setQ] = React.useState("");
   const [dateFilter, setDateFilter] = React.useState<DateFilterValue>(getTodayRange());
@@ -83,7 +84,7 @@ export default function DeliveryReportsPage() {
 
   const load = React.useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const params = new URLSearchParams({ page: String(page), pageSize: "15" });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (status) params.set("status", status);
     if (q) params.set("q", q);
     if (dateFilter.from) params.set("from", dateFilter.from);
@@ -104,7 +105,7 @@ export default function DeliveryReportsPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, status, q, dateFilter]);
+  }, [page, pageSize, status, q, dateFilter]);
 
   React.useEffect(() => {
     const t = setTimeout(() => { void load(false); }, 250);
@@ -113,7 +114,7 @@ export default function DeliveryReportsPage() {
 
   React.useEffect(() => {
     setSelectedReportIds(new Set());
-  }, [page, status, dateFilter]);
+  }, [page, pageSize, status, dateFilter]);
 
   const handleBulkStatus = async (action: string) => {
     if (selectedReportIds.size === 0 || bulkUpdating) return;
@@ -278,6 +279,27 @@ export default function DeliveryReportsPage() {
               setPage(1);
             }}
           />
+          {/* Page size select */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Show:</span>
+            <select
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 placeholder:text-slate-400 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400 [&>option]:bg-white dark:[&>option]:bg-[#0d1526]"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+                setSelectedReportIds(new Set());
+              }}
+              title="Items per page"
+            >
+              <option value={15}>15 / page</option>
+              <option value={25}>25 / page</option>
+              <option value={50}>50 / page</option>
+              <option value={100}>100 / page</option>
+              <option value={200}>200 / page</option>
+              <option value={10000}>Show All</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -511,7 +533,22 @@ export default function DeliveryReportsPage() {
         )}
       </div>
 
-      <Pagination page={page} pages={pages} total={total} onPage={setPage} />
+      <Pagination
+        page={page}
+        pages={pages}
+        total={total}
+        onPage={(p) => {
+          setPage(p);
+          setSelectedReportIds(new Set());
+        }}
+        pageSize={pageSize}
+        pageSizeOptions={[15, 25, 50, 100, 200, { value: 10000, label: "Show All" }]}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+          setSelectedReportIds(new Set());
+        }}
+      />
 
       <DeliveryReportManageDialog
         reportId={manageId}
