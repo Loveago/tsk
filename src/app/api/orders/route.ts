@@ -130,18 +130,37 @@ export async function POST(request: NextRequest) {
     // Check if any recipient number currently has an active in-flight order (§15).
     // If a number was part of a batch and was completed (SUCCESS), failed, or cancelled,
     // it should not be blocked regardless of other pending recipients in the batch.
+    const activeOrders: Array<{ phoneNumber: string; status: string; network?: string; gbAmount?: number }> = [];
     for (const o of deduplicatedOrders) {
       const latestOrder = await prisma.order.findFirst({
         where: { phoneNumber: o.phoneNumber },
         orderBy: { createdAt: "desc" },
-        select: { phoneNumber: true, status: true },
+        select: { phoneNumber: true, status: true, network: true, gbAmount: true },
       });
       if (latestOrder && (latestOrder.status === "PENDING" || latestOrder.status === "PROCESSING")) {
-        return apiError(
-          400,
-          `Cannot place order for ${latestOrder.phoneNumber}: this number currently has an active order in ${latestOrder.status.toLowerCase()} status.`
-        );
+        activeOrders.push({
+          phoneNumber: o.phoneNumber,
+          status: latestOrder.status,
+          network: latestOrder.network,
+          gbAmount: latestOrder.gbAmount,
+        });
       }
+    }
+    if (activeOrders.length > 0) {
+      const errorMessage =
+        activeOrders.length === 1
+          ? `Cannot place order for ${activeOrders[0].phoneNumber}: this number currently has an active order in ${activeOrders[0].status.toLowerCase()} status.`
+          : `${activeOrders.length} numbers currently have orders that are pending or processing: ${activeOrders.slice(0, 3).map((a) => a.phoneNumber).join(", ")}${activeOrders.length > 3 ? "..." : ""}`;
+
+      return NextResponse.json(
+        {
+          error: errorMessage,
+          code: "ACTIVE_ORDERS_EXIST",
+          activeNumbers: activeOrders.map((a) => a.phoneNumber),
+          activeOrders,
+        },
+        { status: 400 }
+      );
     }
 
     // MTN single order per number a day toggle check

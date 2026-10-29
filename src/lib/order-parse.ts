@@ -380,3 +380,34 @@ export function parseOrderLine(
 
   return { phoneNumber: phone, network: resolved, gbAmount: effectiveGb, price };
 }
+
+/**
+ * Removes lines from raw text that contain any of the specified phone numbers.
+ */
+export function removePhoneNumbersFromRawText(text: string, numbersToRemove: Set<string>): string {
+  if (!text) return "";
+  const lines = text.split(/\r?\n/);
+  const kept: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let match = false;
+    for (const num of numbersToRemove) {
+      if (line.includes(num)) {
+        match = true;
+        break;
+      }
+      const normNum = num.startsWith("0") ? num.slice(1) : num;
+      if (line.includes(normNum)) {
+        match = true;
+        break;
+      }
+    }
+    if (!match) {
+      kept.push(line);
+    }
+  }
+
+  return kept.join("\n");
+}

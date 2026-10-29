@@ -5,7 +5,14 @@ import Link from "next/link";
 import { useToast } from "@/components/toast";
 import { QueueList, SendSummary, type Line } from "@/components/send/queue-list";
 import { NETWORKS, formatGHS } from "@/lib/types";
-import { NETWORK_LABELS, parseOrderLine, normalizeTextNumbers, splitOrderLines, isHeaderLine } from "@/lib/order-parse";
+import {
+  NETWORK_LABELS,
+  parseOrderLine,
+  normalizeTextNumbers,
+  splitOrderLines,
+  isHeaderLine,
+  removePhoneNumbersFromRawText,
+} from "@/lib/order-parse";
 import { isMtnPrefix, detectNetworkNameByPrefix } from "@/lib/phone-utils";
 import { cn } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
@@ -16,6 +23,7 @@ import {
   AlertTriangle,
   Check,
   ClipboardPaste,
+  Clock,
   Copy,
   Download,
   FileUp,
@@ -84,6 +92,18 @@ export default function SendOrderPage() {
 
   const fileRef = React.useRef<HTMLInputElement>(null);
   const isSubmittingRef = React.useRef(false);
+
+  // State for confirming active orders (pending or processing)
+  const [pendingActiveOrders, setPendingActiveOrders] = React.useState<{
+    allOrders: Line[];
+    activeOrders: Array<{ phoneNumber: string; status: string; network?: string; gbAmount?: number }>;
+    activeNumbers: string[];
+    cleanOrders: Line[];
+    mode: "add" | "submit";
+    rawText: string | null;
+    skipped?: number;
+  } | null>(null);
+  const [copiedActiveNumbers, setCopiedActiveNumbers] = React.useState(false);
 
   // State for confirming unverified MTN numbers
   const [pendingUnverified, setPendingUnverified] = React.useState<{
@@ -261,6 +281,167 @@ export default function SendOrderPage() {
     );
   };
 
+  const checkActiveOrders = async (
+    phoneNumbers: string[]
+  ): Promise<{
+    hasActiveOrders: boolean;
+    activeNumbers: string[];
+    activeOrders: Array<{ phoneNumber: string; status: string; network?: string; gbAmount?: number }>;
+  }> => {
+    if (!phoneNumbers.length) {
+      return { hasActiveOrders: false, activeNumbers: [], activeOrders: [] };
+    }
+    try {
+      const res = await fetch("/api/orders/check-active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumbers }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.error("Failed to check active orders:", err);
+    }
+    return { hasActiveOrders: false, activeNumbers: [], activeOrders: [] };
+  };
+
+  const proceedWithMtnVerification = async (
+    itemsToAdd: Line[],
+    skipped = 0,
+    source?: string,
+    rawText?: string
+  ) => {
+    const mtnItems = itemsToAdd.filter((item) => item.network === "MTN");
+    if (mtnItems.length > 0) {
+      try {
+        const checkRes = await fetch("/api/mtn-verification/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phoneNumbers: mtnItems.map((item) => item.phoneNumber) }),
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
+          if (Boolean(checkData.verificationEnabled) && unverifiedList.length > 0) {
+            const unverifiedSet = new Set(unverifiedList);
+            setPendingUnverified({
+              toAdd: itemsToAdd,
+              unverifiedNumbers: unverifiedList,
+              verifiedItems: itemsToAdd.filter((item) => !unverifiedSet.has(item.phoneNumber)),
+              verificationEnabled: true,
+              rawText: source === "pasted text" ? (rawText ?? null) : null,
+              mode: "add",
+            });
+            return;
+          }
+        } else {
+          const errorData = await checkRes.json().catch(() => null);
+          toast(errorData?.message || "Failed to verify MTN numbers. Please try again.", "error");
+          return;
+        }
+      } catch {
+        toast("Network error verifying MTN numbers. Please try again.", "error");
+        return;
+      }
+    }
+
+    checkPortedAndAdd(itemsToAdd, skipped);
+  };
+
+  const confirmActiveOrdersRemoval = async () => {
+    if (!pendingActiveOrders) return;
+    const modal = pendingActiveOrders;
+    setPendingActiveOrders(null);
+
+    const activeSet = new Set(modal.activeNumbers);
+    const cleanOrders = modal.cleanOrders;
+    const activeCount = modal.activeNumbers.length;
+
+    // Remove matching numbers from textarea if rawText or bulkText is present
+    if (modal.rawText || bulkText.trim()) {
+      const sourceText = modal.rawText || bulkText;
+      const updatedText = removePhoneNumbersFromRawText(sourceText, activeSet);
+      setBulkText(updatedText);
+    }
+
+    if (modal.mode === "submit") {
+      setLines(cleanOrders);
+
+      if (cleanOrders.length === 0) {
+        isSubmittingRef.current = false;
+        setSubmitting(false);
+        toast("All entered orders have active orders in progress. Queue cleared.", "info");
+        return;
+      }
+
+      toast(
+        `Removed ${activeCount} active order(s). Continuing with remaining ${cleanOrders.length} order(s)...`,
+        "info"
+      );
+
+      await proceedSubmitFlow(cleanOrders);
+      return;
+    }
+
+    // modal.mode === "add"
+    if (cleanOrders.length === 0) {
+      toast("All entered numbers currently have active orders in progress. No orders added.", "info");
+      return;
+    }
+
+    toast(
+      `Removed ${activeCount} active number(s). Adding remaining ${cleanOrders.length} order(s)...`,
+      "info"
+    );
+
+    await proceedWithMtnVerification(
+      cleanOrders,
+      modal.skipped ?? 0,
+      "pasted text",
+      modal.rawText ?? undefined
+    );
+  };
+
+  const cancelActiveOrdersModal = () => {
+    isSubmittingRef.current = false;
+    setSubmitting(false);
+    setPendingActiveOrders(null);
+    toast("Action cancelled — active orders were not removed", "info");
+  };
+
+  const copyActiveNumbers = async () => {
+    if (!pendingActiveOrders) return;
+    const textToCopy = pendingActiveOrders.activeOrders
+      .map((item) => {
+        const orderLine = pendingActiveOrders.allOrders.find((l) => l.phoneNumber === item.phoneNumber);
+        const gb = orderLine?.gbAmount ? ` ${orderLine.gbAmount}GB` : "";
+        return `${item.phoneNumber}${gb} (${item.status})`;
+      })
+      .join("\n");
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = textToCopy;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopiedActiveNumbers(true);
+      toast(`Copied ${pendingActiveOrders.activeOrders.length} active numbers to clipboard`, "success");
+      setTimeout(() => setCopiedActiveNumbers(false), 2000);
+    } catch {
+      toast("Failed to copy to clipboard", "error");
+    }
+  };
+
   const addParsed = async (parsed: Line[], skipped: number, source: string, rawText?: string) => {
     if (!parsed.length) {
       toast(
@@ -312,42 +493,24 @@ export default function SendOrderPage() {
       return;
     }
 
-    // 3. Check for unverified MTN numbers
-    const mtnItems = toAdd.filter((item) => item.network === "MTN");
-    if (mtnItems.length > 0) {
-      try {
-        const checkRes = await fetch("/api/mtn-verification/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phoneNumbers: mtnItems.map((item) => item.phoneNumber) }),
-        });
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
-          if (Boolean(checkData.verificationEnabled) && unverifiedList.length > 0) {
-            const unverifiedSet = new Set(unverifiedList);
-            setPendingUnverified({
-              toAdd,
-              unverifiedNumbers: unverifiedList,
-              verifiedItems: toAdd.filter((item) => !unverifiedSet.has(item.phoneNumber)),
-              verificationEnabled: true,
-              rawText: source === "pasted text" ? (rawText ?? null) : null,
-              mode: "add",
-            });
-            return;
-          }
-        } else {
-          const errorData = await checkRes.json().catch(() => null);
-          toast(errorData?.message || "Failed to verify MTN numbers. Please try again.", "error");
-          return;
-        }
-      } catch {
-        toast("Network error verifying MTN numbers. Please try again.", "error");
-        return;
-      }
+    // 3. Check for active orders in PENDING or PROCESSING status
+    const activeCheck = await checkActiveOrders(toAdd.map((item) => item.phoneNumber));
+    if (activeCheck.hasActiveOrders && activeCheck.activeNumbers.length > 0) {
+      const activeSet = new Set(activeCheck.activeNumbers);
+      const cleanOrders = toAdd.filter((item) => !activeSet.has(item.phoneNumber));
+      setPendingActiveOrders({
+        allOrders: toAdd,
+        activeOrders: activeCheck.activeOrders,
+        activeNumbers: activeCheck.activeNumbers,
+        cleanOrders,
+        mode: "add",
+        rawText: source === "pasted text" ? (rawText ?? bulkText ?? null) : null,
+        skipped,
+      });
+      return;
     }
 
-    checkPortedAndAdd(toAdd, skipped);
+    await proceedWithMtnVerification(toAdd, skipped, source, rawText);
   };
 
   const confirmUnverifiedAddition = (includeUnverified: boolean) => {
@@ -615,6 +778,24 @@ export default function SendOrderPage() {
       });
       const json = await res.json();
       if (!res.ok) {
+        if (json.code === "ACTIVE_ORDERS_EXIST" || json.activeNumbers?.length) {
+          const activeNums: string[] = json.activeNumbers || [];
+          const activeSet = new Set(activeNums);
+          setPendingActiveOrders({
+            allOrders: ordersToSend,
+            activeNumbers: activeNums,
+            activeOrders:
+              json.activeOrders ||
+              activeNums.map((num: string) => ({
+                phoneNumber: num,
+                status: "PROCESSING",
+              })),
+            cleanOrders: ordersToSend.filter((l) => !activeSet.has(l.phoneNumber)),
+            mode: "submit",
+            rawText: bulkText || null,
+          });
+          return;
+        }
         if (res.status === 402 || json.error?.toLowerCase().includes("insufficient balance")) {
           const currentBal = userBalance ?? 0;
           const deficit = Math.max(0, orderCost - currentBal);
@@ -707,53 +888,74 @@ export default function SendOrderPage() {
         return;
       }
 
-      // Pre-submission check for any unverified MTN numbers
-      const mtnLines = ordersToSubmit.filter((l) => l.network === "MTN");
-      if (mtnLines.length > 0) {
-        try {
-          const checkRes = await fetch("/api/mtn-verification/check", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ phoneNumbers: mtnLines.map((l) => l.phoneNumber) }),
-          });
-          if (checkRes.ok) {
-            const checkData = await checkRes.json();
-            const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
-            if (Boolean(checkData.verificationEnabled) && unverifiedList.length > 0) {
-              isSubmittingRef.current = false;
-              setSubmitting(false);
-              const unverifiedSet = new Set(unverifiedList);
-              setPendingUnverified({
-                toAdd: ordersToSubmit,
-                unverifiedNumbers: unverifiedList,
-                verifiedItems: ordersToSubmit.filter((l) => !unverifiedSet.has(l.phoneNumber)),
-                verificationEnabled: true,
-                rawText: null,
-                mode: "submit",
-              });
-              return;
-            }
-          } else {
-            isSubmittingRef.current = false;
-            setSubmitting(false);
-            const errorData = await checkRes.json().catch(() => null);
-            toast(errorData?.message || "Failed to verify MTN numbers. Please try again.", "error");
-            return;
-          }
-        } catch {
-          isSubmittingRef.current = false;
-          setSubmitting(false);
-          toast("Network error verifying MTN numbers. Please try again.", "error");
-          return;
-        }
+      // Pre-submission check for numbers with active orders (pending or processing)
+      const activeCheck = await checkActiveOrders(ordersToSubmit.map((l) => l.phoneNumber));
+      if (activeCheck.hasActiveOrders && activeCheck.activeNumbers.length > 0) {
+        isSubmittingRef.current = false;
+        setSubmitting(false);
+        const activeSet = new Set(activeCheck.activeNumbers);
+        setPendingActiveOrders({
+          allOrders: ordersToSubmit,
+          activeOrders: activeCheck.activeOrders,
+          activeNumbers: activeCheck.activeNumbers,
+          cleanOrders: ordersToSubmit.filter((l) => !activeSet.has(l.phoneNumber)),
+          mode: "submit",
+          rawText: bulkText || null,
+        });
+        return;
       }
 
-      await executeOrderSubmission(ordersToSubmit);
+      await proceedSubmitFlow(ordersToSubmit);
     } catch (err) {
       isSubmittingRef.current = false;
       setSubmitting(false);
       toast("An unexpected error occurred while submitting orders", "error");
     }
+  };
+
+  const proceedSubmitFlow = async (ordersToSubmit: Line[]) => {
+    // Pre-submission check for any unverified MTN numbers
+    const mtnLines = ordersToSubmit.filter((l) => l.network === "MTN");
+    if (mtnLines.length > 0) {
+      try {
+        const checkRes = await fetch("/api/mtn-verification/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phoneNumbers: mtnLines.map((l) => l.phoneNumber) }),
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const unverifiedList: string[] = checkData.unverifiedNumbers ?? [];
+          if (Boolean(checkData.verificationEnabled) && unverifiedList.length > 0) {
+            isSubmittingRef.current = false;
+            setSubmitting(false);
+            const unverifiedSet = new Set(unverifiedList);
+            setPendingUnverified({
+              toAdd: ordersToSubmit,
+              unverifiedNumbers: unverifiedList,
+              verifiedItems: ordersToSubmit.filter((l) => !unverifiedSet.has(l.phoneNumber)),
+              verificationEnabled: true,
+              rawText: null,
+              mode: "submit",
+            });
+            return;
+          }
+        } else {
+          isSubmittingRef.current = false;
+          setSubmitting(false);
+          const errorData = await checkRes.json().catch(() => null);
+          toast(errorData?.message || "Failed to verify MTN numbers. Please try again.", "error");
+          return;
+        }
+      } catch {
+        isSubmittingRef.current = false;
+        setSubmitting(false);
+        toast("Network error verifying MTN numbers. Please try again.", "error");
+        return;
+      }
+    }
+
+    await executeOrderSubmission(ordersToSubmit);
   };
 
   return (
@@ -1269,6 +1471,124 @@ export default function SendOrderPage() {
               className="bg-brand-600 hover:bg-brand-700 text-white"
             >
               Proceed with All ({pendingPorted?.toAdd.length ?? 0})
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Confirmation modal for numbers with Pending/Processing orders */}
+      <Dialog
+        open={!!pendingActiveOrders}
+        onClose={cancelActiveOrdersModal}
+        title="Active Order(s) Detected"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <Clock className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div className="text-xs space-y-1">
+              <p className="font-semibold text-sm">
+                {pendingActiveOrders?.activeNumbers.length} number(s) have orders currently pending or processing.
+              </p>
+              <p className="text-amber-800/90 dark:text-amber-300/90 leading-relaxed">
+                Our system does not permit new orders for numbers with active orders in progress.
+                Click <strong>&quot;Remove and continue&quot;</strong> to exclude these numbers and proceed with the remaining orders.
+              </p>
+            </div>
+          </div>
+
+          <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Active Order(s) ({pendingActiveOrders?.activeNumbers.length ?? 0}):
+              </p>
+              <span className="text-[11px] text-slate-400">
+                {pendingActiveOrders?.cleanOrders.length ?? 0} order(s) will continue
+              </span>
+            </div>
+            <ul className="space-y-1.5 text-xs font-mono">
+              {pendingActiveOrders?.activeOrders.map((item) => {
+                const line = pendingActiveOrders.allOrders.find((l) => l.phoneNumber === item.phoneNumber);
+                const isProcessing = item.status?.toUpperCase() === "PROCESSING";
+                return (
+                  <li
+                    key={item.phoneNumber}
+                    className="flex items-center justify-between rounded-lg bg-white px-3 py-1.5 shadow-sm border border-slate-100 dark:border-slate-800 dark:bg-[#111c30]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 dark:text-slate-100">
+                        {item.phoneNumber}
+                      </span>
+                      {(line?.gbAmount || item.gbAmount) && (
+                        <span className="text-[11px] font-sans text-slate-500 dark:text-slate-400">
+                          ({line?.gbAmount || item.gbAmount} GB)
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-md px-2 py-0.5 font-sans text-[11px] font-bold tracking-wide uppercase",
+                        isProcessing
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                          : "bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-300"
+                      )}
+                    >
+                      {item.status || "PROCESSING"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div className="text-xs text-slate-600 dark:text-slate-300">
+            {pendingActiveOrders && pendingActiveOrders.cleanOrders.length > 0 ? (
+              <p>
+                You can remove these active numbers and proceed with the remaining <strong>{pendingActiveOrders.cleanOrders.length}</strong> order(s).
+              </p>
+            ) : (
+              <p className="text-amber-600 dark:text-amber-400 font-medium">
+                All numbers entered currently have active orders in progress.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={copyActiveNumbers}
+              className="gap-1.5"
+            >
+              {copiedActiveNumbers ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Copy list</span>
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={cancelActiveOrdersModal}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={confirmActiveOrdersRemoval}
+              className="bg-brand-600 hover:bg-brand-700 text-white font-semibold"
+            >
+              {pendingActiveOrders && pendingActiveOrders.cleanOrders.length > 0
+                ? `Remove and continue (${pendingActiveOrders.cleanOrders.length})`
+                : "Remove and continue"}
             </Button>
           </div>
         </div>
