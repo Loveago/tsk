@@ -11,7 +11,11 @@ export async function GET(request: NextRequest) {
     await requireAdmin();
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
-    const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
+    const pageSizeRaw = searchParams.get("pageSize");
+    const isAll = pageSizeRaw === "all" || pageSizeRaw === "0" || Number(pageSizeRaw) >= 10000;
+    const pageSize = isAll
+      ? 10000
+      : Math.min(500, Math.max(1, Number(pageSizeRaw ?? 20)));
     const role = searchParams.get("role");
     const status = searchParams.get("status");
     const balance = searchParams.get("balance");
@@ -65,11 +69,11 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const [data, total, awaitingPaymentCount, zeroBalanceCount, frozenCount, activeCount, paidRegistrationCount] = await Promise.all([
+    const [data, total, allUsersCount, awaitingPaymentCount, zeroBalanceCount, frozenCount, activeCount, paidRegistrationCount] = await Promise.all([
       prisma.user.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
+        skip: isAll ? 0 : (page - 1) * pageSize,
         take: pageSize,
         select: {
           id: true,
@@ -106,6 +110,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.user.count({ where }),
+      prisma.user.count(),
       prisma.user.count({ where: { status: "PENDING_PAYMENT" } }),
       prisma.user.count({ where: { balance: 0 } }),
       prisma.user.count({ where: { status: "FROZEN" } }),
@@ -147,9 +152,9 @@ export async function GET(request: NextRequest) {
       total,
       page,
       pageSize,
-      pages: Math.ceil(total / pageSize),
+      pages: isAll ? 1 : Math.max(1, Math.ceil(total / pageSize)),
       counts: {
-        total,
+        total: allUsersCount,
         awaitingPayment: awaitingPaymentCount,
         zeroBalance: zeroBalanceCount,
         frozen: frozenCount,

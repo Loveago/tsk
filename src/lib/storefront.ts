@@ -579,6 +579,7 @@ export async function settleStorefrontPayment(
   // Central MTN Number Verification Check (§16, §17)
   // Check verification but never block a paid order from being created for admin fulfillment
   let mtnNote: string | undefined;
+  let isUnverifiedMtn = false;
   try {
     const mtnCheck = await validateMtnOrderRecipient(
       row.customerPhone,
@@ -588,6 +589,12 @@ export async function settleStorefrontPayment(
     );
     if (!mtnCheck.allowed) {
       mtnNote = mtnCheck.reason ?? "MTN recipient phone number verification required";
+    }
+    if (mtnCheck.isUnverified) {
+      isUnverifiedMtn = true;
+      if (!mtnNote) {
+        mtnNote = "Unverified MTN recipient held for manual fulfillment";
+      }
     }
   } catch (err) {
     console.warn("MTN check warning during storefront settlement:", err);
@@ -607,6 +614,8 @@ export async function settleStorefrontPayment(
           status: "PENDING",
           source: "STOREFRONT",
           externalReference: row.paymentReference,
+          isUnverified: isUnverifiedMtn,
+          providerReference: isUnverifiedMtn ? "UNVERIFIED_HOLD" : null,
           failureReason: mtnNote ?? null,
         },
       });

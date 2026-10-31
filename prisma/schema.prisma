@@ -115,6 +115,7 @@ model Order {
   clickyfiedBatchId String?
   clickyfiedBatch   ClickyfiedBatch? @relation(fields: [clickyfiedBatchId], references: [id], onDelete: SetNull)
   isSandbox         Boolean        @default(false)
+  isUnverified      Boolean        @default(false)
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
@@ -132,6 +133,7 @@ model Order {
   @@index([userId, externalReference])
   @@index([apiCredentialId])
   @@index([isSandbox])
+  @@index([isUnverified])
   @@index([clickyfiedBatchId])
   @@index([externalReference])
 }

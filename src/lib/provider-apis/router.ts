@@ -247,6 +247,15 @@ export async function dispatchOrder(
     };
   }
 
+  if ((order.isUnverified || order.providerReference?.startsWith("UNVERIFIED_HOLD")) && !options.force) {
+    return {
+      success: false,
+      provider: "MANUAL",
+      status: order.status,
+      error: "Unverified MTN number held for manual fulfillment.",
+    };
+  }
+
   if (order.providerReference?.startsWith("CLICKYFIED_MANUAL_HOLD") && !options.force) {
     return {
       success: false,

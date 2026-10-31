@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get("q");
     const source = searchParams.get("source"); // WEB | API | STOREFRONT
     const excluded = searchParams.get("excluded") === "true";
+    const unverified = searchParams.get("unverified") === "true";
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
@@ -88,6 +89,24 @@ export async function GET(request: NextRequest) {
         delete where.OR;
       } else {
         where.OR = excludedConditions;
+      }
+    }
+
+    if (unverified) {
+      const unverifiedConditions: any[] = [
+        { isUnverified: true },
+        { providerReference: { startsWith: "UNVERIFIED_HOLD" } },
+      ];
+      if (where.AND && Array.isArray(where.AND)) {
+        where.AND.push({ OR: unverifiedConditions });
+      } else if (where.OR) {
+        where.AND = [
+          { OR: where.OR },
+          { OR: unverifiedConditions },
+        ];
+        delete where.OR;
+      } else {
+        where.OR = unverifiedConditions;
       }
     }
 

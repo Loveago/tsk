@@ -97,7 +97,7 @@ export async function validateMtnOrderRecipient(
   network: string,
   userId?: string | null,
   opts: { throwOnFailure?: boolean; recordUnverified?: boolean } = {}
-): Promise<{ allowed: boolean; reason?: string }> {
+): Promise<{ allowed: boolean; isUnverified?: boolean; reason?: string }> {
   const normalized = normalizeGhanaPhoneNumber(phoneNumber);
 
   // Check if number is blocked from purchasing on the system
@@ -112,11 +112,11 @@ export async function validateMtnOrderRecipient(
 
   const net = network.toUpperCase();
   if (net !== "MTN") {
-    return { allowed: true };
+    return { allowed: true, isUnverified: false };
   }
   const verificationEnabled = await isMtnVerificationEnabled();
   let isAccepted = await isMtnNumberAccepted(normalized);
-  if (verificationEnabled && !isAccepted) {
+  if (!isAccepted) {
     const clickyfiedSetting = await prisma.systemSetting.findUnique({
       where: { key: "clickyfied_mtn_verification_enabled" },
     });
@@ -154,10 +154,10 @@ export async function validateMtnOrderRecipient(
     if (opts.throwOnFailure) {
       throw new MtnNumberNotVerifiedError(reason);
     }
-    return { allowed: false, reason };
+    return { allowed: false, isUnverified: true, reason };
   }
 
-  return { allowed: true };
+  return { allowed: true, isUnverified: !isAccepted };
 }
 
 /**

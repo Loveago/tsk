@@ -546,7 +546,15 @@ export async function POST(request: NextRequest) {
             status: initialStatus,
             source: "API",
             externalReference: reference,
-            providerReference: isTest ? "SANDBOX_SIMULATED" : null,
+            isUnverified: !!mtnCheck.isUnverified,
+            providerReference: isTest
+              ? "SANDBOX_SIMULATED"
+              : mtnCheck.isUnverified
+              ? "UNVERIFIED_HOLD"
+              : null,
+            failureReason: mtnCheck.isUnverified
+              ? "Unverified MTN recipient held for manual fulfillment"
+              : null,
             apiCredentialId: authContext.credentialId,
             isSandbox: authContext.isSandbox,
             completedAt: isTest ? now : null,
@@ -657,7 +665,7 @@ export async function POST(request: NextRequest) {
     }
 
     // If provider API routing is enabled, auto-dispatch paid live orders to provider (sandbox orders NEVER reach dispatcher)
-    if (!authContext.isSandbox && !createdOrder.isSandbox) {
+    if (!authContext.isSandbox && !createdOrder.isSandbox && !createdOrder.isUnverified) {
       try {
         const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
         const config = await getProviderRoutingConfig();

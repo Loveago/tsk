@@ -7,6 +7,7 @@ import { SingleOrdersTable, type AdminOrderRow } from "@/components/admin/single
 import { ApiOrdersTable } from "@/components/admin/api-orders-table";
 import { StorefrontOrdersTable, type StorefrontOrderRow } from "@/components/admin/storefront-orders-table";
 import { ExcludedOrdersTable } from "@/components/admin/excluded-orders-table";
+import { UnverifiedOrdersTable } from "@/components/admin/unverified-orders-table";
 import { BatchDetailSheet } from "@/components/admin/batch-detail-sheet";
 import { QuickExportPanel } from "@/components/admin/quick-export-panel";
 import { Pagination } from "@/components/ui/pagination";
@@ -15,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet, FileText, ShieldAlert, RotateCcw } from "lucide-react";
+import { Layers, Search, Store, RefreshCw, Activity, Pause, Play, Clock, Code2, FileSpreadsheet, FileText, ShieldAlert, RotateCcw, AlertTriangle, UserCheck } from "lucide-react";
 import { downloadBase64 } from "@/components/batches/batch-ui";
 import { ClickyfiedBatchDispatchButton } from "@/components/admin/clickyfied-batch-dispatch-button";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
@@ -29,7 +30,7 @@ const STOREFRONT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "AWAITING_PAY
 const selectCls =
   "h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 placeholder:text-slate-400 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 dark:placeholder:text-slate-500 caret-brand-600 dark:caret-brand-400 [&>option]:bg-white dark:[&>option]:bg-[#0d1526]";
 
-type ViewMode = "batches" | "single" | "storefront" | "api" | "excluded";
+type ViewMode = "batches" | "single" | "storefront" | "api" | "excluded" | "unverified";
 
 export default function AdminOrdersPage() {
   const { toast } = useToast();
@@ -40,7 +41,11 @@ export default function AdminOrdersPage() {
   // ── view toggle ─────────────────────────────────────────────
   const initialView = searchParams.get("view");
   const [viewMode, setViewMode] = React.useState<ViewMode>(
-    initialView === "excluded" ? "excluded" : "batches"
+    initialView === "unverified"
+      ? "unverified"
+      : initialView === "excluded"
+      ? "excluded"
+      : "batches"
   );
 
   // ── shared filters ───────────────────────────────────────────
@@ -66,9 +71,9 @@ export default function AdminOrdersPage() {
       .catch(() => {/* use default */});
   }, []);
 
-  // auto-switch to single view when a phone number is typed in (except on storefront and excluded views)
+  // auto-switch to single view when a phone number is typed in (except on storefront, excluded, and unverified views)
   React.useEffect(() => {
-    if (viewMode !== "storefront" && viewMode !== "excluded" && /\d{3,}/.test(q.trim())) {
+    if (viewMode !== "storefront" && viewMode !== "excluded" && viewMode !== "unverified" && /\d{3,}/.test(q.trim())) {
       setViewMode("single");
       setPageSize(100);
     }
@@ -108,11 +113,31 @@ export default function AdminOrdersPage() {
   const [excludedPages, setExcludedPages] = React.useState(1);
   const [excludedBadgeCount, setExcludedBadgeCount] = React.useState(0);
 
+  // ── unverified orders state ──────────────────────────────────
+  const [unverifiedOrders, setUnverifiedOrders] = React.useState<AdminOrderRow[]>([]);
+  const [unverifiedTotal, setUnverifiedTotal] = React.useState(0);
+  const [unverifiedPages, setUnverifiedPages] = React.useState(1);
+  const [unverifiedBadgeCount, setUnverifiedBadgeCount] = React.useState(0);
+  const [reVerifying, setReVerifying] = React.useState(false);
+
   // ── data fetcher ─────────────────────────────────────────────
   const load = React.useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      if (viewMode === "excluded") {
+      if (viewMode === "unverified") {
+        const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), unverified: "true" });
+        if (network) params.set("network", network);
+        if (status) params.set("status", status);
+        if (q) params.set("q", q);
+        if (dateFilter.from) params.set("from", dateFilter.from);
+        if (dateFilter.to) params.set("to", dateFilter.to);
+        const res = await fetch(`/api/admin/orders?${params}`, { cache: "no-store" });
+        const json = await res.json();
+        setUnverifiedOrders(json.data ?? []);
+        setUnverifiedTotal(json.total ?? 0);
+        setUnverifiedPages(json.pages ?? 1);
+        setUnverifiedBadgeCount(json.total ?? 0);
+      } else if (viewMode === "excluded") {
         const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), excluded: "true" });
         if (network) params.set("network", network);
         if (status) params.set("status", status);
@@ -181,6 +206,14 @@ export default function AdminOrdersPage() {
         fetch("/api/admin/orders?excluded=true&pageSize=1", { cache: "no-store" })
           .then((r) => r.json())
           .then((d) => setExcludedBadgeCount(d.total ?? 0))
+          .catch(() => {});
+      }
+
+      // Keep unverified badge updated in the background if not on unverified tab
+      if (viewMode !== "unverified") {
+        fetch("/api/admin/orders?unverified=true&pageSize=1", { cache: "no-store" })
+          .then((r) => r.json())
+          .then((d) => setUnverifiedBadgeCount(d.total ?? 0))
           .catch(() => {});
       }
 
@@ -530,6 +563,35 @@ export default function AdminOrdersPage() {
     }
   };
 
+  // ── bulk re-verify unverified numbers against Clickify/system ───
+  const handleBulkReVerify = async () => {
+    if (selectedOrderIds.size === 0 || reVerifying) return;
+    try {
+      setReVerifying(true);
+      const res = await fetch("/api/admin/orders/re-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: Array.from(selectedOrderIds) }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to re-check verification", "error");
+        return;
+      }
+      if (json.verifiedCount > 0) {
+        toast(`Successfully verified ${json.verifiedCount} order(s)!`, "success");
+      } else {
+        toast("No new numbers were verified against Clickify or database.", "info");
+      }
+      await load();
+      setSelectedOrderIds(new Set());
+    } catch (err: any) {
+      toast(err?.message || "Failed to re-check verification", "error");
+    } finally {
+      setReVerifying(false);
+    }
+  };
+
   // ── derived ───────────────────────────────────────────────────
   const pageTitle =
     viewMode === "storefront"
@@ -538,6 +600,8 @@ export default function AdminOrdersPage() {
       ? "API Orders"
       : viewMode === "excluded"
       ? "API Excluded Orders"
+      : viewMode === "unverified"
+      ? "Unverified MTN Orders"
       : viewMode === "single"
       ? "Order Lookup"
       : "Batch Ops Center";
@@ -549,6 +613,8 @@ export default function AdminOrdersPage() {
       ? `${apiTotal} API order${apiTotal === 1 ? "" : "s"} received via Developer API`
       : viewMode === "excluded"
       ? `${excludedTotal} order${excludedTotal === 1 ? "" : "s"} excluded or held back by provider APIs for manual processing`
+      : viewMode === "unverified"
+      ? `${unverifiedTotal} order${unverifiedTotal === 1 ? "" : "s"} with unverified MTN numbers held for manual processing & export`
       : viewMode === "single"
       ? `${singleTotal} order${singleTotal === 1 ? "" : "s"}${q ? ` matching "${q}"` : ""}`
       : `${batchTotal} batch${batchTotal === 1 ? "" : "es"} — orders grouped per network`;
@@ -560,6 +626,8 @@ export default function AdminOrdersPage() {
       ? apiTotal
       : viewMode === "excluded"
       ? excludedTotal
+      : viewMode === "unverified"
+      ? unverifiedTotal
       : viewMode === "single"
       ? singleTotal
       : batchTotal;
@@ -570,6 +638,8 @@ export default function AdminOrdersPage() {
       ? apiPages
       : viewMode === "excluded"
       ? excludedPages
+      : viewMode === "unverified"
+      ? unverifiedPages
       : viewMode === "single"
       ? singlePages
       : batchPages;
@@ -725,6 +795,29 @@ export default function AdminOrdersPage() {
                     }`}
                   >
                     {excludedBadgeCount}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => switchView("unverified")}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition ${
+                  viewMode === "unverified"
+                    ? "bg-amber-600 text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+                title="Orders with unverified MTN recipient numbers captured for manual processing & export"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                <span>Unverified Orders</span>
+                {unverifiedBadgeCount > 0 && (
+                  <span
+                    className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                      viewMode === "unverified"
+                        ? "bg-white/25 text-white"
+                        : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {unverifiedBadgeCount}
                   </span>
                 )}
               </button>
@@ -918,14 +1011,16 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-      {/* Bulk action bar — Single orders, API orders, and Excluded orders */}
-      {(viewMode === "single" || viewMode === "api" || viewMode === "excluded") && selectedOrderIds.size > 0 && (
+      {/* Bulk action bar — Single orders, API orders, Excluded orders, and Unverified orders */}
+      {(viewMode === "single" || viewMode === "api" || viewMode === "excluded" || viewMode === "unverified") && selectedOrderIds.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-500/20 bg-brand-50/70 p-3 text-xs font-semibold text-brand-900 dark:bg-brand-500/10 dark:text-brand-200">
           <div className="flex items-center gap-2">
             <span>{selectedOrderIds.size} order(s) selected</span>
             {(() => {
               const currentList =
-                viewMode === "api"
+                viewMode === "unverified"
+                  ? unverifiedOrders
+                  : viewMode === "api"
                   ? apiOrders
                   : viewMode === "excluded"
                   ? excludedOrders
@@ -933,7 +1028,7 @@ export default function AdminOrdersPage() {
               return selectedOrderIds.size < currentList.length ? (
                 <button
                   type="button"
-                  disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+                  disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || reVerifying}
                   onClick={() => setSelectedOrderIds(new Set(currentList.map((o) => o.id)))}
                   className="underline hover:text-brand-700 dark:hover:text-brand-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -946,7 +1041,7 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || reVerifying}
               onClick={() => handleBulkSingleOrderStatus("Pending")}
             >
               Pending
@@ -954,7 +1049,7 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || reVerifying}
               onClick={() => handleBulkSingleOrderStatus("Processing")}
             >
               Processing
@@ -962,7 +1057,7 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || reVerifying}
               onClick={() => handleBulkSingleOrderStatus("Processed")}
             >
               Processed
@@ -970,15 +1065,36 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || reVerifying}
               onClick={() => handleBulkSingleOrderStatus("Refund")}
             >
               Refund
             </Button>
+            {viewMode === "unverified" && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={reVerifying || bulkUpdatingStatus || exportingToExcel}
+                onClick={handleBulkReVerify}
+                className="border-amber-500/40 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                {reVerifying ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-600" />
+                    <span>Checking...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>Re-check Verification</span>
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || reVerifying}
               onClick={handleBulkExportToExcel}
               className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-400 dark:hover:bg-emerald-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
             >
@@ -997,7 +1113,7 @@ export default function AdminOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToTxt || exportingToExcel}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToTxt || exportingToExcel || reVerifying}
               onClick={handleBulkExportToTxt}
               className="border-sky-500/40 text-sky-700 hover:bg-sky-50 hover:text-sky-800 dark:border-sky-500/40 dark:text-sky-400 dark:hover:bg-sky-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
             >
@@ -1013,25 +1129,27 @@ export default function AdminOrdersPage() {
                 </>
               )}
             </Button>
-            <Button
-              size="sm"
-              variant="default"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || exportingToTxt}
-              onClick={handleBulkDispatchToApi}
-              className="bg-brand-600 hover:bg-brand-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              {dispatchingToApi ? (
-                <>
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  <span>Dispatching to API...</span>
-                </>
-              ) : (
-                <span>⚡ Dispatch to API</span>
-              )}
-            </Button>
+            {viewMode !== "unverified" && (
+              <Button
+                size="sm"
+                variant="default"
+                disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || exportingToTxt}
+                onClick={handleBulkDispatchToApi}
+                className="bg-brand-600 hover:bg-brand-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                {dispatchingToApi ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Dispatching to API...</span>
+                  </>
+                ) : (
+                  <span>⚡ Dispatch to API</span>
+                )}
+              </Button>
+            )}
             <button
               type="button"
-              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || exportingToTxt}
+              disabled={dispatchingToApi || bulkUpdatingStatus || exportingToExcel || exportingToTxt || reVerifying}
               onClick={() => setSelectedOrderIds(new Set())}
               className="ml-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1042,7 +1160,29 @@ export default function AdminOrdersPage() {
       )}
 
       {/* Tables */}
-      {viewMode === "storefront" ? (
+      {viewMode === "unverified" ? (
+        <UnverifiedOrdersTable
+          orders={unverifiedOrders}
+          loading={loading}
+          selectedIds={selectedOrderIds}
+          onToggleSelectRow={(id) => {
+            setSelectedOrderIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            });
+          }}
+          onToggleSelectAll={() => {
+            if (selectedOrderIds.size === unverifiedOrders.length && unverifiedOrders.length > 0) {
+              setSelectedOrderIds(new Set());
+            } else {
+              setSelectedOrderIds(new Set(unverifiedOrders.map((o) => o.id)));
+            }
+          }}
+          onChangeStatus={handleSingleOrderStatusChange}
+        />
+      ) : viewMode === "storefront" ? (
         <StorefrontOrdersTable orders={sfOrders} loading={loading} />
       ) : viewMode === "api" ? (
         <ApiOrdersTable

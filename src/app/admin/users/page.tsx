@@ -6,6 +6,7 @@ import { UserFormDialog } from "@/components/admin/user-form-dialog";
 import { AdminUsersTable, type UserRow } from "@/components/admin/admin-users-table";
 import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
 import { ExportButtons } from "@/components/admin/export-buttons";
+import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
@@ -21,6 +22,7 @@ import {
   AlertTriangle,
   Zap,
   Receipt,
+  ListFilter,
 } from "lucide-react";
 
 export default function AdminUsersPage() {
@@ -29,6 +31,7 @@ export default function AdminUsersPage() {
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState<number>(20);
   const [loading, setLoading] = React.useState(true);
 
   // Current logged in admin
@@ -87,7 +90,7 @@ export default function AdminUsersPage() {
 
   const load = React.useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), pageSize: "20" });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (q) params.set("q", q);
     if (role) params.set("role", role);
     if (status) params.set("status", status);
@@ -111,7 +114,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, role, status, balance, pricingProfileId, hasOrders, hasSignupCode, registrationPayment, toast]);
+  }, [page, pageSize, q, role, status, balance, pricingProfileId, hasOrders, hasSignupCode, registrationPayment, toast]);
 
   React.useEffect(() => {
     const t = setTimeout(load, 250);
@@ -232,7 +235,8 @@ export default function AdminUsersPage() {
     Boolean(pricingProfileId) ||
     Boolean(hasOrders) ||
     Boolean(hasSignupCode) ||
-    Boolean(registrationPayment);
+    Boolean(registrationPayment) ||
+    pageSize !== 20;
 
   const clearAllFilters = () => {
     setQ("");
@@ -243,6 +247,7 @@ export default function AdminUsersPage() {
     setHasOrders("");
     setHasSignupCode("");
     setRegistrationPayment("");
+    setPageSize(20);
     setPage(1);
   };
 
@@ -273,16 +278,37 @@ export default function AdminUsersPage() {
           onClick={() => {
             setStatus("");
             setBalance("");
+            setRegistrationPayment("");
             setPage(1);
           }}
           className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
-            !status && !balance
+            !status && !balance && !registrationPayment && pageSize < 10000
               ? "bg-brand-600 text-white shadow-sm"
               : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
           }`}
         >
           All Users
           <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.2 text-[10px]">
+            {counts.total}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setPageSize(pageSize >= 10000 ? 20 : 10000);
+            setPage(1);
+          }}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+            pageSize >= 10000
+              ? "bg-blue-600 text-white shadow-sm ring-2 ring-blue-500/30"
+              : "bg-blue-50 text-blue-800 border border-blue-200/80 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800/40"
+          }`}
+          title={pageSize >= 10000 ? "Switch back to paginated view (20 / page)" : "Show all users on a single view without pagination"}
+        >
+          <Users className="h-3.5 w-3.5" />
+          {pageSize >= 10000 ? "Showing All Users" : "Show All Users"}
+          <span className="rounded-full bg-blue-600/20 dark:bg-blue-400/20 px-1.5 py-0.2 text-[10px] font-bold">
             {counts.total}
           </span>
         </button>
@@ -515,6 +541,23 @@ export default function AdminUsersPage() {
           <option value="exempt">Fee Exempt / Free</option>
         </Select>
 
+        {/* Page Size / Show All Filter */}
+        <Select
+          value={String(pageSize)}
+          onChange={(e) => {
+            setPageSize(Number(e.target.value));
+            setPage(1);
+          }}
+          className="w-40 h-9 text-xs font-medium"
+          title="Filter number of users displayed per page"
+        >
+          <option value="20">20 / page</option>
+          <option value="50">50 / page</option>
+          <option value="100">100 / page</option>
+          <option value="200">200 / page</option>
+          <option value="10000">Show All Users</option>
+        </Select>
+
         {hasActiveFilters && (
           <Button
             size="sm"
@@ -652,31 +695,18 @@ export default function AdminUsersPage() {
       />
 
       {/* Pagination */}
-      {pages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">
-            Page {page} of {pages} ({total} total)
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= pages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        pages={pages}
+        total={total}
+        onPage={setPage}
+        pageSize={pageSize}
+        pageSizeOptions={[20, 50, 100, 200, { value: 10000, label: "Show All" }]}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+        }}
+      />
 
       {/* Single User Deletion Confirmation Dialog */}
       <Dialog

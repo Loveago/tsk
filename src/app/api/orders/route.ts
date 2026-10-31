@@ -273,6 +273,7 @@ export async function POST(request: NextRequest) {
 
     // Validate MTN numbers before balance deduction in batch (§2, §16)
     const mtnOrders = deduplicatedOrders.filter((o) => o.network.toUpperCase() === "MTN");
+    const acceptedMtnSet = new Set<string>();
     if (mtnOrders.length > 0) {
       const verificationEnabled = await isMtnVerificationEnabled();
       const mtnCanonicalList = Array.from(
@@ -282,46 +283,48 @@ export async function POST(request: NextRequest) {
         where: { normalizedNumber: { in: mtnCanonicalList } },
         select: { normalizedNumber: true },
       });
-      const acceptedSet = new Set(acceptedRows.map((r) => r.normalizedNumber));
+      for (const r of acceptedRows) {
+        acceptedMtnSet.add(r.normalizedNumber);
+      }
 
-      if (verificationEnabled) {
-        let unverified = mtnOrders.filter(
-          (o) => !acceptedSet.has(normalizeGhanaPhoneNumber(o.phoneNumber))
-        );
+      // Check unverified against Clickyfied if verification API is enabled
+      let unverified = mtnOrders.filter(
+        (o) => !acceptedMtnSet.has(normalizeGhanaPhoneNumber(o.phoneNumber))
+      );
 
-        // Fallback: If Clickyfied verification is enabled, check unverified numbers against Clickyfied
-        if (unverified.length > 0) {
-          const clickyfiedSetting = await prisma.systemSetting.findUnique({
-            where: { key: "clickyfied_mtn_verification_enabled" },
-          });
-          if (clickyfiedSetting?.value === "true") {
-            try {
-              const { getProviderRoutingConfig } = await import("@/lib/provider-apis/router");
-              const { ClickyfiedClient } = await import("@/lib/provider-apis/clickyfied");
-              const { addAcceptedMtnNumber } = await import("@/lib/mtn-verification");
-              const config = await getProviderRoutingConfig();
-              const client = new ClickyfiedClient(config.clickyfied);
-              const unverifiedPhones = Array.from(
-                new Set(unverified.map((o) => normalizeGhanaPhoneNumber(o.phoneNumber)))
-              );
-              const res = await client.verifyNumbers(unverifiedPhones);
-              const validNorms = new Set(res.validNumbers.map((n) => normalizeGhanaPhoneNumber(n)));
-              for (const phone of unverifiedPhones) {
-                if (validNorms.has(phone)) {
-                  await addAcceptedMtnNumber(phone, "CLICKYFIED_API", "Automated Verification API").catch(() => {});
-                  acceptedSet.add(phone);
-                }
+      if (unverified.length > 0) {
+        const clickyfiedSetting = await prisma.systemSetting.findUnique({
+          where: { key: "clickyfied_mtn_verification_enabled" },
+        });
+        if (clickyfiedSetting?.value === "true") {
+          try {
+            const { getProviderRoutingConfig } = await import("@/lib/provider-apis/router");
+            const { ClickyfiedClient } = await import("@/lib/provider-apis/clickyfied");
+            const { addAcceptedMtnNumber } = await import("@/lib/mtn-verification");
+            const config = await getProviderRoutingConfig();
+            const client = new ClickyfiedClient(config.clickyfied);
+            const unverifiedPhones = Array.from(
+              new Set(unverified.map((o) => normalizeGhanaPhoneNumber(o.phoneNumber)))
+            );
+            const res = await client.verifyNumbers(unverifiedPhones);
+            const validNorms = new Set(res.validNumbers.map((n) => normalizeGhanaPhoneNumber(n)));
+            for (const phone of unverifiedPhones) {
+              if (validNorms.has(phone)) {
+                await addAcceptedMtnNumber(phone, "CLICKYFIED_API", "Automated Verification API").catch(() => {});
+                acceptedMtnSet.add(phone);
               }
-              // Recompute remaining unverified
-              unverified = mtnOrders.filter(
-                (o) => !acceptedSet.has(normalizeGhanaPhoneNumber(o.phoneNumber))
-              );
-            } catch (err) {
-              console.error("Clickyfied verification check in /api/orders error:", err);
             }
+            // Recompute remaining unverified
+            unverified = mtnOrders.filter(
+              (o) => !acceptedMtnSet.has(normalizeGhanaPhoneNumber(o.phoneNumber))
+            );
+          } catch (err) {
+            console.error("Clickyfied verification check in /api/orders error:", err);
           }
         }
+      }
 
+      if (verificationEnabled) {
         if (unverified.length > 0) {
           // Record unverified numbers in BlockedMtnNumber registry for admin review & verification
           const unverifiedItems = unverified.map((o) => ({ number: o.phoneNumber, userId: user.id }));
@@ -338,9 +341,7 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // Verification toggle is OFF: allow orders, but log unverified numbers in bulk
-        const unverifiedItems = mtnOrders
-          .filter((o) => !acceptedSet.has(normalizeGhanaPhoneNumber(o.phoneNumber)))
-          .map((o) => ({ number: o.phoneNumber, userId: user.id }));
+        const unverifiedItems = unverified.map((o) => ({ number: o.phoneNumber, userId: user.id }));
         if (unverifiedItems.length > 0) {
           await recordUnverifiedMtnNumbersBatch(unverifiedItems).catch((err) => {
             console.error("Failed to record unverified MTN numbers during order submission:", err);
@@ -412,11 +413,28 @@ export async function POST(request: NextRequest) {
                   source: "WEB",
                   batchId: batch.id,
                   isSandbox: false,
+                  isUnverified:
+                    o.network.toUpperCase() === "MTN" &&
+                    !acceptedMtnSet.has(normalizeGhanaPhoneNumber(o.phoneNumber)),
+                  providerReference:
+                    o.network.toUpperCase() === "MTN" &&
+                    !acceptedMtnSet.has(normalizeGhanaPhoneNumber(o.phoneNumber))
+                      ? "UNVERIFIED_HOLD"
+                      : null,
+                  failureReason:
+                    o.network.toUpperCase() === "MTN" &&
+                    !acceptedMtnSet.has(normalizeGhanaPhoneNumber(o.phoneNumber))
+                      ? "Unverified MTN recipient held for manual fulfillment"
+                      : null,
                   history: {
                     create: {
                       status: "PENDING",
                       previousStatus: null,
-                      note: "Order created via dashboard",
+                      note:
+                        o.network.toUpperCase() === "MTN" &&
+                        !acceptedMtnSet.has(normalizeGhanaPhoneNumber(o.phoneNumber))
+                          ? "Order placed with unverified MTN number — held for manual fulfillment"
+                          : "Order created via dashboard",
                       changedBy: user.email || "web",
                     },
                   },
@@ -495,10 +513,13 @@ export async function POST(request: NextRequest) {
       const { getProviderRoutingConfig, dispatchOrdersBatch, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
       const config = await getProviderRoutingConfig();
       if (shouldAutoDispatch(config)) {
-        // Trigger batch dispatch
-        dispatchOrdersBatch(created.map((o) => o.id)).catch((err) => {
-          console.error("Auto dispatch error:", err);
-        });
+        // Trigger batch dispatch for verified orders only
+        const dispatchableIds = created.filter((o) => !o.isUnverified).map((o) => o.id);
+        if (dispatchableIds.length > 0) {
+          dispatchOrdersBatch(dispatchableIds).catch((err) => {
+            console.error("Auto dispatch error:", err);
+          });
+        }
       }
     } catch (err) {
       console.error("Auto-dispatch check error:", err);

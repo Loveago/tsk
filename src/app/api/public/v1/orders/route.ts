@@ -169,6 +169,7 @@ export async function POST(request: NextRequest) {
           throw new Error("INSUFFICIENT_BALANCE");
         }
 
+        const isUnverifiedMtn = !!mtnCheck.isUnverified;
         const createdOrder = await tx.order.create({
           data: {
             userId,
@@ -180,6 +181,9 @@ export async function POST(request: NextRequest) {
             status: "PENDING",
             source: "API",
             isSandbox: false,
+            isUnverified: isUnverifiedMtn,
+            providerReference: isUnverifiedMtn ? "UNVERIFIED_HOLD" : null,
+            failureReason: isUnverifiedMtn ? "Unverified MTN recipient held for manual fulfillment" : null,
           },
         });
 
@@ -239,7 +243,7 @@ export async function POST(request: NextRequest) {
     try {
       const { getProviderRoutingConfig, dispatchOrder, shouldAutoDispatch } = await import("@/lib/provider-apis/router");
       const config = await getProviderRoutingConfig();
-      if (shouldAutoDispatch(config)) {
+      if (shouldAutoDispatch(config) && !order.isUnverified) {
         dispatchOrder(order.id).catch((err) => {
           console.error(`Auto-dispatch failed for public v1 order #${order.id}:`, err);
         });
