@@ -221,7 +221,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "SET_PROFILE") {
-      const profileId = data?.pricingProfileId || null;
+      const profileId = data?.pricingProfileId && data.pricingProfileId !== "none" ? data.pricingProfileId : null;
+      if (profileId) {
+        const exists = await prisma.pricingProfile.findUnique({ where: { id: profileId } });
+        if (!exists) {
+          return apiError(404, "Selected pricing profile does not exist");
+        }
+      }
       const res = await prisma.user.updateMany({
         where: { id: { in: targetUserIds } },
         data: { pricingProfileId: profileId },

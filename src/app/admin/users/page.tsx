@@ -23,6 +23,7 @@ import {
   Zap,
   Receipt,
   ListFilter,
+  BadgePercent,
 } from "lucide-react";
 
 export default function AdminUsersPage() {
@@ -78,6 +79,8 @@ export default function AdminUsersPage() {
     isDestructive?: boolean;
   } | null>(null);
   const [bulkProcessing, setBulkProcessing] = React.useState(false);
+  const [bulkProfileDialogOpen, setBulkProfileDialogOpen] = React.useState(false);
+  const [selectedBulkProfileId, setSelectedBulkProfileId] = React.useState("");
 
   React.useEffect(() => {
     fetch("/api/auth/me")
@@ -222,6 +225,32 @@ export default function AdminUsersPage() {
       load();
     } catch {
       toast("Bulk action failed", "error");
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleExecuteBulkProfileChange = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkProcessing(true);
+    try {
+      const res = await fetch("/api/admin/users/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "SET_PROFILE",
+          userIds: selectedIds,
+          data: { pricingProfileId: selectedBulkProfileId || null },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) return toast(json.error ?? "Failed to change pricing profile", "error");
+      toast(json.message ?? "Pricing profile updated", "success");
+      setSelectedIds([]);
+      setBulkProfileDialogOpen(false);
+      load();
+    } catch {
+      toast("Failed to change pricing profile", "error");
     } finally {
       setBulkProcessing(false);
     }
@@ -610,6 +639,20 @@ export default function AdminUsersPage() {
               Bulk Activate
             </Button>
 
+            {/* Bulk Pricing Profile */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setSelectedBulkProfileId("");
+                setBulkProfileDialogOpen(true);
+              }}
+              className="h-8 text-xs font-semibold text-brand-700 bg-brand-50 border-brand-300 hover:bg-brand-100 dark:bg-brand-950/40 dark:border-brand-700 dark:text-brand-300"
+            >
+              <BadgePercent className="h-3.5 w-3.5 mr-1" />
+              Change Pricing Profile
+            </Button>
+
             {/* Bulk Freeze */}
             <Button
               size="sm"
@@ -788,6 +831,58 @@ export default function AdminUsersPage() {
               }
             >
               {bulkProcessing ? "Processing…" : "Confirm & Proceed"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Bulk Change Pricing Profile Dialog */}
+      <Dialog
+        open={bulkProfileDialogOpen}
+        onClose={() => setBulkProfileDialogOpen(false)}
+        title={`Change Pricing Profile (${selectedIds.length} user${selectedIds.length === 1 ? "" : "s"})`}
+      >
+        <div className="space-y-4 text-sm">
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            Select the pricing profile you want to assign to the{" "}
+            <span className="font-semibold text-slate-900 dark:text-white">
+              {selectedIds.length} selected user(s)
+            </span>
+            . All future data bundle orders placed by these accounts will follow the rates of the selected profile.
+          </p>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Target Pricing Profile
+            </label>
+            <select
+              value={selectedBulkProfileId}
+              onChange={(e) => setSelectedBulkProfileId(e.target.value)}
+              className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-900 outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-100 cursor-pointer"
+            >
+              <option value="">Default (Standard Platform Pricing)</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkProfileDialogOpen(false)}
+              disabled={bulkProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExecuteBulkProfileChange}
+              disabled={bulkProcessing}
+              className="bg-brand-600 text-white hover:bg-brand-700"
+            >
+              {bulkProcessing ? "Updating…" : `Apply to ${selectedIds.length} User(s)`}
             </Button>
           </div>
         </div>
