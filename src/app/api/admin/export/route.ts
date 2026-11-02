@@ -24,6 +24,7 @@ const orderColumns: ExportColumn[] = [
 const userColumns: ExportColumn[] = [
   { key: "name", header: "Name", width: 22 },
   { key: "email", header: "Email", width: 28 },
+  { key: "phone", header: "Phone", width: 16 },
   { key: "role", header: "Role", width: 10 },
   { key: "status", header: "Status", width: 10 },
   { key: "balance", header: "Balance (GHS)", width: 14 },
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
         include: { _count: { select: { orders: true } } },
       });
       rows = users.map((u) => ({
-        name: u.name, email: u.email, role: u.role, status: u.status,
+        name: u.name, email: u.email, phone: u.phone || "", role: u.role, status: u.status,
         balance: u.balance, orders: u._count.orders,
         lastLogin: fmt(u.lastLoginAt), createdAt: fmt(u.createdAt),
       }));

@@ -6,6 +6,7 @@ import { fromPesewas } from "@/lib/storefront";
 import { getGeminiProSettings } from "@/lib/gemini-pro";
 import { NetworkLogo } from "@/components/store/network-logo";
 import { NetworkWheel } from "@/components/store/network-wheel";
+import { LiveDeliverySpeedCard } from "@/components/send/live-delivery-speed-card";
 import { NETWORK_BRANDS, NETWORK_ORDER, ghs, networkHref, storeHref } from "@/components/store/brands";
 import { TrackForm } from "./track/track-form";
 import type { NetworkProvider } from "@/lib/types";
@@ -199,6 +200,11 @@ export default async function PublicStorePage({
 
         {/* Spinning network wheel */}
         <NetworkWheel slug={slug} storeName={storefront.name} networks={groups.map((g) => g.network)} />
+      </section>
+
+      {/* Live Delivery Speed Tracker */}
+      <section className="mx-auto max-w-6xl px-4 pb-6">
+        <LiveDeliverySpeedCard network="MTN" />
       </section>
 
       {/* Shop grid */}

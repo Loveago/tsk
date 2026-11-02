@@ -317,7 +317,7 @@ export default function AdminSettingsPage() {
                     Live Delivery Speed & Estimated Wait Tracker
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Toggle display of the live delivery turnaround speed card and recent delivered orders showcase on the Send Orders page (`/dashboard/send`).
+                    Toggle display of the live delivery turnaround speed card and recent delivered orders showcase on Send Orders (`/dashboard/send`) and customer Storefronts.
                   </p>
                 </div>
                 <button
@@ -349,7 +349,7 @@ export default function AdminSettingsPage() {
                 }`}
               >
                 {liveDeliverySpeedOn
-                  ? "✓ Live delivery speed tracker is ACTIVE on Send Orders page"
+                  ? "✓ Live delivery speed tracker is ACTIVE on Send Orders & Storefronts"
                   : "✕ Live delivery speed tracker is HIDDEN / OFF"}
               </p>
             </div>

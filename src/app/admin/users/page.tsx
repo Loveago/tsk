@@ -6,6 +6,7 @@ import { UserFormDialog } from "@/components/admin/user-form-dialog";
 import { AdminUsersTable, type UserRow } from "@/components/admin/admin-users-table";
 import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
 import { ExportButtons } from "@/components/admin/export-buttons";
+import { ExportUserNumbersButton } from "@/components/admin/export-user-numbers-button";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -287,6 +288,7 @@ export default function AdminUsersPage() {
         description={`${total} registered users found`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <ExportUserNumbersButton />
             <ExportButtons type="users" />
             <Button
               onClick={() => {

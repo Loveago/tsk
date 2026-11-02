@@ -5,6 +5,7 @@ import { fromPesewas } from "@/lib/storefront";
 import { NetworkLogo } from "@/components/store/network-logo";
 import { NETWORK_BRANDS, ghs, networkBySlug, storeHref } from "@/components/store/brands";
 import { NetworkBuyForm } from "./buy-form";
+import { LiveDeliverySpeedCard } from "@/components/send/live-delivery-speed-card";
 
 import { Clock } from "lucide-react";
 import { isNetworkOrdersPaused } from "@/lib/orders";
@@ -149,10 +150,15 @@ export default async function NetworkPage({
       </nav>
 
       <div className="grid items-start gap-4 sm:gap-6 lg:grid-cols-2">
-        {/* Brand logo card — desktop only; mobile keeps the page compact */}
-        <div className={`sticky top-24 hidden rounded-3xl lg:block ${brand.dim} p-8 sm:p-14`}>
-          <div className={`mx-auto aspect-square max-w-sm overflow-hidden rounded-2xl ${brand.tile}`}>
-            <NetworkLogo network={network} className="h-full w-full" />
+        {/* Brand logo card + live delivery speed — desktop sticky */}
+        <div className="space-y-4 lg:sticky lg:top-24">
+          <div className={`hidden rounded-3xl lg:block ${brand.dim} p-8 sm:p-14`}>
+            <div className={`mx-auto aspect-square max-w-sm overflow-hidden rounded-2xl ${brand.tile}`}>
+              <NetworkLogo network={network} className="h-full w-full" />
+            </div>
+          </div>
+          <div className="hidden lg:block">
+            <LiveDeliverySpeedCard network={network} />
           </div>
         </div>
 
@@ -167,6 +173,11 @@ export default async function NetworkPage({
           <p className="mt-2 text-lg font-bold text-slate-900 dark:text-white">
             {ghs(Math.min(...prices))} <span className="font-normal text-slate-400">–</span> {ghs(Math.max(...prices))}
           </p>
+
+          <div className="my-4 lg:hidden">
+            <LiveDeliverySpeedCard network={network} />
+          </div>
+
           <NetworkBuyForm
             slug={slug}
             network={network}
