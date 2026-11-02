@@ -157,9 +157,11 @@ export default async function NetworkPage({
               <NetworkLogo network={network} className="h-full w-full" />
             </div>
           </div>
-          <div className="hidden lg:block">
-            <LiveDeliverySpeedCard network={network} />
-          </div>
+          {network === "MTN" && (
+            <div className="hidden lg:block">
+              <LiveDeliverySpeedCard network="MTN" />
+            </div>
+          )}
         </div>
 
         {/* Packages + buy form */}
@@ -174,9 +176,11 @@ export default async function NetworkPage({
             {ghs(Math.min(...prices))} <span className="font-normal text-slate-400">–</span> {ghs(Math.max(...prices))}
           </p>
 
-          <div className="my-4 lg:hidden">
-            <LiveDeliverySpeedCard network={network} />
-          </div>
+          {network === "MTN" && (
+            <div className="my-4 lg:hidden">
+              <LiveDeliverySpeedCard network="MTN" />
+            </div>
+          )}
 
           <NetworkBuyForm
             slug={slug}
