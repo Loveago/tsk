@@ -31,11 +31,6 @@ export async function GET(request: NextRequest) {
         balance: true,
         createdAt: true,
         _count: { select: { orders: true } },
-        orders: {
-          take: 1,
-          orderBy: { createdAt: "desc" },
-          select: { phoneNumber: true },
-        },
       },
     });
 
@@ -56,9 +51,8 @@ export async function GET(request: NextRequest) {
     }> = [];
 
     for (const u of users) {
-      const rawPhone = u.phone || u.orders?.[0]?.phoneNumber;
-      if (!rawPhone) continue;
-      const normalized = normalizeGhanaPhoneNumber(rawPhone);
+      if (!u.phone) continue;
+      const normalized = normalizeGhanaPhoneNumber(u.phone);
       if (normalized && (isValidGhanaPhoneNumber(normalized) || normalized.length >= 9)) {
         cleanNumbersSet.add(normalized);
         userRowsWithPhone.push({
