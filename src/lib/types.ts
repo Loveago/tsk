@@ -176,6 +176,7 @@ export interface AuthUser {
   role: UserRole;
   status: string;
   balance: number;
+  phone?: string | null;
   pricingProfileId: string | null;
 }
 

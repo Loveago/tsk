@@ -1,10 +1,27 @@
 import { z } from "zod";
 import { ORDER_STATUSES, NETWORKS, ROLES } from "./types";
+import {
+  GHANA_PHONE_REGEX as ghanaPhoneRegex,
+  MTN_PHONE_REGEX as mtnPhoneRegex,
+  normalizeGhanaPhoneNumber,
+} from "./phone-utils";
 
 // ---------- Auth ----------
 export const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(80),
   email: z.string().email("Enter a valid email"),
+  phone: z
+    .string({ required_error: "Phone number is required" })
+    .trim()
+    .min(9, "Phone number is too short")
+    .max(16, "Phone number is too long")
+    .refine(
+      (val) => {
+        const norm = normalizeGhanaPhoneNumber(val);
+        return ghanaPhoneRegex.test(norm);
+      },
+      "Enter a valid Ghana phone number (e.g. 0244123456)"
+    ),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
@@ -42,12 +59,6 @@ export const updateProfileSchema = z.object({
 export {
   normalizeGhanaPhoneNumber,
   normalizeGhanaPhone,
-} from "./phone-utils";
-
-import {
-  GHANA_PHONE_REGEX as ghanaPhoneRegex,
-  MTN_PHONE_REGEX as mtnPhoneRegex,
-  normalizeGhanaPhoneNumber,
 } from "./phone-utils";
 
 export const phoneSchema = z.preprocess(

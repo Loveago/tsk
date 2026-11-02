@@ -10,6 +10,7 @@ import { handleRouteError, apiError, getRequestOrigin } from "@/lib/api-helpers"
 import { getDefaultProfileId } from "@/lib/orders";
 import { getSignupCodeMode, applySignupCodeInTx, validateSignupCode } from "@/lib/signup-codes";
 import { isPaystackConfigured, initializeTransaction } from "@/lib/paystack";
+import { normalizeGhanaPhoneNumber } from "@/lib/phone-utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await bcrypt.hash(input.password, 10);
     const defaultProfileId = await getDefaultProfileId();
+    const normalizedPhone = normalizeGhanaPhoneNumber(input.phone);
 
     if (isFeeEnabled) {
       const { user, usedCode } = await prisma.$transaction(async (tx) => {
@@ -81,6 +83,7 @@ export async function POST(request: NextRequest) {
             where: { id: existing.id },
             data: {
               name: input.name,
+              phone: normalizedPhone,
               passwordHash,
               pricingProfileId: defaultProfileId,
               role: assignedRole,
@@ -91,6 +94,7 @@ export async function POST(request: NextRequest) {
             data: {
               name: input.name,
               email: input.email.toLowerCase(),
+              phone: normalizedPhone,
               passwordHash,
               role: assignedRole,
               status: "PENDING_PAYMENT",
@@ -174,6 +178,7 @@ export async function POST(request: NextRequest) {
         data: {
           name: input.name,
           email: input.email.toLowerCase(),
+          phone: normalizedPhone,
           passwordHash,
           role: assignedRole,
           status: "ACTIVE",

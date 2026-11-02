@@ -225,6 +225,18 @@ function RegisterForm() {
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="phone">Phone number (WhatsApp / Mobile Money)</Label>
+            <Input
+              id="phone"
+              type="tel"
+              autoComplete="tel"
+              placeholder="e.g. 0244123456"
+              {...register("phone")}
+            />
+            {errors.phone && <p className="text-xs text-red-600">{errors.phone.message}</p>}
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"

@@ -22,6 +22,7 @@ import { formatGHS, type AuthUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SystemChatWidget } from "@/components/chat/system-chat-widget";
 import { UserWalkthrough, TourLauncherButton } from "@/components/onboarding/user-walkthrough";
+import { PhonePromptModal } from "@/components/dashboard/phone-prompt-modal";
 
 /** Seconds elapsed since the last user interaction (mouse, key, scroll, touch). */
 function useIdleSeconds() {
@@ -304,6 +305,7 @@ export function AppShell({
   return (
     <div className="app-bg flex min-h-screen flex-col">
       {announcement && <AnnouncementBar text={announcement} />}
+      <PhonePromptModal user={user} />
 
       {/* Top header */}
       <header className="border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-white/5 dark:bg-[#0a1120]/95">
