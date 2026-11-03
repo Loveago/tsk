@@ -16,6 +16,7 @@ export function DeveloperDocs({
   const [langTab, setLangTab] = React.useState<"curl" | "javascript" | "nodejs" | "python" | "php">("curl");
   const [batchLangTab, setBatchLangTab] = React.useState<"curl" | "javascript" | "nodejs" | "python" | "php">("curl");
   const [verifyLangTab, setVerifyLangTab] = React.useState<"curl" | "javascript" | "python">("curl");
+  const [notReceivedLangTab, setNotReceivedLangTab] = React.useState<"curl" | "javascript" | "nodejs" | "python" | "php">("curl");
   const [origin, setOrigin] = React.useState<string>(() => {
     if (typeof window !== "undefined") {
       return window.location.origin;
@@ -275,6 +276,95 @@ curl_setopt_array($ch, [
         "Idempotency-Key: invoice-20260903-batch-001",
         "Content-Type: application/json"
     ]
+]);
+
+$response = curl_exec($ch);
+curl_close($ch);
+echo $response;`;
+
+  const notReceivedUrl = effectiveOrigin ? `${effectiveOrigin}/v1/orders/API-839201/not-received` : "/v1/orders/API-839201/not-received";
+
+  const curlNotReceivedExample = `curl -X POST "${notReceivedUrl}" \\
+  -H "Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "reason": "Customer reported no data bundle received after 2 hours"
+  }'`;
+
+  const jsNotReceivedExample = `const response = await fetch("${notReceivedUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    reason: "Customer reported no data bundle received after 2 hours"
+    // For batch orders or multi-entry reports:
+    // orderEntryId: 91234,
+    // number: "0541234567"
+  })
+});
+
+const data = await response.json();
+console.log(data);`;
+
+  const nodeNotReceivedExample = `const axios = require("axios");
+
+async function reportNotReceived() {
+  const { data } = await axios.post(
+    "${notReceivedUrl}",
+    {
+      reason: "Customer reported no data bundle received after 2 hours"
+      // orderEntryId: 91234,
+      // number: "0541234567"
+    },
+    {
+      headers: {
+        Authorization: "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+        "Content-Type": "application/json"
+      }
+    }
+  );
+  console.log(data);
+}
+
+reportNotReceived();`;
+
+  const pythonNotReceivedExample = `import requests
+
+url = "${notReceivedUrl}"
+headers = {
+    "Authorization": "Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxx",
+    "Content-Type": "application/json"
+}
+payload = {
+    "reason": "Customer reported no data bundle received after 2 hours"
+    # "orderEntryId": 91234,
+    # "number": "0541234567"
+}
+
+response = requests.post(url, json=payload, headers=headers)
+print(response.status_code)
+print(response.json())`;
+
+  const phpNotReceivedExample = `<?php
+$orderId = "API-839201";
+$url = "${notReceivedUrl}";
+$apiKey = "ck_live_xxxxxxxxxxxxxxxxxxxxxxxx";
+
+$payload = json_encode([
+  "reason" => "Customer reported no data bundle received after 2 hours"
+]);
+
+$ch = curl_init($url);
+curl_setopt_array($ch, [
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_POST => true,
+  CURLOPT_HTTPHEADER => [
+    "Authorization: Bearer " . $apiKey,
+    "Content-Type: application/json"
+  ],
+  CURLOPT_POSTFIELDS => $payload
 ]);
 
 $response = curl_exec($ch);
@@ -855,6 +945,130 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
         </div>
       </div>
 
+      {/* Not Received Reports (Dispute Flow) */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-md bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                POST / GET
+              </span>
+              <h3 className="text-base font-bold">Dispute Flow: Report Not Received</h3>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              POST & GET /v1/orders/{`{id}`}/not-received (or POST /v1/orders/not-received) • Required Scope: <code className="font-mono text-slate-700 dark:text-slate-300">orders:create</code>
+            </p>
+          </div>
+          <div className="w-full sm:w-auto sm:max-w-md">
+            <ScrollableTabs
+              tabs={[
+                { key: "curl", label: "cURL" },
+                { key: "javascript", label: "JavaScript" },
+                { key: "nodejs", label: "Node.js" },
+                { key: "python", label: "Python" },
+                { key: "php", label: "PHP" },
+              ]}
+              activeTab={notReceivedLangTab}
+              onChange={(k) => setNotReceivedLangTab(k as any)}
+            />
+          </div>
+        </div>
+
+        <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+          When an end-user reports that a data bundle was not received, submit an investigation report directly from your application or storefront. For multi-entry batch orders, specify <code className="font-mono text-xs">orderEntryId</code> or recipient <code className="font-mono text-xs">number</code>. Reports must be filed within the 24-hour reporting window.
+        </p>
+
+        <div className="relative mt-4">
+          <pre className="overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+            {notReceivedLangTab === "curl" && curlNotReceivedExample}
+            {notReceivedLangTab === "javascript" && jsNotReceivedExample}
+            {notReceivedLangTab === "nodejs" && nodeNotReceivedExample}
+            {notReceivedLangTab === "python" && pythonNotReceivedExample}
+            {notReceivedLangTab === "php" && phpNotReceivedExample}
+          </pre>
+          <button
+            onClick={() =>
+              copy(
+                "not-received-code",
+                notReceivedLangTab === "curl"
+                  ? curlNotReceivedExample
+                  : notReceivedLangTab === "javascript"
+                  ? jsNotReceivedExample
+                  : notReceivedLangTab === "nodejs"
+                  ? nodeNotReceivedExample
+                  : notReceivedLangTab === "python"
+                  ? pythonNotReceivedExample
+                  : phpNotReceivedExample
+              )
+            }
+            className="absolute right-3 top-3 rounded-lg bg-white/10 p-2 text-slate-300 hover:bg-white/20"
+            title="Copy not-received code"
+          >
+            {copiedId === "not-received-code" ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div>
+            <p className="text-xs font-semibold text-slate-500">1. Submit Response (HTTP 201 Created):</p>
+            <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+{`{
+  "success": true,
+  "data": {
+    "report": {
+      "reportId": "NR-00124",
+      "orderId": "API-839201",
+      "orderEntryId": 839201,
+      "number": "0541234567",
+      "allocationGb": 5,
+      "status": "pending_resolution",
+      "reportDate": "2026-11-03T12:00:00.000Z",
+      "adminNotes": "Customer reported not received; investigation started",
+      "evidenceUrl": null
+    },
+    "message": "Not received report submitted successfully"
+  },
+  "requestId": "req_nr_839201"
+}`}
+            </pre>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-slate-500">2. Query Report Status (GET /v1/orders/{`{id}`}/not-received):</p>
+            <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+{`{
+  "success": true,
+  "data": {
+    "orderId": "API-839201",
+    "count": 1,
+    "reports": [
+      {
+        "reportId": "NR-00124",
+        "orderId": "API-839201",
+        "status": "resolved",
+        "reportDate": "2026-11-03T12:00:00.000Z",
+        "resolutionDate": "2026-11-03T13:15:00.000Z",
+        "adminNotes": "Verified delivered via network logs",
+        "evidenceUrl": "https://api.tskconnect.com/api/evidence/12345"
+      }
+    ]
+  },
+  "requestId": "req_query_839201"
+}`}
+            </pre>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+          <span className="font-semibold">Report Status Values:</span>{" "}
+          <code className="font-mono">pending_resolution</code> (awaiting provider/admin review) •{" "}
+          <code className="font-mono">confirmed_sent</code> (data resent or confirmed sent) •{" "}
+          <code className="font-mono">resolved</code> (resolved with delivery proof provided) •{" "}
+          <code className="font-mono">refunded</code> (order refunded to balance) •{" "}
+          <code className="font-mono">cancelled</code> (dispute rejected).
+        </div>
+      </div>
+
       {/* Webhook Security & Signatures */}
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h3 className="text-base font-bold">Webhook Security & Signature Verification</h3>
@@ -924,6 +1138,24 @@ function verifyTskconnectWebhook(rawBody, signatureHeader, timestampHeader, secr
     "failureReason": null,
     "createdAt": "2026-10-06T07:10:00.000Z",
     "completedAt": "2026-10-06T07:15:00.000Z"
+  }
+}`}
+          </pre>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-slate-500">Example Webhook Payload (<code className="font-mono text-amber-600 dark:text-amber-400">report.not_received.resolved</code>):</p>
+          <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">
+{`{
+  "event": "report.not_received.resolved",
+  "timestamp": "2026-11-03T13:15:00.000Z",
+  "data": {
+    "reportId": "NR-00124",
+    "orderId": "API-839201",
+    "status": "resolved",
+    "adminNotes": "Verified delivered via carrier gateway logs",
+    "evidenceUrl": "https://api.tskconnect.com/api/reports/not-received/123/proof",
+    "resolutionDate": "2026-11-03T13:15:00.000Z"
   }
 }`}
           </pre>

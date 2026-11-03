@@ -892,6 +892,20 @@ export async function generateApiDocsPdf(options?: GenerateApiDocsPdfOptions): P
   );
 
   engine.addEndpointHeader(
+    "POST",
+    "/v1/orders/:id/not-received",
+    "orders:create",
+    "Submits a customer 'Not Received' dispute report for an order or batch entry within 24 hours of delivery."
+  );
+
+  engine.addEndpointHeader(
+    "GET",
+    "/v1/orders/:id/not-received",
+    "orders:read",
+    "Retrieves dispute report status (pending_resolution, confirmed_sent, resolved, refunded) and evidence."
+  );
+
+  engine.addEndpointHeader(
     "GET",
     "/v1/balance",
     "balance:read",
@@ -928,6 +942,9 @@ export async function generateApiDocsPdf(options?: GenerateApiDocsPdfOptions): P
   engine.addBullet("order.processing", "Triggered when carrier transmission commences.");
   engine.addBullet("order.completed", "Triggered upon confirmed bundle credit on recipient SIM.");
   engine.addBullet("order.failed", "Triggered if carrier rejects delivery; reserved funds are refunded automatically.");
+  engine.addBullet("report.not_received.submitted", "Triggered when a Not Received dispute is filed for an order.");
+  engine.addBullet("report.not_received.confirmed_sent", "Triggered when data is resent or delivery is reconfirmed.");
+  engine.addBullet("report.not_received.resolved", "Triggered when dispute is resolved with carrier evidence or refund.");
 
   engine.addSubSection("Cryptographic Signature Verification");
   engine.addParagraph(

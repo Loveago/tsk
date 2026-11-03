@@ -11,11 +11,21 @@ export type ApiErrorCode =
   | "INVALID_NETWORK"
   | "INVALID_PACKAGE"
   | "INVALID_RECIPIENT"
+  | "INVALID_PHONE_NUMBER"
+  | "INVALID_ORDER_ID"
+  | "INVALID_ORDER_STATUS"
   | "ORDER_PROCESSING_UNAVAILABLE"
   | "NETWORK_ORDERS_PAUSED"
   | "INSUFFICIENT_BALANCE"
   | "DUPLICATE_REQUEST"
   | "ORDER_NOT_FOUND"
+  | "ORDER_ENTRY_NOT_FOUND"
+  | "MISSING_ENTRY_IDENTIFIER"
+  | "MISSING_REQUIRED_FIELDS"
+  | "INVALID_JSON"
+  | "REPORT_WINDOW_EXPIRED"
+  | "NOT_RECEIVED_ALREADY_EXISTS"
+  | "SERVICE_UNAVAILABLE"
   | "RATE_LIMIT_EXCEEDED"
   | "MTN_NUMBER_NOT_VERIFIED"
   | "ORDER_IN_PROGRESS"
@@ -27,18 +37,21 @@ export class ApiError extends Error {
   code: ApiErrorCode;
   status: number;
   rateLimitInfo?: { limit: number; remaining: number; resetAt: number };
+  details?: any;
 
   constructor(
     code: ApiErrorCode,
     message: string,
     status = 400,
-    rateLimitInfo?: { limit: number; remaining: number; resetAt: number }
+    rateLimitInfo?: { limit: number; remaining: number; resetAt: number },
+    details?: any
   ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
     this.rateLimitInfo = rateLimitInfo;
+    this.details = details;
   }
 }
 
@@ -202,6 +215,7 @@ export async function validateApiAuth(
       "orders:read",
       "orders:status",
       "orders:bulk_status",
+      "orders:report_not_received",
       "balance:read",
       "webhooks:read",
       "webhooks:manage",
@@ -290,7 +304,8 @@ export function formatApiError(
   message: string,
   status: number,
   requestId: string,
-  rateLimitInfo?: { limit: number; remaining: number; resetAt: number }
+  rateLimitInfo?: { limit: number; remaining: number; resetAt: number },
+  details?: any
 ) {
   const headers = new Headers({
     "Content-Type": "application/json",
@@ -309,6 +324,7 @@ export function formatApiError(
       error: {
         code,
         message,
+        ...(details ? { details } : {}),
       },
       requestId,
     },

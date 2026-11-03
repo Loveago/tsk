@@ -7,6 +7,9 @@ export const WEBHOOK_EVENTS = [
   "order.completed",
   "order.failed",
   "order.cancelled",
+  "report.not_received.submitted",
+  "report.not_received.confirmed_sent",
+  "report.not_received.resolved",
 ] as const;
 
 export type WebhookEvent = typeof WEBHOOK_EVENTS[number];

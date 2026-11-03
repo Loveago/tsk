@@ -2599,6 +2599,34 @@ export async function syncClickyfiedDeliveryReport(
             actorLabel,
           },
         });
+
+        if (report.userId) {
+          try {
+            const { dispatchWebhookEvent } = await import("@/lib/webhooks");
+            const { deliveryReportCode } = await import("@/lib/types");
+            const eventName =
+              (newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED")
+                ? "report.not_received.confirmed_sent"
+                : newStatus === "RESOLVED"
+                ? "report.not_received.resolved"
+                : null;
+            if (eventName) {
+              dispatchWebhookEvent(
+                report.userId,
+                eventName,
+                {
+                  reportId: deliveryReportCode(report.seq),
+                  orderId: `API-${report.order.id}`,
+                  status: newStatus === "RESOLVED" ? "resolved" : "confirmed_sent",
+                  adminNotes: adminNotes || null,
+                  evidenceUrl: evidenceUrl || null,
+                  resolutionDate: resolutionDate?.toISOString() || new Date().toISOString(),
+                },
+                report.order.id
+              ).catch(() => {});
+            }
+          } catch {}
+        }
       }
 
       return { changed: true };
@@ -2681,4 +2709,165 @@ export async function dispatchOrdersBatch(orderIds: number[]): Promise<{
     skippedManual,
     results,
   };
+}
+
+/**
+ * Forwards a Not Received report to Clickyfied if the order was dispatched to Clickyfied.
+ */
+export async function forwardNotReceivedToClickyfied(
+  order: {
+    id: number;
+    phoneNumber: string;
+    gbAmount: number;
+    providerReference?: string | null;
+    externalReference?: string | null;
+    batchId?: string | number | null;
+  },
+  report: {
+    id: string;
+    adminNote?: string | null;
+  },
+  actionName = "NOT_RECEIVED"
+): Promise<{ forwarded: boolean; providerReportId?: string | number; error?: string }> {
+  const config = await getProviderRoutingConfig();
+  const isClickyfiedOrder = Boolean(
+    order.providerReference?.startsWith("CLICKYFIED:") ||
+    order.externalReference?.startsWith("CF-BATCH-")
+  );
+
+  if (!config.enabled || !config.clickyfied.enabled || !config.clickyfied.notReceivedEnabled || !isClickyfiedOrder) {
+    return { forwarded: false };
+  }
+
+  try {
+    const client = new ClickyfiedClient(config.clickyfied);
+
+    let clickyfiedOrderId = "";
+    let orderEntryId: string | number | undefined = undefined;
+
+    if (order.providerReference?.startsWith("CLICKYFIED:")) {
+      const rawRef = order.providerReference.replace("CLICKYFIED:", "").trim();
+      const [refOrderId, refEntryId] = rawRef.split(":");
+      if (refOrderId) clickyfiedOrderId = refOrderId;
+      if (refEntryId) {
+        orderEntryId = !isNaN(Number(refEntryId)) ? Number(refEntryId) : refEntryId;
+      }
+    } else if (order.externalReference?.startsWith("CF-BATCH-")) {
+      clickyfiedOrderId = order.externalReference.trim();
+    }
+
+    if (clickyfiedOrderId && !clickyfiedOrderId.startsWith("order-")) {
+      try {
+        clickyfiedOrderId = await client.resolveCanonicalOrderId(clickyfiedOrderId);
+      } catch {}
+    }
+
+    if (!clickyfiedOrderId || !clickyfiedOrderId.startsWith("order-")) {
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "CLICKYFIED",
+        action: actionName,
+        endpoint: "/api/orders/report-not-received",
+        method: "POST",
+        requestPayload: {
+          number: order.phoneNumber,
+          allocationGb: order.gbAmount,
+        },
+        responsePayload: {
+          error: "Order was not found on Clickyfied. It was not dispatched to Clickyfied or is not recognized.",
+        },
+        statusCode: 404,
+        success: false,
+        errorMessage: "Order not found on Clickyfied provider",
+        providerReference: order.providerReference,
+      });
+
+      return { forwarded: false, error: "Order not found on Clickyfied provider" };
+    }
+
+    if (orderEntryId === undefined) {
+      const lookupKeys = Array.from(
+        new Set([clickyfiedOrderId, order.externalReference].filter(Boolean) as string[])
+      );
+      for (const key of lookupKeys) {
+        try {
+          const ordStatus = await client.getOrderStatus(key);
+          const raw = ordStatus.raw as any;
+          const entriesList: any[] = raw?.order?.entries || raw?.entries || [];
+
+          if (entriesList.length > 0) {
+            if (raw?.order?.orderId && raw.order.orderId !== clickyfiedOrderId) {
+              clickyfiedOrderId = String(raw.order.orderId);
+            }
+
+            const targetNorm = normalizePhoneLast9(order.phoneNumber);
+            const matchedEntry = entriesList.find(
+              (e: any) => e.number && normalizePhoneLast9(e.number) === targetNorm
+            );
+            const eId = matchedEntry
+              ? matchedEntry.orderEntryId ?? matchedEntry.entryId ?? matchedEntry.id ?? matchedEntry._id
+              : undefined;
+
+            if (eId !== undefined && eId !== null) {
+              orderEntryId = !isNaN(Number(eId)) ? Number(eId) : eId;
+              break;
+            }
+          }
+        } catch (fetchErr: any) {
+          console.warn(`Could not retrieve entryId from Clickyfied for ${key}:`, fetchErr?.message || fetchErr);
+        }
+      }
+    }
+
+    const reportPayload = {
+      orderId: clickyfiedOrderId,
+      orderEntryId,
+      number: order.phoneNumber,
+      allocationGb: order.gbAmount,
+    };
+
+    const repRes = await client.reportNotReceived(reportPayload);
+    const repId = (repRes as any)?.report?.reportId ?? (repRes as any)?.reportId ?? (repRes as any)?.id;
+
+    if (repId) {
+      await prisma.deliveryReport
+        .update({
+          where: { id: report.id },
+          data: {
+            adminNote: report.adminNote
+              ? `${report.adminNote} [PROVIDER_REPORT_ID:${repId}]`
+              : `[PROVIDER_REPORT_ID:${repId}]`,
+          },
+        })
+        .catch(() => {});
+    }
+
+    if (orderEntryId) {
+      await prisma.order
+        .update({
+          where: { id: order.id },
+          data: { providerReference: `CLICKYFIED:${clickyfiedOrderId}:${orderEntryId}` },
+        })
+        .catch(() => {});
+    }
+
+    await recordOrderApiLog({
+      orderId: order.id,
+      provider: "CLICKYFIED",
+      action: actionName,
+      endpoint: "/api/orders/report-not-received",
+      method: "POST",
+      requestPayload: reportPayload,
+      responsePayload: repRes,
+      statusCode: (repRes as any)?.error ? 400 : 200,
+      success: !(repRes as any)?.error,
+      errorMessage: (repRes as any)?.error || undefined,
+      providerReference: order.providerReference,
+    });
+
+    return { forwarded: true, providerReportId: repId };
+  } catch (err: any) {
+    console.error("Failed to forward not-received to Clickyfied:", err);
+    return { forwarded: false, error: err?.message || "Clickyfied dispatch failed" };
+  }
 }

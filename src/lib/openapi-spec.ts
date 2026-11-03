@@ -219,7 +219,20 @@ export const openApiSpec = {
         type: "object",
         description: "Payload delivered to your webhook URL on order lifecycle events",
         properties: {
-          event: { type: "string", example: "order.completed", enum: ["order.created", "order.processing", "order.completed", "order.failed", "order.cancelled"] },
+          event: {
+            type: "string",
+            example: "order.completed",
+            enum: [
+              "order.created",
+              "order.processing",
+              "order.completed",
+              "order.failed",
+              "order.cancelled",
+              "report.not_received.submitted",
+              "report.not_received.confirmed_sent",
+              "report.not_received.resolved",
+            ],
+          },
           timestamp: { type: "string", format: "date-time" },
           data: {
             type: "object",
@@ -304,6 +317,74 @@ export const openApiSpec = {
               verified:   { type: "integer", example: 2 },
               unverified: { type: "integer", example: 0 },
               invalid:    { type: "integer", example: 1 },
+            },
+          },
+        },
+      },
+      ReportNotReceivedRequest: {
+        type: "object",
+        description: "Payload to report an order or order entry as not received",
+        properties: {
+          orderId: { type: "string", description: "Order ID (e.g. API-839201) or batch code", example: "API-839201" },
+          orderEntryId: { type: "integer", description: "Target entry ID for multi-entry batch orders", example: 91234 },
+          number: { type: "string", description: "Recipient phone number", example: "0541234567" },
+          allocationGb: { type: "number", description: "Data bundle size in GB", example: 5 },
+          reason: { type: "string", description: "Customer-provided dispute reason", example: "Customer confirmed data not received after 2 hours" },
+          customerNote: { type: "string", description: "Additional context or customer notes", example: "Disputed via customer care portal" },
+        },
+      },
+      ReportNotReceivedResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          report: {
+            type: "object",
+            properties: {
+              reportId: { type: "string", example: "NR-00124" },
+              orderId: { type: "string", example: "API-839201" },
+              orderEntryId: { type: "integer", example: 839201 },
+              number: { type: "string", example: "0541234567" },
+              allocationGb: { type: "number", example: 5 },
+              status: {
+                type: "string",
+                example: "pending_resolution",
+                enum: ["pending_resolution", "confirmed_sent", "resolved", "cancelled", "refunded"],
+              },
+              reportDate: { type: "string", format: "date-time" },
+              adminNotes: { type: "string", nullable: true, example: "Customer reported not received; investigation started" },
+              evidenceUrl: { type: "string", nullable: true, example: null },
+            },
+          },
+          message: { type: "string", example: "Not received report submitted successfully" },
+        },
+      },
+      NotReceivedStatusResponse: {
+        type: "object",
+        properties: {
+          success: { type: "boolean", example: true },
+          orderId: { type: "string", example: "API-839201" },
+          count: { type: "integer", example: 1 },
+          reports: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                reportId: { type: "string", example: "NR-00124" },
+                orderId: { type: "string", example: "API-839201" },
+                orderEntryId: { type: "integer", example: 839201 },
+                number: { type: "string", example: "0541234567" },
+                allocationGb: { type: "number", example: 5 },
+                status: {
+                  type: "string",
+                  example: "resolved",
+                  enum: ["pending_resolution", "confirmed_sent", "resolved", "cancelled", "refunded"],
+                },
+                reason: { type: "string", example: "Customer reported data not received" },
+                reportDate: { type: "string", format: "date-time" },
+                resolutionDate: { type: "string", format: "date-time", nullable: true },
+                adminNotes: { type: "string", nullable: true, example: "Verified and confirmed delivered via provider logs" },
+                evidenceUrl: { type: "string", nullable: true, example: "https://api.tskconnect.com/api/reports/not-received/123/proof" },
+              },
             },
           },
         },
@@ -656,6 +737,104 @@ export const openApiSpec = {
             description: "Array of order status results",
             content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseSuccess" } } },
           },
+        },
+      },
+    },
+    "/orders/{id}/not-received": {
+      post: {
+        summary: "Report Order Not Received",
+        description:
+          "Submit a 'Not Received' dispute report when a customer reports their data was not delivered. " +
+          "Can be submitted for single orders or specific entries in a batch order. Must be submitted within the active reporting window (default 24h).",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+            description: "The order ID (e.g. API-839201 or 839201) or batch code (e.g. API-CF-BATCH-000185)",
+          },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ReportNotReceivedRequest" },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Not received report filed successfully",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ReportNotReceivedResponse" },
+              },
+            },
+          },
+          "400": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "401": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "404": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "409": {
+            description: "Conflict: active report already exists or reporting window expired",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } },
+          },
+          "500": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+        },
+      },
+      get: {
+        summary: "Get Not Received Report Status",
+        description: "Retrieves the dispute status, resolution notes, and evidence URL for any not-received reports filed on this order.",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+            description: "The order ID or batch code",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Dispute reports and status details",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/NotReceivedStatusResponse" },
+              },
+            },
+          },
+          "401": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "404": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "500": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+        },
+      },
+    },
+    "/orders/not-received": {
+      post: {
+        summary: "Report Not Received (Body-Centric)",
+        description: "Alternate endpoint that accepts orderId in the request body instead of the URL path.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ReportNotReceivedRequest" },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Report filed successfully",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ReportNotReceivedResponse" },
+              },
+            },
+          },
+          "400": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "401": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "404": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "409": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
+          "500": { content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponseError" } } } },
         },
       },
     },
