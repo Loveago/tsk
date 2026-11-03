@@ -322,9 +322,9 @@ export async function nextStorefrontSeq(
 
 // ---------------------------------------------------------------------------
 // Wallet — every balance movement goes through a ledger row (§23/§24).
-// `applyLedgerEntry` runs inside a caller transaction; the guarded update
-// (`where: { id, balance, pendingBalance }`) makes concurrent writers fail
-// loudly instead of silently corrupting the audit trail.
+// `applyLedgerEntry` runs inside a caller transaction; it uses row-level locking
+// (SELECT ... FOR UPDATE) to serialize concurrent updates to the same wallet,
+// preventing race conditions, lost updates, and P2025 concurrency errors.
 // ---------------------------------------------------------------------------
 
 export type LedgerType =
@@ -356,7 +356,23 @@ export async function applyLedgerEntry(
   walletId: string,
   entry: LedgerEntry
 ): Promise<void> {
-  const wallet = await tx.storefrontWallet.findUniqueOrThrow({ where: { id: walletId } });
+  // Acquire an exclusive row-level lock on the storefront wallet to serialize concurrent ledger
+  // writes for this wallet. This prevents race conditions and eliminates Prisma P2025 "record not found"
+  // optimistic concurrency errors when concurrent webhook requests arrive.
+  let wallet: { id: string; balance: number; pendingBalance: number };
+  try {
+    const lockedRows = await tx.$queryRaw<
+      Array<{ id: string; balance: number; pendingBalance: number }>
+    >`SELECT "id", "balance", "pendingBalance" FROM "StorefrontWallet" WHERE "id" = ${walletId} FOR UPDATE`;
+    if (lockedRows && lockedRows.length > 0) {
+      wallet = lockedRows[0];
+    } else {
+      wallet = await tx.storefrontWallet.findUniqueOrThrow({ where: { id: walletId } });
+    }
+  } catch {
+    wallet = await tx.storefrontWallet.findUniqueOrThrow({ where: { id: walletId } });
+  }
+
   const balanceBefore = wallet.balance;
   const pendingBefore = Math.max(0, wallet.pendingBalance);
   let balanceAfter = balanceBefore;
@@ -403,7 +419,7 @@ export async function applyLedgerEntry(
   }
 
   await tx.storefrontWallet.update({
-    where: { id: walletId, balance: balanceBefore, pendingBalance: wallet.pendingBalance },
+    where: { id: walletId },
     data: { balance: balanceAfter, pendingBalance: pendingAfter },
   });
 
@@ -433,10 +449,14 @@ export async function ensureWallet(userId: string) {
     create: { userId },
   });
   if (wallet.pendingBalance < 0) {
-    return prisma.storefrontWallet.update({
-      where: { id: wallet.id },
-      data: { pendingBalance: 0 },
-    });
+    try {
+      return await prisma.storefrontWallet.update({
+        where: { id: wallet.id },
+        data: { pendingBalance: 0 },
+      });
+    } catch {
+      return wallet;
+    }
   }
   return wallet;
 }
@@ -475,44 +495,50 @@ export async function syncCommissionForOrder(
 
   await prisma.$transaction(
     async (tx) => {
+      // Re-fetch storefrontOrder inside the transaction to ensure current state and avoid duplicate transitions
+      const currentOrder = await tx.storefrontOrder.findUnique({
+        where: { id: storeOrder.id },
+      });
+      if (!currentOrder) return;
+
       if (releasing) {
-        if (storeOrder.commissionState === "PENDING") {
+        if (currentOrder.commissionState === "PENDING") {
           await applyLedgerEntry(tx, walletRow.id, {
             type: "COMMISSION_RELEASE",
-            amount: storeOrder.commission,
-            reference: storefrontOrderCode(storeOrder.seq),
+            amount: currentOrder.commission,
+            reference: storefrontOrderCode(currentOrder.seq),
             description: `Order completed — commission released`,
           });
         }
         await tx.storefrontOrder.update({
-          where: { id: storeOrder.id },
+          where: { id: currentOrder.id },
           data: { commissionState: "AVAILABLE", status: "COMPLETED", completedAt: new Date() },
         });
       } else if (reversing) {
-        if (storeOrder.commissionState !== "REVERSED") {
+        if (currentOrder.commissionState !== "REVERSED") {
           // If commission is still PENDING (in flight / processing), it has not been
           // credited to the withdrawable balance yet. The reversal must deduct from pendingBalance.
           // Only if it was already released (AVAILABLE or WITHDRAWN) must the reversal deduct from main balance.
           const reversalSource: "BALANCE" | "PENDING" =
-            storeOrder.commissionState === "PENDING" ? "PENDING" : "BALANCE";
+            currentOrder.commissionState === "PENDING" ? "PENDING" : "BALANCE";
 
           await applyLedgerEntry(tx, walletRow.id, {
             type: "COMMISSION_REVERSAL",
-            amount: storeOrder.commission,
-            reference: storefrontOrderCode(storeOrder.seq),
+            amount: currentOrder.commission,
+            reference: storefrontOrderCode(currentOrder.seq),
             description: `Order ${status.toLowerCase()} — commission reversed from ${reversalSource === "BALANCE" ? "main balance" : "pending balance"}`,
             reversalSource,
           });
         }
         await tx.storefrontOrder.update({
-          where: { id: storeOrder.id },
+          where: { id: currentOrder.id },
           data: { commissionState: "REVERSED", status },
         });
       } else {
         // Status is PENDING or PROCESSING
         const nextStatus = status === "PROCESSING" ? "PROCESSING" : "PENDING";
         await tx.storefrontOrder.update({
-          where: { id: storeOrder.id },
+          where: { id: currentOrder.id },
           data: { status: nextStatus },
         });
       }

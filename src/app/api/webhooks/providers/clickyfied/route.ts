@@ -691,23 +691,27 @@ export async function POST(request: NextRequest) {
         }
 
         if (targetStatus && targetStatus !== ord.status) {
-          await changeOrderStatus(
-            ord.id,
-            targetStatus,
-            payload?.failureReason ||
-              payload?.notes ||
-              `Updated delivery status via callback (${entryStatus || rawStatus || targetStatus})`,
-            { id: "system", label: "System Sync" },
-            { force: true }
-          );
+          try {
+            await changeOrderStatus(
+              ord.id,
+              targetStatus,
+              payload?.failureReason ||
+                payload?.notes ||
+                `Updated delivery status via callback (${entryStatus || rawStatus || targetStatus})`,
+              { id: "system", label: "System Sync" },
+              { force: true }
+            );
 
-          await recordAudit({
-            userId: ord.userId,
-            actorLabel: "System Sync",
-            action: "order.callback_update",
-            target: `order:${ord.id}`,
-            newValue: JSON.stringify({ event: effectiveEvent, status: targetStatus, orderId, entryStatus }),
-          });
+            await recordAudit({
+              userId: ord.userId,
+              actorLabel: "System Sync",
+              action: "order.callback_update",
+              target: `order:${ord.id}`,
+              newValue: JSON.stringify({ event: effectiveEvent, status: targetStatus, orderId, entryStatus }),
+            });
+          } catch (ordUpdateErr: any) {
+            console.error(`[ClickyfiedWebhook] Failed to update order #${ord.id} status to ${targetStatus}:`, ordUpdateErr);
+          }
         }
       }
     }
