@@ -17,15 +17,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const fromDateParam = parseDateParam(searchParams.get("from"), false);
     const toDateParam = parseDateParam(searchParams.get("to"), true);
+    const requestedGranularity = searchParams.get("granularity");
     
     let fromDate = fromDateParam;
     let toDate = toDateParam || new Date();
 
-    const maxDays = parseInt(await getSetting("reports_max_date_range_days", "90"), 10);
+    const configuredMax = parseInt(await getSetting("reports_max_date_range_days", "730"), 10);
+    // Allow at least 730 days for yearly reports and historical analysis
+    const maxDays = isNaN(configuredMax) || configuredMax < 730 ? 730 : configuredMax;
     const maxMs = maxDays * 24 * 60 * 60 * 1000;
     
     if (!fromDate) {
-      fromDate = new Date(toDate.getTime() - maxMs);
+      fromDate = new Date(toDate.getTime() - (90 * 24 * 60 * 60 * 1000));
     } else if (toDate.getTime() - fromDate.getTime() > maxMs + 172800000) {
       return apiError(400, `Date range cannot exceed ${maxDays} days`);
     }
@@ -79,16 +82,35 @@ export async function GET(request: NextRequest) {
     const counts: Record<string, number> = {};
     for (const s of statusCounts) counts[s.status] = s._count._all;
 
-    const isSingleDay = (toDate.getTime() - fromDate.getTime()) <= 26 * 60 * 60 * 1000;
+    const diffMs = toDate.getTime() - fromDate.getTime();
+    const isSingleDay = diffMs <= 26 * 60 * 60 * 1000;
+    const isMultiMonth = diffMs > 95 * 24 * 60 * 60 * 1000;
+    
+    let granularity: "hourly" | "daily" | "monthly";
+    if (requestedGranularity === "hourly" || requestedGranularity === "daily" || requestedGranularity === "monthly") {
+      granularity = requestedGranularity;
+    } else if (isSingleDay) {
+      granularity = "hourly";
+    } else if (isMultiMonth) {
+      granularity = "monthly";
+    } else {
+      granularity = "daily";
+    }
+
     const dailyMap = new Map<string, { count: number; amount: number }>();
     for (const o of dailyOrders) {
-      const day = isSingleDay
-        ? `${o.createdAt.toISOString().slice(11, 13)}:00`
-        : o.createdAt.toISOString().slice(0, 10);
-      const entry = dailyMap.get(day) ?? { count: 0, amount: 0 };
+      let key: string;
+      if (granularity === "hourly") {
+        key = `${o.createdAt.toISOString().slice(11, 13)}:00`;
+      } else if (granularity === "monthly") {
+        key = o.createdAt.toISOString().slice(0, 7); // "YYYY-MM"
+      } else {
+        key = o.createdAt.toISOString().slice(0, 10); // "YYYY-MM-DD"
+      }
+      const entry = dailyMap.get(key) ?? { count: 0, amount: 0 };
       entry.count += 1;
       entry.amount += o.amount;
-      dailyMap.set(day, entry);
+      dailyMap.set(key, entry);
     }
     const daily = Array.from(dailyMap.entries()).map(([day, val]) => ({
       day,
@@ -108,6 +130,9 @@ export async function GET(request: NextRequest) {
       .slice(0, 10);
 
     return NextResponse.json({
+      granularity,
+      fromDate: fromDate.toISOString(),
+      toDate: toDate.toISOString(),
       statusCounts: counts,
       totalOrders: revenueAgg._count._all,
       totalRevenue: revenueAgg._sum.amount ?? 0,
