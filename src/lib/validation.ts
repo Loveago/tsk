@@ -511,7 +511,7 @@ export const storefrontWithdrawalReviewSchema = z.object({
 
 export const adminStorefrontSchema = z.object({
   userId: z.string().min(1, "Select a user"),
-  action: z.enum(["ENABLE", "SUSPEND", "REVOKE", "APPROVE", "REJECT"]),
+  action: z.enum(["ENABLE", "REACTIVATE", "SUSPEND", "REVOKE", "APPROVE", "REJECT"]),
   slug: z
     .string()
     .trim()

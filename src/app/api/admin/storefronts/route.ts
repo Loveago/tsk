@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
 
       const storefront = await prisma.storefront.update({
         where: { id: pending.id },
-        data: { status: "ENABLED", slug, rejectionNote: null },
+        data: { status: "ENABLED", isActive: true, slug, rejectionNote: null },
       });
       await ensureWallet(input.userId);
       return NextResponse.json({ storefront });
@@ -74,11 +74,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (input.action === "ENABLE") {
-      const slug = slugify(input.slug ?? "");
+      const existingStandard = await prisma.storefront.findFirst({ where: { userId: input.userId, isCustomDomain: false } });
+      const slug = slugify(input.slug ?? existingStandard?.slug ?? "");
       if (!isValidSlug(slug) || RESERVED_SLUGS.has(slug)) {
         return apiError(400, "Provide a valid public store address (slug), e.g. kofi-data");
       }
-      const taken = await prisma.storefront.findUnique({ where: { slug } });
+      const taken = await prisma.storefront.findFirst({
+        where: existingStandard ? { slug, NOT: { id: existingStandard.id } } : { slug },
+      });
       if (taken) return apiError(409, "That store address is already taken");
 
       const target = await prisma.user.findUnique({ where: { id: input.userId } });
@@ -86,14 +89,13 @@ export async function POST(request: NextRequest) {
 
       // Default the public store name to the owner's name; the owner can
       // change it later in Storefront Settings (§11).
-      const existingStandard = await prisma.storefront.findFirst({ where: { userId: input.userId, isCustomDomain: false } });
       const storefront = existingStandard
         ? await prisma.storefront.update({
             where: { id: existingStandard.id },
-            data: { status: "ENABLED", slug },
+            data: { status: "ENABLED", isActive: true, slug, rejectionNote: null },
           })
         : await prisma.storefront.create({
-            data: { userId: input.userId, slug, name: target.name, status: "ENABLED", isCustomDomain: false },
+            data: { userId: input.userId, slug, name: target.name, status: "ENABLED", isActive: true, isCustomDomain: false },
           });
       await ensureWallet(input.userId);
       return NextResponse.json({ storefront });
@@ -101,6 +103,15 @@ export async function POST(request: NextRequest) {
 
     const existing = await prisma.storefront.findFirst({ where: { userId: input.userId, isCustomDomain: false } });
     if (!existing) return apiError(404, "This user has no storefront");
+
+    if (input.action === "REACTIVATE") {
+      const storefront = await prisma.storefront.update({
+        where: { id: existing.id },
+        data: { status: "ENABLED", isActive: true, rejectionNote: null },
+      });
+      await ensureWallet(input.userId);
+      return NextResponse.json({ storefront });
+    }
 
     if (input.action === "SUSPEND") {
       const storefront = await prisma.storefront.update({

@@ -204,6 +204,20 @@ export function useNavBadges(admin?: boolean): Record<string, NavBadgeData> {
         const res = await fetch("/api/admin/nav-counts", { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
+          const pendingWithdrawals =
+            typeof data.pendingWithdrawals === "number" ? data.pendingWithdrawals : 0;
+          const pendingApps =
+            typeof data.pendingStorefrontApplications === "number"
+              ? data.pendingStorefrontApplications
+              : 0;
+          const storefrontTotal = pendingApps + pendingWithdrawals;
+          const storefrontLabel =
+            pendingApps > 0 && pendingWithdrawals > 0
+              ? `storefront application(s) & ${pendingWithdrawals} withdrawal(s)`
+              : pendingApps > 0
+              ? "pending storefront application(s)"
+              : "pending withdrawal(s)";
+
           setBadges({
             "/admin/orders": {
               count: typeof data.pendingOrders === "number" ? data.pendingOrders : 0,
@@ -216,14 +230,14 @@ export function useNavBadges(admin?: boolean): Record<string, NavBadgeData> {
               variant: "danger",
             },
             "/admin/storefronts/withdrawals": {
-              count: typeof data.pendingWithdrawals === "number" ? data.pendingWithdrawals : 0,
+              count: pendingWithdrawals,
               label: "pending withdrawals",
               variant: "warning",
             },
             "/admin/storefronts": {
-              count: typeof data.pendingWithdrawals === "number" ? data.pendingWithdrawals : 0,
-              label: "pending withdrawals",
-              variant: "warning",
+              count: storefrontTotal,
+              label: storefrontLabel,
+              variant: pendingApps > 0 ? "danger" : "warning",
             },
           });
         }

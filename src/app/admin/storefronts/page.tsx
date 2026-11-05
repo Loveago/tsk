@@ -72,6 +72,7 @@ export default async function AdminStorefrontsPage() {
   const totalPendingP = allWallets.reduce((s, w) => s + Math.max(0, w.pendingBalance), 0);
   const totalWithdrawnP = approvedWdAgg._sum.amount ?? 0;
   const totalLifetimeP = totalBalanceP + totalPendingP + totalWithdrawnP;
+  const pendingApplicationsCount = applications.filter((a) => a.status === "PENDING").length;
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -91,6 +92,11 @@ export default async function AdminStorefrontsPage() {
           >
             <Store className="h-4 w-4" />
             <span>Storefronts &amp; Resellers</span>
+            {pendingApplicationsCount > 0 && (
+              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300">
+                {pendingApplicationsCount}
+              </span>
+            )}
           </Link>
           <Link
             href="/admin/storefronts/wallets"
@@ -168,6 +174,31 @@ export default async function AdminStorefrontsPage() {
           <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Total earned across all stores</p>
         </div>
       </div>
+
+      {/* Alert Banner for pending storefront applications */}
+      {pendingApplicationsCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300 bg-violet-50 p-4 shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-200 text-violet-900 dark:bg-violet-500/20 dark:text-violet-300">
+              <Store className="h-5 w-5 animate-pulse" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-violet-900 dark:text-violet-200">
+                {pendingApplicationsCount} Pending Storefront Application{pendingApplicationsCount === 1 ? "" : "s"} Awaiting Approval
+              </p>
+              <p className="text-xs text-violet-800/80 dark:text-violet-300/80">
+                Resellers have applied to open a storefront. Review their store name, contact info, and approve or reject below.
+              </p>
+            </div>
+          </div>
+          <a
+            href="#applications"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-violet-500 transition-colors"
+          >
+            Review Applications ({pendingApplicationsCount}) ↓
+          </a>
+        </div>
+      )}
 
       {/* Alert Banner for pending withdrawals */}
       {withdrawals.length > 0 && (

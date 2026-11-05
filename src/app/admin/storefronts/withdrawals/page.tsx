@@ -16,6 +16,7 @@ export default async function AdminStorefrontWithdrawalsPage() {
     approvedAgg,
     rejectedCount,
     totalFeeAgg,
+    pendingApplicationsCount,
   ] = await Promise.all([
     prisma.storefrontWithdrawal.findMany({
       include: {
@@ -55,6 +56,9 @@ export default async function AdminStorefrontWithdrawalsPage() {
     prisma.storefrontWithdrawal.aggregate({
       where: { status: "APPROVED" },
       _sum: { fee: true },
+    }),
+    prisma.storefront.count({
+      where: { status: "PENDING", isCustomDomain: false },
     }),
   ]);
 
@@ -126,6 +130,11 @@ export default async function AdminStorefrontWithdrawalsPage() {
           >
             <Store className="h-4 w-4" />
             <span>Storefronts &amp; Resellers</span>
+            {pendingApplicationsCount > 0 && (
+              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300">
+                {pendingApplicationsCount}
+              </span>
+            )}
           </Link>
           <Link
             href="/admin/storefronts/wallets"

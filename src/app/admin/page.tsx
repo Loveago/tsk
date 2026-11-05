@@ -23,6 +23,7 @@ import {
   ArrowDownLeft,
   ShieldCheck,
   Banknote,
+  Store,
 } from "lucide-react";
 
 export default async function AdminDashboardPage() {
@@ -52,6 +53,7 @@ export default async function AdminDashboardPage() {
     rejectedMtnCount,
     blockedMtnCount,
     pendingWithdrawalsCount,
+    pendingStorefrontApplicationsCount,
   ] = await Promise.all([
     getOrderStats({}),
     prisma.user.count(),
@@ -98,6 +100,7 @@ export default async function AdminDashboardPage() {
     prisma.mtnVerificationRequest.count({ where: { status: "REJECTED" } }),
     prisma.blockedMtnNumber.count(),
     prisma.storefrontWithdrawal.count({ where: { status: "PENDING" } }),
+    prisma.storefront.count({ where: { status: "PENDING", isCustomDomain: false } }),
   ]);
 
   return (
@@ -118,6 +121,28 @@ export default async function AdminDashboardPage() {
             </Link>
             .
           </span>
+        </div>
+      )}
+
+      {pendingStorefrontApplicationsCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-violet-200 text-violet-900 dark:bg-violet-500/20 dark:text-violet-300">
+              <Store className="h-4 w-4 animate-pulse" />
+            </span>
+            <span>
+              <strong>
+                {pendingStorefrontApplicationsCount} storefront application{pendingStorefrontApplicationsCount === 1 ? "" : "s"}
+              </strong>{" "}
+              submitted by resellers and awaiting admin review.
+            </span>
+          </div>
+          <Link
+            href="/admin/storefronts#applications"
+            className="rounded-xl bg-violet-600 px-3.5 py-1.5 text-xs font-bold text-white shadow hover:bg-violet-500 transition-colors"
+          >
+            Review Application{pendingStorefrontApplicationsCount === 1 ? "" : "s"} →
+          </Link>
         </div>
       )}
 

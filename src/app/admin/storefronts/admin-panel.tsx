@@ -263,6 +263,7 @@ export function AdminStorefrontPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Action failed");
       setMsg({ kind: "ok", text: okText });
+      window.dispatchEvent(new CustomEvent("nav-counts-update"));
       router.refresh();
       return true;
     } catch (e) {
@@ -282,8 +283,14 @@ export function AdminStorefrontPanel({
     }
   }
 
-  async function setStatus(sf: StorefrontRow, action: "SUSPEND" | "REVOKE") {
-    await call("/api/admin/storefronts", { userId: sf.userId, action }, `Storefront ${action === "SUSPEND" ? "suspended" : "revoked"}.`);
+  async function setStatus(sf: StorefrontRow, action: "SUSPEND" | "REVOKE" | "REACTIVATE") {
+    const label =
+      action === "SUSPEND"
+        ? "suspended"
+        : action === "REACTIVATE"
+        ? "reactivated"
+        : "revoked";
+    await call("/api/admin/storefronts", { userId: sf.userId, action }, `Storefront ${label}.`);
   }
 
   async function reviewWithdrawal(id: string, action: "APPROVE" | "REJECT") {
@@ -298,6 +305,7 @@ export function AdminStorefrontPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Action failed");
       setMsg({ kind: "ok", text: `Withdrawal ${action === "APPROVE" ? "approved — wallet debited" : "rejected"}.` });
+      window.dispatchEvent(new CustomEvent("nav-counts-update"));
       router.refresh();
     } catch (e) {
       setMsg({ kind: "err", text: e instanceof Error ? e.message : "Action failed" });
@@ -351,10 +359,17 @@ export function AdminStorefrontPanel({
       </div>
 
       {/* Store applications (user-submitted) */}
-      <section>
-        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-          Store applications ({applications.filter((a) => a.status === "PENDING").length} pending)
-        </h2>
+      <section id="applications" className="scroll-mt-20">
+        <div className="mb-2 flex items-center gap-2">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+            Store applications ({applications.filter((a) => a.status === "PENDING").length} pending)
+          </h2>
+          {applications.some((a) => a.status === "PENDING") && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white animate-pulse">
+              Action Required
+            </span>
+          )}
+        </div>
         <div className="space-y-3">
           {applications.length === 0 && (
             <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">
@@ -556,8 +571,17 @@ export function AdminStorefrontPanel({
                           Suspend
                         </button>
                       ) : s.status === "SUSPENDED" ? (
-                        <button onClick={() => setStatus(s, "REVOKE")} disabled={busy} className="rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50">
-                          Revoke
+                        <>
+                          <button onClick={() => setStatus(s, "REACTIVATE")} disabled={busy} className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
+                            Reactivate
+                          </button>
+                          <button onClick={() => setStatus(s, "REVOKE")} disabled={busy} className="rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50">
+                            Revoke
+                          </button>
+                        </>
+                      ) : s.status === "NOT_ENABLED" || s.status === "REJECTED" ? (
+                        <button onClick={() => setStatus(s, "REACTIVATE")} disabled={busy} className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
+                          Reactivate
                         </button>
                       ) : (
                         <span className="text-xs text-slate-400">—</span>

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminStorefrontWalletsPage() {
   await requireAdmin();
 
-  const [users, pendingWithdrawalsCount] = await Promise.all([
+  const [users, pendingWithdrawalsCount, pendingApplicationsCount] = await Promise.all([
     prisma.user.findMany({
       where: {
         OR: [
@@ -66,6 +66,7 @@ export default async function AdminStorefrontWalletsPage() {
       orderBy: { createdAt: "desc" },
     }),
     prisma.storefrontWithdrawal.count({ where: { status: "PENDING" } }),
+    prisma.storefront.count({ where: { status: "PENDING", isCustomDomain: false } }),
   ]);
 
   const initialWallets: StorefrontWalletRow[] = users.map((u) => {
@@ -145,6 +146,11 @@ export default async function AdminStorefrontWalletsPage() {
           >
             <Store className="h-4 w-4" />
             <span>Storefronts &amp; Resellers</span>
+            {pendingApplicationsCount > 0 && (
+              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300">
+                {pendingApplicationsCount}
+              </span>
+            )}
           </Link>
           <Link
             href="/admin/storefronts/wallets"
