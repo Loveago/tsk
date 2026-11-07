@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { handleRouteError } from "@/lib/api-helpers";
-import { requireStorefront, getStorefrontDnsConfig } from "@/lib/storefront";
+import { requireStorefront, resolveStorefrontDnsConfig } from "@/lib/storefront";
 import { generateStorefrontDomainGuidePdf } from "@/lib/storefront-domain-guide-pdf";
 
 /**
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireUser();
     const storefront = await requireStorefront(user.id);
-    const dnsConfig = getStorefrontDnsConfig();
+    const dnsConfig = await resolveStorefrontDnsConfig();
 
     const mainDomain = (
       process.env.MAIN_DOMAIN ||

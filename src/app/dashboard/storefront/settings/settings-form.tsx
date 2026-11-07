@@ -49,7 +49,7 @@ export function StorefrontSettingsForm({
   initial,
   storefrontDomain = "tskdatastore.com",
   cnameTarget = "tskdatastore.com",
-  vpsIp = null,
+  vpsIp = "2.28.97.253",
 }: {
   initial: Initial;
   storefrontDomain?: string;
@@ -90,6 +90,16 @@ export function StorefrontSettingsForm({
     domainMode === "CUSTOM" && isCustomActive && customStoreUrl
       ? customStoreUrl
       : defaultStoreUrl;
+
+  const userDomainTarget =
+    (customDomainInput || savedCustomDomain)
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .split("/")[0]
+      .split(":")[0]
+      .replace(/^www\./, "") || "yourdomain.com";
+  const serverIpTarget = vpsIp || "2.28.97.253";
 
   const set =
     (k: keyof Initial) =>
@@ -662,61 +672,41 @@ export function StorefrontSettingsForm({
                   </thead>
                   <tbody className="divide-y divide-slate-200/70 font-mono dark:divide-slate-800">
                     <tr>
-                      <td className="py-2 pr-3 font-bold text-violet-600 dark:text-violet-400">CNAME</td>
+                      <td className="py-2 pr-3 font-bold text-sky-600 dark:text-sky-400">A</td>
                       <td className="py-2 pr-3 font-bold text-slate-900 dark:text-white">@</td>
-                      <td className="py-2 pr-3 text-emerald-700 dark:text-emerald-300">{cnameTarget}</td>
+                      <td className="py-2 pr-3 text-emerald-700 dark:text-emerald-300">{serverIpTarget}</td>
                       <td className="py-2 pr-3 font-sans text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                         Proxied (Orange Cloud)
                       </td>
                       <td className="py-2 text-right font-sans">
                         <button
                           type="button"
-                          onClick={() => copyText(cnameTarget, "cname-root")}
+                          onClick={() => copyText(serverIpTarget, "a-root")}
                           className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                         >
-                          {copiedField === "cname-root" ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-                          {copiedField === "cname-root" ? "Copied" : "Copy Target"}
+                          {copiedField === "a-root" ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                          {copiedField === "a-root" ? "Copied" : "Copy IP"}
                         </button>
                       </td>
                     </tr>
                     <tr>
-                      <td className="py-2 pr-3 font-bold text-violet-600 dark:text-violet-400">CNAME</td>
+                      <td className="py-2 pr-3 font-bold text-sky-600 dark:text-sky-400">A</td>
                       <td className="py-2 pr-3 font-bold text-slate-900 dark:text-white">www</td>
-                      <td className="py-2 pr-3 text-emerald-700 dark:text-emerald-300">{cnameTarget}</td>
+                      <td className="py-2 pr-3 text-emerald-700 dark:text-emerald-300">{serverIpTarget}</td>
                       <td className="py-2 pr-3 font-sans text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                         Proxied (Orange Cloud)
                       </td>
                       <td className="py-2 text-right font-sans">
                         <button
                           type="button"
-                          onClick={() => copyText(cnameTarget, "cname-www")}
+                          onClick={() => copyText(serverIpTarget, "a-www")}
                           className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                         >
-                          {copiedField === "cname-www" ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-                          {copiedField === "cname-www" ? "Copied" : "Copy Target"}
+                          {copiedField === "a-www" ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                          {copiedField === "a-www" ? "Copied" : "Copy IP"}
                         </button>
                       </td>
                     </tr>
-                    {vpsIp && (
-                      <tr>
-                        <td className="py-2 pr-3 font-bold text-sky-600 dark:text-sky-400">A (Alt)</td>
-                        <td className="py-2 pr-3 font-bold text-slate-900 dark:text-white">@</td>
-                        <td className="py-2 pr-3 text-emerald-700 dark:text-emerald-300">{vpsIp}</td>
-                        <td className="py-2 pr-3 font-sans text-[11px] text-slate-500 dark:text-slate-400">
-                          If registrar requires IP for @
-                        </td>
-                        <td className="py-2 text-right font-sans">
-                          <button
-                            type="button"
-                            onClick={() => copyText(vpsIp, "a-ip")}
-                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                          >
-                            {copiedField === "a-ip" ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-                            {copiedField === "a-ip" ? "Copied" : "Copy IP"}
-                          </button>
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -759,10 +749,10 @@ export function StorefrontSettingsForm({
 
                     <div className="rounded-lg bg-slate-50 p-3 dark:bg-white/5">
                       <p className="font-bold text-slate-900 dark:text-white">
-                        2. Add the Two CNAME Records in DNS
+                        2. Add the Two A Records in DNS
                       </p>
                       <p className="mt-1 leading-relaxed">
-                        In Cloudflare, open <strong>DNS → Records</strong>. Add a <code className="font-mono font-bold">CNAME</code> record for <code className="font-mono font-bold">@</code> pointing to <code className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{cnameTarget}</code> and a second <code className="font-mono font-bold">CNAME</code> for <code className="font-mono font-bold">www</code> pointing to <code className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{cnameTarget}</code>. Keep <strong>Proxy status: Proxied (Orange Cloud)</strong> ON.
+                        In Cloudflare, open <strong>DNS → Records</strong>. Add an <code className="font-mono font-bold">A</code> record for <code className="font-mono font-bold">@</code> pointing to <code className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{serverIpTarget}</code> and a second <code className="font-mono font-bold">A</code> record for <code className="font-mono font-bold">www</code> also pointing to <code className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{serverIpTarget}</code>. Keep <strong>Proxy status: Proxied (Orange Cloud)</strong> ON for both.
                       </p>
                     </div>
 

@@ -278,14 +278,14 @@ class GuidePdfEngine {
       }
     );
 
-    this.page.drawText("CNAME Target:", {
+    this.page.drawText("Server IP (A):", {
       x: col2X,
       y: this.y - 46,
       size: 8.5,
       font: this.fonts.bold,
       color: rgb(0.2, 0.24, 0.32),
     });
-    this.page.drawText(sanitize(opts.cnameTarget), {
+    this.page.drawText(sanitize(opts.vpsIp || "2.28.97.253"), {
       x: col2X + 75,
       y: this.y - 46,
       size: 8.5,
@@ -493,31 +493,23 @@ class GuidePdfEngine {
   public drawDnsRecordsTable(opts: GenerateStorefrontDomainGuidePdfOptions): void {
     const rowH = 24;
     const headerH = 22;
+    const serverIpTarget = opts.vpsIp || "2.28.97.253";
     const rows = [
       {
-        type: "CNAME",
+        type: "A",
         name: "@",
-        target: opts.cnameTarget,
+        target: serverIpTarget,
         proxy: "Proxied (Orange Cloud)",
-        note: "Root domain (Cloudflare flattens @ automatically)",
+        note: "Points your root domain to our Server IP",
       },
       {
-        type: "CNAME",
+        type: "A",
         name: "www",
-        target: opts.cnameTarget,
+        target: serverIpTarget,
         proxy: "Proxied (Orange Cloud)",
-        note: "Points www.yourdomain.com to your store",
+        note: "Points www subdomain to our Server IP",
       },
     ];
-    if (opts.vpsIp) {
-      rows.push({
-        type: "A (Alt)",
-        name: "@",
-        target: opts.vpsIp,
-        proxy: "Proxied (Orange Cloud)",
-        note: "Use only if your DNS provider rejects CNAME on @",
-      });
-    }
 
     const totalH = headerH + rows.length * rowH;
     this.ensureSpace(totalH + 14);
@@ -683,7 +675,7 @@ export async function generateStorefrontDomainGuidePdf(
 
   engine.drawCalloutBox(
     "IMPORTANT: Keep the Orange Cloud (Proxied) Turned ON!",
-    "When adding the CNAME records above in Cloudflare, make sure the 'Proxy status' toggle is set to 'Proxied' (Orange Cloud icon). This enables Cloudflare's free Universal SSL so your custom domain loads securely over https:// automatically.",
+    "When adding the two A records (@ and www) above in Cloudflare, make sure the 'Proxy status' toggle is set to 'Proxied' (Orange Cloud icon). This enables Cloudflare's free Universal SSL so your custom domain loads securely over https:// automatically.",
     "amber"
   );
 
@@ -758,9 +750,9 @@ export async function generateStorefrontDomainGuidePdf(
   );
   engine.drawCalloutBox(
     "2. Verification says 'DNS records not found yet'",
-    "Cause: DNS changes take 1 to 5 minutes on Cloudflare (or up to 1-24 hours if you just changed nameservers at Namecheap/GoDaddy). Fix: Double-check that you saved the CNAME record for '@' pointing to " +
-      options.cnameTarget +
-      ", wait a few minutes, and click 'Verify Domain' again.",
+    "Cause: DNS changes take 1 to 5 minutes on Cloudflare (or up to 1-24 hours if you just changed nameservers at Namecheap/GoDaddy). Fix: Double-check that you saved both A records ('@' and 'www') pointing to " +
+      (options.vpsIp || "2.28.97.253") +
+      ", wait a few minutes, and click 'Verify & Activate' again.",
     "emerald"
   );
 

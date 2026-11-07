@@ -6,7 +6,7 @@ import { handleRouteError, apiError } from "@/lib/api-helpers";
 import {
   requireStorefront,
   validateCustomDomain,
-  getStorefrontDnsConfig,
+  resolveStorefrontDnsConfig,
   getStorefrontUrls,
 } from "@/lib/storefront";
 
@@ -22,7 +22,7 @@ interface VerificationResult {
 }
 
 async function verifyCustomDomainConnection(domain: string): Promise<VerificationResult> {
-  const dnsConfig = getStorefrontDnsConfig();
+  const dnsConfig = await resolveStorefrontDnsConfig();
   let aRecords: string[] = [];
   let cnameRecords: string[] = [];
   let targetIps: string[] = [];
@@ -125,6 +125,7 @@ async function verifyCustomDomainConnection(domain: string): Promise<Verificatio
   const verified = httpsReachable || httpReachable || cnameMatchesTarget || ipMatchesTarget;
 
   if (!verified) {
+    const ipHint = dnsConfig.vpsIp || dnsConfig.cnameTarget;
     return {
       verified: false,
       dnsResolved: true,
@@ -132,8 +133,8 @@ async function verifyCustomDomainConnection(domain: string): Promise<Verificatio
       httpsReachable,
       aRecords,
       cnameRecords,
-      error: `DNS records were detected (${aRecords.join(", ") || cnameRecords.join(", ")}), but "${domain}" is not yet routing traffic to our storefront gateway. Make sure your CNAME points to "${dnsConfig.cnameTarget}"${dnsConfig.vpsIp ? ` (or A record points to ${dnsConfig.vpsIp})` : ""} and Cloudflare SSL/TLS is set to "Full".`,
-      message: "Domain resolves in DNS but does not point to Tskconnect yet.",
+      error: `DNS records were detected (${aRecords.join(", ") || cnameRecords.join(", ")}), but "${domain}" is not yet routing traffic to our storefront server. Make sure both A records (@ and www) point to our Server IP "${ipHint}", and Cloudflare SSL/TLS is set to "Full".`,
+      message: "Domain resolves in DNS but does not point to our server yet.",
     };
   }
 
@@ -158,7 +159,7 @@ export async function GET() {
   try {
     const user = await requireUser();
     const storefront = await requireStorefront(user.id);
-    const dnsConfig = getStorefrontDnsConfig();
+    const dnsConfig = await resolveStorefrontDnsConfig();
     const urls = getStorefrontUrls(storefront);
 
     return NextResponse.json({

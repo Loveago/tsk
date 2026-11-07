@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth";
-import { requireActiveStorefront, getStorefrontDnsConfig, getStorefrontUrls } from "@/lib/storefront";
+import { requireActiveStorefront, resolveStorefrontDnsConfig, getStorefrontUrls } from "@/lib/storefront";
 import { StorefrontSettingsForm } from "./settings-form";
 import { StoreStatusToggle } from "@/components/storefront/store-status-toggle";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function StorefrontSettingsPage() {
   const user = await requireUser();
   const storefront = await requireActiveStorefront(user.id);
-  const dnsConfig = getStorefrontDnsConfig();
+  const dnsConfig = await resolveStorefrontDnsConfig();
   const urls = getStorefrontUrls(storefront);
 
   return (

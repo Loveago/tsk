@@ -257,6 +257,15 @@ export function getStorefrontDnsConfig() {
     .toLowerCase()
     .replace(/^www\./, "");
 
+  const mainDomain = (
+    process.env.MAIN_DOMAIN ||
+    process.env.NEXT_PUBLIC_MAIN_DOMAIN ||
+    "tsk05.net"
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "");
+
   const cnameTarget = (
     process.env.STOREFRONT_CNAME_TARGET ||
     process.env.NEXT_PUBLIC_STOREFRONT_CNAME_TARGET ||
@@ -268,14 +277,52 @@ export function getStorefrontDnsConfig() {
   const vpsIp = (
     process.env.VPS_IP ||
     process.env.NEXT_PUBLIC_VPS_IP ||
-    ""
+    "2.28.97.253"
   ).trim();
 
   return {
     storefrontDomain,
+    mainDomain,
     cnameTarget,
-    vpsIp: vpsIp || null,
+    vpsIp,
   };
+}
+
+let cachedResolvedIp: { ip: string; expiresAt: number } | null = null;
+
+/**
+ * Resolves the platform DNS configuration including automatic lookup of the server's
+ * IPv4 address (A record) from VPS_IP env var or live DNS of MAIN_DOMAIN / STOREFRONT_DOMAIN.
+ */
+export async function resolveStorefrontDnsConfig() {
+  const base = getStorefrontDnsConfig();
+  if (base.vpsIp) {
+    return { ...base, vpsIp: base.vpsIp };
+  }
+
+  const now = Date.now();
+  if (cachedResolvedIp && cachedResolvedIp.expiresAt > now) {
+    return { ...base, vpsIp: cachedResolvedIp.ip };
+  }
+
+  try {
+    const dns = await import("dns/promises");
+    for (const host of [base.mainDomain, base.storefrontDomain]) {
+      try {
+        const ips = await dns.resolve4(host);
+        if (ips && ips.length > 0) {
+          cachedResolvedIp = { ip: ips[0], expiresAt: now + 10 * 60_000 };
+          return { ...base, vpsIp: ips[0] };
+        }
+      } catch {
+        // continue
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return base;
 }
 
 /**
