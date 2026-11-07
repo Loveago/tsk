@@ -7,8 +7,30 @@ import {
   logApiRequestEntry,
   ApiError,
 } from "@/lib/developer-api";
-import { sanitizeCustomerRefundNote } from "@/lib/types";
+import { sanitizeCustomerRefundNote, deliveryReportCode } from "@/lib/types";
 import { formatBatchOrderPayload } from "@/lib/api-batch-orders";
+import { getBaseAppUrl } from "@/lib/webhooks";
+
+function mapReportStatus(status: string): string {
+  switch (status) {
+    case "OPEN":
+    case "UNDER_REVIEW":
+    case "INVESTIGATING":
+      return "pending_resolution";
+    case "CONFIRM_SENT":
+    case "DELIVERED":
+      return "confirmed_sent";
+    case "RESOLVED":
+      return "resolved";
+    case "REFUNDED":
+      return "refunded";
+    case "REJECTED":
+    case "CANCELLED":
+      return "cancelled";
+    default:
+      return status.toLowerCase();
+  }
+}
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -124,10 +146,12 @@ export async function GET(
         deliveryReports: {
           select: {
             id: true,
+            seq: true,
             status: true,
             reason: true,
             adminResponse: true,
             adminNote: true,
+            proofImage: true,
             createdAt: true,
             resolvedAt: true,
           },
@@ -175,9 +199,21 @@ export async function GET(
       isSandbox: order.isSandbox,
       deliveryReport: order.deliveryReports?.[0] ? {
         id: order.deliveryReports[0].id,
-        status: order.deliveryReports[0].status,
+        code: deliveryReportCode(order.deliveryReports[0].seq),
+        status: mapReportStatus(order.deliveryReports[0].status),
         reason: order.deliveryReports[0].reason,
         adminResponse: sanitizeCustomerRefundNote(order.deliveryReports[0].adminResponse, order.amount),
+        adminNote: order.deliveryReports[0].adminNote || null,
+        evidenceUrl: order.deliveryReports[0].proofImage
+          ? (order.deliveryReports[0].proofImage.startsWith("http")
+              ? order.deliveryReports[0].proofImage
+              : `${getBaseAppUrl()}/api/evidence/${order.deliveryReports[0].seq}`)
+          : null,
+        proofImageUrl: order.deliveryReports[0].proofImage
+          ? (order.deliveryReports[0].proofImage.startsWith("http")
+              ? order.deliveryReports[0].proofImage
+              : `${getBaseAppUrl()}/api/evidence/${order.deliveryReports[0].seq}`)
+          : null,
         createdAt: order.deliveryReports[0].createdAt.toISOString(),
         resolvedAt: order.deliveryReports[0].resolvedAt?.toISOString() || null,
       } : null,

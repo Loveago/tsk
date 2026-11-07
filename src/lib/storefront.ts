@@ -149,6 +149,183 @@ export const RESERVED_SLUGS = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
+// Custom Domain Normalization, Validation & URL Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Strips protocol, www., port, query string, and path from a raw domain input.
+ * Example: "https://www.KofiData.com/shop?ref=1" -> "kofidata.com"
+ */
+export function normalizeCustomDomain(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .split("/")[0]
+    .split("?")[0]
+    .split("#")[0]
+    .split(":")[0]
+    .replace(/^www\./, "")
+    .replace(/\.+$/, "");
+}
+
+/**
+ * Validates that a normalized domain is syntactically valid and not one of the
+ * platform's reserved domains.
+ */
+export function validateCustomDomain(raw: string): {
+  valid: boolean;
+  domain: string;
+  error?: string;
+} {
+  const domain = normalizeCustomDomain(raw);
+  if (!domain) {
+    return { valid: false, domain: "", error: "Please enter a valid domain name (e.g. mybranddata.com)." };
+  }
+  if (domain.length < 4 || domain.length > 253) {
+    return { valid: false, domain, error: "Domain name must be between 4 and 253 characters." };
+  }
+
+  // Must match standard domain format: labels separated by dots, valid TLD of at least 2 letters
+  const domainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
+  if (!domainRegex.test(domain) || domain.includes("..")) {
+    return {
+      valid: false,
+      domain,
+      error: "Invalid domain format. Enter a clean domain like 'kofidata.com' or 'shop.kofidata.com' without http:// or slashes.",
+    };
+  }
+
+  const mainDomain = (process.env.MAIN_DOMAIN || process.env.NEXT_PUBLIC_MAIN_DOMAIN || "tsk05.net")
+    .toLowerCase()
+    .replace(/^www\./, "");
+  const storefrontDomain = (
+    process.env.STOREFRONT_DOMAIN ||
+    process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN ||
+    "tskdatastore.com"
+  )
+    .toLowerCase()
+    .replace(/^www\./, "");
+  const adminCustomDomain = (process.env.ADMIN_CUSTOM_DOMAIN || "data-deals.com")
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+  const reservedDomains = [
+    mainDomain,
+    storefrontDomain,
+    adminCustomDomain,
+    "localhost",
+    "127.0.0.1",
+    "tsk05.net",
+    "tskdatastore.com",
+    "data-deals.com",
+    "paystack.com",
+    "cloudflare.com",
+  ];
+
+  for (const reserved of reservedDomains) {
+    if (domain === reserved || domain.endsWith(`.${reserved}`)) {
+      return {
+        valid: false,
+        domain,
+        error: `"${domain}" is a reserved platform domain and cannot be connected as a custom storefront domain.`,
+      };
+    }
+  }
+
+  if (domain.endsWith(".vercel.app") || domain.endsWith(".local") || domain.endsWith(".internal")) {
+    return {
+      valid: false,
+      domain,
+      error: "Please connect a registered custom domain (e.g. .com, .store, .shop, .net, .org, .africa).",
+    };
+  }
+
+  return { valid: true, domain };
+}
+
+/**
+ * Returns the platform DNS targets that storefront owners should point their custom domain to.
+ */
+export function getStorefrontDnsConfig() {
+  const storefrontDomain = (
+    process.env.STOREFRONT_DOMAIN ||
+    process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN ||
+    "tskdatastore.com"
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+  const cnameTarget = (
+    process.env.STOREFRONT_CNAME_TARGET ||
+    process.env.NEXT_PUBLIC_STOREFRONT_CNAME_TARGET ||
+    storefrontDomain
+  )
+    .trim()
+    .toLowerCase();
+
+  const vpsIp = (
+    process.env.VPS_IP ||
+    process.env.NEXT_PUBLIC_VPS_IP ||
+    ""
+  ).trim();
+
+  return {
+    storefrontDomain,
+    cnameTarget,
+    vpsIp: vpsIp || null,
+  };
+}
+
+/**
+ * Resolves the primary and fallback public URLs for a storefront based on its
+ * `customDomain`, `customDomainStatus`, and `preferredDomainMode`.
+ */
+export function getStorefrontUrls(storefront: {
+  slug: string;
+  customDomain?: string | null;
+  customDomainStatus?: string | null;
+  preferredDomainMode?: string | null;
+  isCustomDomain?: boolean;
+}) {
+  const storefrontDomain = (
+    process.env.STOREFRONT_DOMAIN ||
+    process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN ||
+    "tskdatastore.com"
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "");
+
+  const defaultUrl = `https://${storefrontDomain}/${storefront.slug}`;
+  const defaultDisplay = `${storefrontDomain}/${storefront.slug}`;
+
+  const hasActiveCustomDomain = Boolean(
+    storefront.customDomain &&
+      (storefront.customDomainStatus === "ACTIVE" || storefront.isCustomDomain)
+  );
+  const customUrl = storefront.customDomain ? `https://${storefront.customDomain}` : null;
+  const useCustomAsPrimary =
+    hasActiveCustomDomain &&
+    (storefront.preferredDomainMode === "CUSTOM" || storefront.isCustomDomain);
+
+  return {
+    primaryUrl: useCustomAsPrimary && customUrl ? customUrl : defaultUrl,
+    primaryDisplay:
+      useCustomAsPrimary && storefront.customDomain
+        ? storefront.customDomain
+        : defaultDisplay,
+    defaultUrl,
+    defaultDisplay,
+    customUrl,
+    customDisplay: storefront.customDomain || null,
+    hasActiveCustomDomain,
+    useCustomAsPrimary,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Access gating (§1/§2) — enforced server-side, never just a hidden nav item
 // ---------------------------------------------------------------------------
 

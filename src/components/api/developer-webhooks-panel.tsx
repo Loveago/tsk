@@ -20,6 +20,9 @@ export function DeveloperWebhooksPanel() {
     "order.completed",
     "order.failed",
     "order.cancelled",
+    "report.not_received.submitted",
+    "report.not_received.confirmed_sent",
+    "report.not_received.resolved",
   ]);
   const [saving, setSaving] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
@@ -32,6 +35,9 @@ export function DeveloperWebhooksPanel() {
     { id: "order.completed", label: "order.completed", desc: "Triggered when data bundle is delivered" },
     { id: "order.failed", label: "order.failed", desc: "Triggered if carrier rejects or delivery fails" },
     { id: "order.cancelled", label: "order.cancelled", desc: "Triggered if order is cancelled or refunded" },
+    { id: "report.not_received.submitted", label: "report.not_received.submitted", desc: "Triggered when customer reports data bundle not received" },
+    { id: "report.not_received.confirmed_sent", label: "report.not_received.confirmed_sent", desc: "Triggered when carrier confirms delivery with proof/evidence" },
+    { id: "report.not_received.resolved", label: "report.not_received.resolved", desc: "Triggered when report is resolved, rejected, or refunded" },
   ];
 
   const load = React.useCallback(async () => {

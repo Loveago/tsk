@@ -316,6 +316,41 @@ export async function PATCH(request: NextRequest) {
             });
           });
 
+          // Dispatch feedback for each updated report in bulk
+          try {
+            const { dispatchNotReceivedFeedback } = await import("@/lib/webhooks");
+            const targetStatus = String(data.status || report.status);
+            const isConfirmSent = targetStatus === "CONFIRM_SENT" || targetStatus === "DELIVERED";
+            const isResolved = targetStatus === "RESOLVED";
+            const isRefunded = targetStatus === "REFUNDED";
+            const isRejected = targetStatus === "REJECTED";
+
+            if (isConfirmSent || isResolved || isRefunded || isRejected || input.action === "ADD_RESPONSE") {
+              const mappedStatus = isConfirmSent
+                ? "confirmed_sent"
+                : isResolved
+                ? "resolved"
+                : isRefunded
+                ? "refunded"
+                : isRejected
+                ? "cancelled"
+                : "pending_resolution";
+
+              const eventName = isConfirmSent
+                ? "report.not_received.confirmed_sent"
+                : "report.not_received.resolved";
+
+              dispatchNotReceivedFeedback({
+                reportId: report.id,
+                eventName,
+                status: mappedStatus,
+                adminNotes: input.adminResponse || input.resolutionNote,
+                resolutionDate: new Date(),
+                actorLabel: actor.email,
+              }).catch(() => {});
+            }
+          } catch {}
+
           updatedCount++;
           results.push({ id: report.id, status: String(data.status || report.status), ok: true });
         } catch (itemErr) {
@@ -471,6 +506,45 @@ export async function PATCH(request: NextRequest) {
       });
       return row;
     });
+
+    // Dispatch real-time feedback and evidence to originating third-party site
+    try {
+      const { dispatchNotReceivedFeedback } = await import("@/lib/webhooks");
+      const targetStatus = updated.status;
+      const isConfirmSent = targetStatus === "CONFIRM_SENT" || targetStatus === "DELIVERED";
+      const isResolved = targetStatus === "RESOLVED";
+      const isRefunded = targetStatus === "REFUNDED";
+      const isRejected = targetStatus === "REJECTED";
+
+      if (isConfirmSent || isResolved || isRefunded || isRejected || input.action === "ADD_RESPONSE") {
+        const mappedStatus = isConfirmSent
+          ? "confirmed_sent"
+          : isResolved
+          ? "resolved"
+          : isRefunded
+          ? "refunded"
+          : isRejected
+          ? "cancelled"
+          : "pending_resolution";
+
+        const eventName = isConfirmSent
+          ? "report.not_received.confirmed_sent"
+          : "report.not_received.resolved";
+
+        dispatchNotReceivedFeedback({
+          reportId: report.id,
+          eventName,
+          status: mappedStatus,
+          adminNotes: input.adminResponse || input.resolutionNote || updated.adminResponse || updated.adminNote,
+          resolutionDate: updated.resolvedAt || new Date(),
+          actorLabel: actor.email,
+        }).catch((fbErr) => {
+          console.error("Failed to dispatch not-received feedback from admin action:", fbErr);
+        });
+      }
+    } catch (fbErr) {
+      console.error("Failed to trigger not-received feedback from admin action:", fbErr);
+    }
 
     await recordAudit({
       userId: actor.id,

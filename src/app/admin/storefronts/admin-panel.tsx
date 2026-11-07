@@ -19,6 +19,8 @@ interface StorefrontRow {
   id: string;
   userId: string;
   slug: string;
+  customDomain?: string | null;
+  customDomainStatus?: string | null;
   name: string;
   status: string;
   isActive?: boolean;
@@ -524,16 +526,40 @@ export function AdminStorefrontPanel({
                     {s.userPhone && <p className="text-[11px] text-slate-400">{s.userPhone}</p>}
                   </td>
                   <td className="px-4 py-3">
-                    <a
-                      href={`https://${storefrontDomain}/${s.slug}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-semibold text-violet-600 hover:underline dark:text-violet-400 inline-flex items-center gap-1"
-                    >
-                      <span>/{s.slug}</span>
-                      <ExternalLink className="h-3 w-3 opacity-70" />
-                    </a>
-                    <span className="ml-2 text-slate-400 text-xs">{s.name}</span>
+                    <div>
+                      <a
+                        href={`https://${storefrontDomain}/${s.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-violet-600 hover:underline dark:text-violet-400 inline-flex items-center gap-1"
+                      >
+                        <span>/{s.slug}</span>
+                        <ExternalLink className="h-3 w-3 opacity-70" />
+                      </a>
+                      <span className="ml-2 text-slate-400 text-xs">{s.name}</span>
+                    </div>
+                    {s.customDomain && (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <a
+                          href={`https://${s.customDomain}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-xs font-semibold text-emerald-600 hover:underline dark:text-emerald-400 inline-flex items-center gap-1"
+                        >
+                          <span>{s.customDomain}</span>
+                          <ExternalLink className="h-2.5 w-2.5 opacity-70" />
+                        </a>
+                        <span
+                          className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                            s.customDomainStatus === "ACTIVE"
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                          }`}
+                        >
+                          {s.customDomainStatus === "ACTIVE" ? "Verified" : "Pending DNS"}
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-1.5">

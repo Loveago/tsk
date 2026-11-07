@@ -725,11 +725,11 @@ export function deriveCompletedAt(order: {
   history?: { status: string; createdAt: Date }[];
   updatedAt?: Date;
 }): Date | null {
-  if (order.status !== "SUCCESS") return null;
+  if (order.status !== "SUCCESS" && order.status !== "COMPLETED") return null;
   if (order.completedAt) return order.completedAt;
   const successEntry = [...(order.history ?? [])]
     .reverse()
-    .find((h) => h.status === "SUCCESS");
+    .find((h) => h.status === "SUCCESS" || h.status === "COMPLETED");
   return successEntry?.createdAt ?? order.updatedAt ?? null;
 }
 

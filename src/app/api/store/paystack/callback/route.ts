@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
   let outcome: "success" | "failed" = "failed";
   let reference = "";
   let customDomain: string | null = null;
+  let isCustomDomainActive = false;
 
   try {
     reference =
@@ -25,10 +26,27 @@ export async function GET(request: NextRequest) {
     if (reference) {
       const row = await prisma.storefrontOrder.findUnique({
         where: { paymentReference: reference },
-        select: { storefront: { select: { slug: true, customDomain: true } }, underlyingOrderId: true },
+        select: {
+          storefront: {
+            select: {
+              slug: true,
+              customDomain: true,
+              customDomainStatus: true,
+              isCustomDomain: true,
+              preferredDomainMode: true,
+            },
+          },
+          underlyingOrderId: true,
+        },
       });
       slug = row?.storefront.slug ?? "";
       customDomain = row?.storefront.customDomain ?? null;
+      isCustomDomainActive = Boolean(
+        customDomain &&
+          (row?.storefront.isCustomDomain ||
+            (row?.storefront.customDomainStatus === "ACTIVE" &&
+              row?.storefront.preferredDomainMode === "CUSTOM"))
+      );
 
       if (row) {
         if (row.underlyingOrderId) {
@@ -45,6 +63,7 @@ export async function GET(request: NextRequest) {
         if (geminiOrder) {
           slug = "data-deals";
           customDomain = process.env.ADMIN_CUSTOM_DOMAIN || "data-deals.com";
+          isCustomDomainActive = true;
           if (geminiOrder.paystackStatus === "PAID") {
             outcome = "success";
           } else {
@@ -66,9 +85,11 @@ export async function GET(request: NextRequest) {
   const storefrontDomain = (process.env.STOREFRONT_DOMAIN || "tskdatastore.com").toLowerCase();
   const adminCustomDomain = (process.env.ADMIN_CUSTOM_DOMAIN || "data-deals.com").toLowerCase();
   const isStorefrontOrigin = origin.toLowerCase().includes(storefrontDomain);
-  const isCustomDomainOrigin = origin.toLowerCase().includes(adminCustomDomain) || (customDomain && origin.toLowerCase().includes(customDomain.toLowerCase()));
+  const isCustomDomainOrigin =
+    origin.toLowerCase().includes(adminCustomDomain) ||
+    Boolean(customDomain && origin.toLowerCase().includes(customDomain.toLowerCase()));
 
-  if (customDomain || isCustomDomainOrigin) {
+  if (isCustomDomainOrigin || (isCustomDomainActive && !isStorefrontOrigin)) {
     const domainHost = customDomain || adminCustomDomain;
     const proto = process.env.NODE_ENV === "production" ? "https" : "http";
     const base = `${proto}://${domainHost}`;

@@ -14,7 +14,7 @@ import {
   sanitizeCustomerRefundNote,
 } from "@/lib/types";
 import { deriveCompletedAt, getSetting } from "@/lib/orders";
-import { dispatchWebhookEvent } from "@/lib/webhooks";
+import { dispatchWebhookEvent, dispatchNotReceivedFeedback, getBaseAppUrl } from "@/lib/webhooks";
 import { normalizeGhanaPhoneNumber } from "@/lib/phone-utils";
 import { normalizePhoneLast9, forwardNotReceivedToClickyfied } from "@/lib/provider-apis/router";
 import { recordAudit } from "@/lib/audit";
@@ -286,6 +286,11 @@ export async function POST(
       ? body.customerNote.trim().slice(0, 1000)
       : null;
 
+    const callbackMeta = [
+      body.callbackUrl ? `[CALLBACK_URL:${String(body.callbackUrl).trim()}]` : "",
+      body.callbackSigningSecret ? `[CALLBACK_SECRET:${String(body.callbackSigningSecret).trim()}]` : "",
+    ].filter(Boolean).join(" ");
+
     const report = await prisma.deliveryReport.create({
       data: {
         orderId: order.id,
@@ -294,6 +299,7 @@ export async function POST(
         status: "UNDER_REVIEW",
         reason,
         message: customerMessage,
+        adminNote: callbackMeta || null,
         events: {
           create: {
             type: "SUBMITTED",
@@ -322,34 +328,23 @@ export async function POST(
       console.error("Async Clickyfied dispatch error for API report:", err);
     });
 
-    // Dispatch real-time webhook event to user
-    dispatchWebhookEvent(
-      authContext.userId,
-      "report.not_received.submitted",
-      {
-        event: "report.not_received.submitted",
-        orderId: isBatch && batch ? batch.batchCode : `API-${order.id}`,
-        clientId: authContext.credentialId || authContext.userId,
-        submittedAt: report.createdAt.toISOString(),
-        report: {
-          reportId: reportCode,
-          orderEntryId: order.id,
-          number: order.phoneNumber,
-          allocationGb: order.gbAmount,
-          status: "pending_resolution",
-          reportDate: report.createdAt.toISOString(),
-          adminNotes: "Customer reported not received; investigation started",
-        },
-      },
-      order.id
-    ).catch((hookErr) => {
-      console.error("Webhook dispatch error for not-received submit:", hookErr);
+    // Dispatch real-time webhook event to originating site
+    dispatchNotReceivedFeedback({
+      reportId: report.id,
+      eventName: "report.not_received.submitted",
+      status: "pending_resolution",
+      adminNotes: "Customer reported not received; investigation started",
+      actorLabel: authContext.userEmail || "API Client",
+    }).catch((hookErr) => {
+      console.error("Feedback dispatch error for not-received submit:", hookErr);
     });
 
     const responsePayload = {
       report: {
         reportId: reportCode,
-        orderId: isBatch && batch ? batch.batchCode : `API-${order.id}`,
+        orderId: isBatch && batch ? batch.batchCode : (order.externalReference || `API-${order.id}`),
+        internalOrderId: `API-${order.id}`,
+        externalReference: order.externalReference || null,
         orderEntryId: order.id,
         number: order.phoneNumber,
         allocationGb: order.gbAmount,
@@ -459,6 +454,39 @@ export async function GET(
       targetOrderIds = [order.id];
     }
 
+    // Trigger on-demand sync with Clickyfied for any active reports on these orders
+    const candidateReports = await prisma.deliveryReport.findMany({
+      where: {
+        orderId: { in: targetOrderIds },
+        userId: authContext.userId,
+      },
+      select: {
+        id: true,
+        status: true,
+        order: { select: { providerReference: true, externalReference: true } },
+      },
+    });
+
+    const syncable = candidateReports.filter(
+      (r) =>
+        ["OPEN", "UNDER_REVIEW", "INVESTIGATING"].includes(r.status) &&
+        Boolean(
+          r.order?.providerReference?.startsWith("CLICKYFIED:") ||
+          r.order?.externalReference?.startsWith("CF-BATCH-")
+        )
+    );
+
+    if (syncable.length > 0) {
+      try {
+        const { syncClickyfiedDeliveryReport } = await import("@/lib/provider-apis/router");
+        await Promise.allSettled(
+          syncable.map((r) => syncClickyfiedDeliveryReport(r.id, "Developer API Query Sync"))
+        );
+      } catch (syncErr) {
+        console.error("Developer API not-received query sync error:", syncErr);
+      }
+    }
+
     const reports = await prisma.deliveryReport.findMany({
       where: {
         orderId: { in: targetOrderIds },
@@ -472,23 +500,34 @@ export async function GET(
             gbAmount: true,
             amount: true,
             network: true,
+            externalReference: true,
+            providerReference: true,
           },
         },
       },
       orderBy: { createdAt: "desc" },
     });
 
+    const appBaseUrl = getBaseAppUrl();
+
     const formattedReports = reports.map((r) => {
       const code = deliveryReportCode(r.seq);
       const evidenceUrl = r.proofImage
         ? r.proofImage.startsWith("http")
           ? r.proofImage
-          : `/api/reports/not-received/${r.id}/proof`
+          : `${appBaseUrl}/api/evidence/${r.seq}`
         : null;
+
+      const externalOrderId =
+        r.order.externalReference ||
+        (isBatch && batch ? batch.batchCode : `API-${r.order.id}`);
 
       return {
         reportId: code,
-        orderId: isBatch && batch ? batch.batchCode : `API-${r.order.id}`,
+        reportCode: code,
+        orderId: externalOrderId,
+        internalOrderId: `API-${r.order.id}`,
+        externalReference: r.order.externalReference || null,
         orderEntryId: r.order.id,
         number: r.order.phoneNumber,
         allocationGb: r.order.gbAmount,
@@ -498,6 +537,8 @@ export async function GET(
         resolutionDate: r.resolvedAt?.toISOString() || null,
         adminNotes: sanitizeCustomerRefundNote(r.adminResponse, r.order.amount) || r.adminResponse || null,
         evidenceUrl,
+        proofImageUrl: evidenceUrl,
+        evidenceType: evidenceUrl ? "screenshot" : null,
       };
     });
 

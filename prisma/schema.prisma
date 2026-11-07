@@ -413,6 +413,10 @@ model Storefront {
   slug        String   @unique
   customDomain String? @unique
   isCustomDomain Boolean @default(false)
+  customDomainStatus String @default("NONE") // NONE | PENDING_DNS | ACTIVE | ERROR
+  customDomainVerifiedAt DateTime?
+  customDomainError String?
+  preferredDomainMode String @default("DEFAULT") // DEFAULT | CUSTOM
   name        String
   description String?
   logoUrl     String?

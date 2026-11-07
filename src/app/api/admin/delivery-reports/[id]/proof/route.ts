@@ -55,6 +55,25 @@ export async function POST(
       return row;
     });
 
+    // Dispatch real-time feedback with newly uploaded evidence image to third-party website
+    try {
+      const { dispatchNotReceivedFeedback } = await import("@/lib/webhooks");
+      const isConfirmSent = updated.status === "CONFIRM_SENT" || updated.status === "DELIVERED";
+      const mappedStatus = isConfirmSent ? "confirmed_sent" : "resolved";
+      const eventName = isConfirmSent ? "report.not_received.confirmed_sent" : "report.not_received.resolved";
+
+      dispatchNotReceivedFeedback({
+        reportId: report.id,
+        eventName,
+        status: mappedStatus,
+        adminNotes: report.adminResponse || "Delivery evidence proof uploaded",
+        resolutionDate: new Date(),
+        actorLabel: actor.email,
+      }).catch((fbErr) => {
+        console.error("Failed to dispatch feedback after proof upload:", fbErr);
+      });
+    } catch {}
+
     await recordAudit({
       userId: actor.id,
       actorLabel: actor.email,

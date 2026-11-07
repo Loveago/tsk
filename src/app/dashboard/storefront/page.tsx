@@ -9,10 +9,13 @@ import {
   TrendingUp,
   Hourglass,
   PauseCircle,
+  Globe,
+  FileDown,
+  CheckCircle2,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { requireActiveStorefront, ensureWallet, fromPesewas, storefrontOrderCode } from "@/lib/storefront";
+import { requireActiveStorefront, ensureWallet, fromPesewas, storefrontOrderCode, getStorefrontUrls } from "@/lib/storefront";
 import { CopyShareButtons } from "@/components/storefront/copy-share-buttons";
 import { StoreStatusToggle } from "@/components/storefront/store-status-toggle";
 import { RecentOrdersView } from "@/components/storefront/recent-orders-view";
@@ -51,8 +54,8 @@ export default async function StorefrontOverviewPage({
       }),
     ]);
 
-  const storefrontDomain = process.env.NEXT_PUBLIC_STOREFRONT_DOMAIN || "tskdatastore.com";
-  const storeUrl = `https://${storefrontDomain}/${storefront.slug}`;
+  const urls = getStorefrontUrls(storefront);
+  const storeUrl = urls.primaryUrl;
   const stats = [
     {
       label: "Available balance",
@@ -124,10 +127,29 @@ export default async function StorefrontOverviewPage({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 font-semibold text-violet-600 hover:underline dark:text-violet-400"
                 >
-                  {storefrontDomain}/{storefront.slug}
+                  {urls.primaryDisplay}
                   <ExternalLink className="h-3 w-3" />
                 </a>
+                {urls.useCustomAsPrimary && (
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Custom Domain
+                  </span>
+                )}
               </p>
+              {urls.useCustomAsPrimary && (
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Default fallback link:{" "}
+                  <a
+                    href={urls.defaultUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono hover:underline"
+                  >
+                    {urls.defaultDisplay}
+                  </a>
+                </p>
+              )}
               <div className="mt-3">
                 <CopyShareButtons url={storeUrl} storeName={storefront.name} />
               </div>
@@ -165,6 +187,48 @@ export default async function StorefrontOverviewPage({
           </div>
         </div>
       )}
+
+      {/* Custom Domain Connection Announcement & PDF Guide Banner */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-violet-200/80 bg-gradient-to-r from-violet-50/80 via-white to-emerald-50/40 p-4 shadow-xs dark:border-violet-500/30 dark:from-violet-950/30 dark:via-[#0d1526] dark:to-emerald-950/20">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300">
+            <Globe className="h-5 w-5" />
+          </span>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-bold text-slate-900 dark:text-white">
+                {urls.hasActiveCustomDomain
+                  ? `Custom Domain Connected (${storefront.customDomain})`
+                  : "Connect Your Own Custom Domain (Cloudflare or Any Provider)"}
+              </p>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                New Feature
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+              {urls.hasActiveCustomDomain
+                ? "Your custom domain is verified and live! You can switch between your custom domain and default link anytime in Store Settings."
+                : "Buy a domain from Cloudflare, Namecheap, or GoDaddy and connect it to your store, or keep using your free default storefront domain."}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <a
+            href="/api/storefront/domain-guide-pdf"
+            download
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            <FileDown className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+            PDF Setup Guide
+          </a>
+          <Link
+            href="/dashboard/storefront/settings"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-500"
+          >
+            {urls.hasActiveCustomDomain ? "Manage Domain" : "Connect Domain →"}
+          </Link>
+        </div>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

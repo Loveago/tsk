@@ -475,3 +475,64 @@ curl -I -H "Host: data-deals.com" http://127.0.0.1:3000/admin
 curl -I -H "Host: data-deals.com" http://127.0.0.1:3000/mtn
 # Expected: HTTP 200
 ================================================================================
+
+
+================================================================================
+15. SELF-SERVE SELLER CUSTOM DOMAINS (1-TIME NGINX CATCH-ALL SETUP)
+================================================================================
+To allow any storefront user to connect their own custom domain (bought via
+Cloudflare or any registrar) automatically WITHOUT you needing to SSH into the
+VPS or run Certbot for each user, add this 1-time Catch-All server block!
+
+How it works:
+1. The user adds a CNAME record (`@` and `www` -> `tskdatastore.com`) in
+   Cloudflare with Proxy Status = "Proxied (Orange Cloud)" and SSL/TLS = "Full".
+2. Cloudflare automatically issues the public SSL certificate for the user's domain.
+3. Cloudflare forwards the request to your VPS on port 443 with `Host: userdomain.com`.
+4. Nginx's `default_server` block accepts the connection using a 10-year self-signed
+   origin certificate and forwards `Host: userdomain.com` to Next.js (`127.0.0.1:3000`).
+5. Next.js middleware resolves `userdomain.com` -> the seller's store slug automatically!
+
+--- [ STEP A: GENERATE 10-YEAR SELF-SIGNED ORIGIN CERT ON VPS ] ---
+sudo mkdir -p /etc/nginx/ssl
+sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  -keyout /etc/nginx/ssl/catchall.key \
+  -out /etc/nginx/ssl/catchall.crt \
+  -subj "/C=GH/ST=Accra/L=Accra/O=Tskconnect/CN=storefront-gateway"
+
+--- [ STEP B: CREATE CATCH-ALL NGINX CONFIG ] ---
+cat << 'EOF' > /etc/nginx/sites-available/99-custom-domains-catchall
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+
+    ssl_certificate /etc/nginx/ssl/catchall.crt;
+    ssl_certificate_key /etc/nginx/ssl/catchall.key;
+
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+    }
+}
+EOF
+
+--- [ STEP C: ENABLE & RELOAD NGINX ] ---
+sudo ln -sf /etc/nginx/sites-available/99-custom-domains-catchall /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+================================================================================

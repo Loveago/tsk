@@ -240,6 +240,8 @@ export default async function AdminStorefrontsPage() {
             id: s.id,
             userId: s.userId,
             slug: s.slug,
+            customDomain: s.customDomain,
+            customDomainStatus: s.customDomainStatus,
             name: s.name,
             status: s.status,
             isActive: s.isActive,

@@ -605,3 +605,56 @@ curl -I -H "Host: tsk05.net" http://127.0.0.1:3000/dashboard
 5. Open `https://tsk05.net/dashboard/storefront/wallet` in another window:
    - Commission is reflected immediately in available balance.
    - Order is listed in Storefront Orders table.
+
+---
+
+## Step 10: Self-Serve Seller Custom Domains (Cloudflare + 1-Time Nginx Catch-All)
+
+Storefront owners can choose to either use the default `https://tskdatastore.com/<slug>` domain OR connect their own custom domain (e.g. `https://kofidata.com`) purchased on Cloudflare or any registrar.
+
+### 1-Time VPS Setup for Unlimited Seller Custom Domains
+Run these commands **once** on your VPS so Nginx accepts any custom domain pointed via Cloudflare (with Orange Cloud Proxy enabled and SSL mode set to `Full`):
+
+```bash
+# 1. Generate a 10-year Origin SSL certificate for the catch-all listener
+sudo mkdir -p /etc/nginx/ssl
+sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  -keyout /etc/nginx/ssl/catchall.key \
+  -out /etc/nginx/ssl/catchall.crt \
+  -subj "/C=GH/ST=Accra/L=Accra/O=Tskconnect/CN=storefront-gateway"
+
+# 2. Create the Catch-All Nginx server block
+sudo cat << 'EOF' > /etc/nginx/sites-available/99-custom-domains-catchall
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+
+    ssl_certificate /etc/nginx/ssl/catchall.crt;
+    ssl_certificate_key /etc/nginx/ssl/catchall.key;
+
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+    }
+}
+EOF
+
+# 3. Enable & reload Nginx
+sudo ln -sf /etc/nginx/sites-available/99-custom-domains-catchall /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```

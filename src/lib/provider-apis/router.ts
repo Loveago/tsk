@@ -2600,33 +2600,39 @@ export async function syncClickyfiedDeliveryReport(
           },
         });
 
-        if (report.userId) {
-          try {
-            const { dispatchWebhookEvent } = await import("@/lib/webhooks");
-            const { deliveryReportCode } = await import("@/lib/types");
-            const eventName =
-              (newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED")
-                ? "report.not_received.confirmed_sent"
-                : newStatus === "RESOLVED"
-                ? "report.not_received.resolved"
-                : null;
-            if (eventName) {
-              dispatchWebhookEvent(
-                report.userId,
-                eventName,
-                {
-                  reportId: deliveryReportCode(report.seq),
-                  orderId: `API-${report.order.id}`,
-                  status: newStatus === "RESOLVED" ? "resolved" : "confirmed_sent",
-                  adminNotes: adminNotes || null,
-                  evidenceUrl: evidenceUrl || null,
-                  resolutionDate: resolutionDate?.toISOString() || new Date().toISOString(),
-                },
-                report.order.id
-              ).catch(() => {});
-            }
-          } catch {}
-        }
+        try {
+          const { dispatchNotReceivedFeedback } = await import("@/lib/webhooks");
+          const isConfirmSent = newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED";
+          const isResolved = newStatus === "RESOLVED";
+          const isRefunded = newStatus === "REFUNDED";
+          const isRejected = newStatus === "REJECTED";
+
+          const mappedStatus = isConfirmSent
+            ? "confirmed_sent"
+            : isResolved
+            ? "resolved"
+            : isRefunded
+            ? "refunded"
+            : isRejected
+            ? "cancelled"
+            : "pending_resolution";
+
+          const eventName = isConfirmSent
+            ? "report.not_received.confirmed_sent"
+            : "report.not_received.resolved";
+
+          dispatchNotReceivedFeedback({
+            reportId: report.id,
+            eventName,
+            status: mappedStatus,
+            adminNotes: adminNotes || report.adminResponse,
+            evidenceUrl,
+            resolutionDate: resolutionDate || new Date(),
+            actorLabel,
+          }).catch((fbErr) => {
+            console.error("Failed to dispatch not-received feedback from provider sync:", fbErr);
+          });
+        } catch {}
       }
 
       return { changed: true };

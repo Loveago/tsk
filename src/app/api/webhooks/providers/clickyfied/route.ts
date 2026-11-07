@@ -523,6 +523,40 @@ export async function POST(request: NextRequest) {
               actorLabel: "System",
             },
           });
+
+          // Dispatch real-time feedback and evidence image to originating third-party site
+          try {
+            const { dispatchNotReceivedFeedback } = await import("@/lib/webhooks");
+            const mappedFeedbackStatus =
+              newStatus === "CONFIRM_SENT" || newStatus === "DELIVERED"
+                ? "confirmed_sent"
+                : newStatus === "RESOLVED"
+                ? "resolved"
+                : newStatus === "REFUNDED"
+                ? "refunded"
+                : newStatus === "REJECTED"
+                ? "cancelled"
+                : "pending_resolution";
+
+            const feedbackEventName =
+              mappedFeedbackStatus === "confirmed_sent"
+                ? "report.not_received.confirmed_sent"
+                : "report.not_received.resolved";
+
+            dispatchNotReceivedFeedback({
+              reportId: report.id,
+              eventName: feedbackEventName,
+              status: mappedFeedbackStatus,
+              adminNotes: adminNotes || report.adminResponse,
+              evidenceUrl,
+              resolutionDate: resolutionDate || new Date(),
+              actorLabel: "Clickyfied Webhook",
+            }).catch((fbErr) => {
+              console.error("Failed to dispatch not-received feedback from Clickyfied webhook:", fbErr);
+            });
+          } catch (dispatchErr) {
+            console.error("Failed to trigger not-received feedback dispatch:", dispatchErr);
+          }
         }
       }
 

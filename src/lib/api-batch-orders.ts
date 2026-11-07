@@ -708,6 +708,31 @@ export async function handleBatchOrderSubmission({
     throw new ApiError("SERVER_ERROR", "Failed to record batch order in database.", 500);
   }
 
+  // Auto-register ApiWebhook if callbackUrl is provided in batch order request and no webhook exists yet
+  const incomingCallbackUrl = typeof body.callbackUrl === "string" ? body.callbackUrl.trim() : typeof body.callback_url === "string" ? body.callback_url.trim() : null;
+  const incomingCallbackSecret = typeof body.callbackSigningSecret === "string" ? body.callbackSigningSecret.trim() : typeof body.callback_signing_secret === "string" ? body.callback_signing_secret.trim() : null;
+
+  if (incomingCallbackUrl && (incomingCallbackUrl.startsWith("http://") || incomingCallbackUrl.startsWith("https://"))) {
+    try {
+      const existingHook = await prisma.apiWebhook.findUnique({
+        where: { userId: authContext.userId },
+      });
+      if (!existingHook) {
+        await prisma.apiWebhook.create({
+          data: {
+            userId: authContext.userId,
+            url: incomingCallbackUrl,
+            secret: incomingCallbackSecret || `whsec_${Math.random().toString(36).substring(2, 15)}`,
+            events: "order.created,order.processing,order.completed,order.failed,order.cancelled,report.not_received.submitted,report.not_received.confirmed_sent,report.not_received.resolved",
+            active: true,
+          },
+        });
+      }
+    } catch (hookRegErr) {
+      console.error("Batch order callbackUrl auto-registration error:", hookRegErr);
+    }
+  }
+
   // 7. Dispatch Webhook Event (asynchronously)
   dispatchWebhookEvent(
     authContext.userId,

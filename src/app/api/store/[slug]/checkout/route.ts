@@ -150,7 +150,14 @@ export async function POST(
 
     try {
       let origin = getRequestOrigin(request);
-      if (storefront.customDomain) {
+      if (storefront.isCustomDomain && storefront.customDomain) {
+        const proto = process.env.NODE_ENV === "production" ? "https" : "http";
+        origin = `${proto}://${storefront.customDomain}`;
+      } else if (
+        storefront.customDomain &&
+        storefront.customDomainStatus === "ACTIVE" &&
+        origin.toLowerCase().includes(storefront.customDomain.toLowerCase())
+      ) {
         const proto = process.env.NODE_ENV === "production" ? "https" : "http";
         origin = `${proto}://${storefront.customDomain}`;
       }
