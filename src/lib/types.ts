@@ -260,6 +260,10 @@ export function formatGHS(amount: number): string {
   return `GHS ${amount.toFixed(2)}`;
 }
 
+/** Matches internal provider / HTTP / configuration error text that customers must not see. */
+const INTERNAL_ERROR_PATTERN =
+  /ghconnect|clickyfied|clickify|bigwin|\bhttp\s*\d{3}\b|status\s*\d{3}|request failed|timed out|timeout|api[\s_-]?key|not configured|integration is disabled|dispatch failed|dispatch rejected|fetch failed|econn|enotfound|invalid json|filtered out by provider|blocked by provider|provider/i;
+
 /**
  * Sanitizes provider-originated failure reasons or administrative responses so customers
  * never see wholesale provider cost prices (e.g. Clickyfied's "Refunded GHS 18.75")
@@ -280,6 +284,13 @@ export function sanitizeCustomerRefundNote(
       : null;
 
   const isRefund = /refund/i.test(text);
+
+  // Internal provider/transport errors (e.g. "GHConnect request failed with HTTP 502")
+  // must never reach customers. The order simply stays in its current state, and is
+  // refunded automatically if it ultimately fails.
+  if (!isRefund && INTERNAL_ERROR_PATTERN.test(text)) {
+    return null;
+  }
 
   if (isRefund) {
     if (websitePriceStr) {
@@ -318,6 +329,11 @@ export function sanitizeCustomerFacingText(text: string | null | undefined): str
   let s = String(text).trim();
   if (!s) return null;
 
+  // Collapse raw transport/provider error details into a generic message
+  if (/dispatch failed|request failed|timed out|\bhttp\s*\d{3}\b|api[\s_-]?key|not configured|fetch failed|econn|enotfound|invalid json/i.test(s)) {
+    return "Delivery processing failed";
+  }
+
   // Mask internal batch codes / provider report IDs in notes
   s = s.replace(/\[PROVIDER_REPORT_ID:[^\]]+\]/gi, "");
   s = s.replace(/\[?CLICKYFIED_REPORT_ID:[^\]]+\]?/gi, "");
@@ -351,6 +367,7 @@ export function sanitizeCustomerFacingText(text: string | null | undefined): str
     .replace(/clickyfied provider/gi, "network provider")
     .replace(/clickyfied/gi, "")
     .replace(/clickify/gi, "")
+    .replace(/ghconnect/gi, "")
     .replace(/bigwindata/gi, "")
     .replace(/bigwin/gi, "");
 

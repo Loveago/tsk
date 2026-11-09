@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/shared";
 import { UserFormDialog } from "@/components/admin/user-form-dialog";
 import { AdminUsersTable, type UserRow } from "@/components/admin/admin-users-table";
@@ -25,6 +26,9 @@ import {
   Receipt,
   ListFilter,
   BadgePercent,
+  MessageSquare,
+  Send,
+  ExternalLink,
 } from "lucide-react";
 
 export default function AdminUsersPage() {
@@ -82,6 +86,13 @@ export default function AdminUsersPage() {
   const [bulkProcessing, setBulkProcessing] = React.useState(false);
   const [bulkProfileDialogOpen, setBulkProfileDialogOpen] = React.useState(false);
   const [selectedBulkProfileId, setSelectedBulkProfileId] = React.useState("");
+
+  // System Chat Message Dialog (single or bulk selected users)
+  const [chatDialogOpen, setChatDialogOpen] = React.useState(false);
+  const [chatTargetUser, setChatTargetUser] = React.useState<UserRow | null>(null);
+  const [chatTargetIds, setChatTargetIds] = React.useState<string[]>([]);
+  const [chatMessageText, setChatMessageText] = React.useState("");
+  const [sendingChat, setSendingChat] = React.useState(false);
 
   React.useEffect(() => {
     fetch("/api/auth/me")
@@ -254,6 +265,43 @@ export default function AdminUsersPage() {
       toast("Failed to change pricing profile", "error");
     } finally {
       setBulkProcessing(false);
+    }
+  };
+
+  const handleSendChatMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = chatMessageText.trim();
+    if (!text || sendingChat) return;
+    setSendingChat(true);
+    try {
+      const payload =
+        chatTargetIds.length > 1
+          ? { userIds: chatTargetIds, message: text }
+          : { userId: chatTargetUser?.id || chatTargetIds[0], message: text };
+      const res = await fetch("/api/admin/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to send chat message", "error");
+        return;
+      }
+      toast(
+        chatTargetIds.length > 1
+          ? json.message ?? `Chat message sent to ${chatTargetIds.length} users`
+          : `Message sent to ${chatTargetUser?.name ?? "user"}`,
+        "success"
+      );
+      setChatMessageText("");
+      setChatDialogOpen(false);
+      setChatTargetUser(null);
+      setChatTargetIds([]);
+    } catch {
+      toast("Failed to send chat message", "error");
+    } finally {
+      setSendingChat(false);
     }
   };
 
@@ -623,6 +671,26 @@ export default function AdminUsersPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* Bulk Message via System Chat */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setChatTargetUser(
+                  selectedIds.length === 1
+                    ? data.find((u) => u.id === selectedIds[0]) ?? null
+                    : null
+                );
+                setChatTargetIds(selectedIds);
+                setChatMessageText("");
+                setChatDialogOpen(true);
+              }}
+              className="h-8 text-xs font-semibold text-blue-700 bg-blue-50 border-blue-300 hover:bg-blue-100 dark:bg-blue-950/40 dark:border-blue-700 dark:text-blue-300"
+            >
+              <MessageSquare className="h-3.5 w-3.5 mr-1" />
+              Message Selected ({selectedIds.length})
+            </Button>
+
             {/* Bulk Activate */}
             <Button
               size="sm"
@@ -735,6 +803,12 @@ export default function AdminUsersPage() {
           setAdjustingUser(u);
           setAdjustmentMode("DEBIT");
           setAdjustmentDialogOpen(true);
+        }}
+        onMessage={(u) => {
+          setChatTargetUser(u);
+          setChatTargetIds([u.id]);
+          setChatMessageText("");
+          setChatDialogOpen(true);
         }}
         onToggleFreeze={handleFreeze}
       />
@@ -888,6 +962,111 @@ export default function AdminUsersPage() {
             </Button>
           </div>
         </div>
+      </Dialog>
+
+      {/* System Chat Message Dialog */}
+      <Dialog
+        open={chatDialogOpen}
+        onClose={() => {
+          setChatDialogOpen(false);
+          setChatTargetUser(null);
+          setChatTargetIds([]);
+        }}
+        title={
+          chatTargetIds.length > 1
+            ? `Message ${chatTargetIds.length} Selected Users via System Chat`
+            : `Message ${chatTargetUser?.name || "User"} via System Chat`
+        }
+      >
+        <form onSubmit={handleSendChatMessage} className="space-y-4 text-sm">
+          {chatTargetUser && chatTargetIds.length === 1 ? (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                  {chatTargetUser.name}
+                </p>
+                <p className="text-[11px] text-slate-500 truncate">{chatTargetUser.email}</p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const uid = chatTargetUser.id;
+                    setChatDialogOpen(false);
+                    window.dispatchEvent(
+                      new CustomEvent("open-system-chat", { detail: { userId: uid } })
+                    );
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-500/30 dark:bg-slate-900 dark:text-brand-300"
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  <span>Live Widget</span>
+                </button>
+                <Link
+                  href={`/admin/chat?userId=${chatTargetUser.id}`}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <span>Full Thread</span>
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              This message will be delivered directly into the website system chat inbox of the{" "}
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {chatTargetIds.length} selected user(s)
+              </span>
+              .
+            </p>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Message
+            </label>
+            <textarea
+              rows={4}
+              value={chatMessageText}
+              onChange={(e) => setChatMessageText(e.target.value)}
+              placeholder="Type your message to the user…"
+              maxLength={2000}
+              required
+              autoFocus
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+            <div className="flex justify-end text-[11px] text-slate-400">
+              {chatMessageText.length} / 2000
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setChatDialogOpen(false);
+                setChatTargetUser(null);
+                setChatTargetIds([]);
+              }}
+              disabled={sendingChat}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={!chatMessageText.trim() || sendingChat}
+              className="bg-brand-600 text-white hover:bg-brand-700"
+            >
+              <Send className="h-3.5 w-3.5 mr-1.5" />
+              {sendingChat
+                ? "Sending…"
+                : chatTargetIds.length > 1
+                ? `Send to ${chatTargetIds.length} Users`
+                : "Send Message"}
+            </Button>
+          </div>
+        </form>
       </Dialog>
 
       {/* Add / Edit User Dialog */}

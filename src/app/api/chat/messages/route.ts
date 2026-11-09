@@ -3,10 +3,12 @@ import { requireUser } from "@/lib/auth";
 import { getUserChatMessages, sendUserChatMessage } from "@/lib/chat";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const user = await requireUser();
-    const messages = await getUserChatMessages(user.id);
+    const { searchParams } = new URL(request.url);
+    const markRead = searchParams.get("markRead") === "true";
+    const messages = await getUserChatMessages(user.id, markRead);
     return NextResponse.json({ messages });
   } catch (err) {
     return handleRouteError(err);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey, ApiKeyError, logApiRequest } from "@/lib/api-auth";
 import { handleRouteError } from "@/lib/api-helpers";
+import { sanitizeCustomerRefundNote, sanitizeCustomerFacingText } from "@/lib/types";
 
 export async function GET(
   request: NextRequest,
@@ -33,7 +34,16 @@ export async function GET(
     if (!order) {
       return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
     }
-    return NextResponse.json({ success: true, order });
+    const safeOrder = {
+      ...order,
+      providerReference: null,
+      failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount),
+      history: order.history.map((h) => ({
+        ...h,
+        note: sanitizeCustomerFacingText(h.note),
+      })),
+    };
+    return NextResponse.json({ success: true, order: safeOrder });
   } catch (err) {
     if (err instanceof ApiKeyError) {
       return NextResponse.json({ success: false, error: err.message }, { status: err.status });

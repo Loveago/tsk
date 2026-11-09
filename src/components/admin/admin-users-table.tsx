@@ -19,6 +19,7 @@ import {
   Copy,
   Check,
   Wallet,
+  MessageSquare,
 } from "lucide-react";
 
 function CopyRefButton({ text }: { text: string }) {
@@ -81,6 +82,7 @@ export function AdminUsersTable({
   onToggleFreeze,
   onActivate,
   onDelete,
+  onMessage,
 }: {
   data: UserRow[];
   loading: boolean;
@@ -94,6 +96,7 @@ export function AdminUsersTable({
   onToggleFreeze?: (u: UserRow) => void;
   onActivate?: (u: UserRow) => void;
   onDelete?: (u: UserRow) => void;
+  onMessage?: (u: UserRow) => void;
 }) {
   if (loading) {
     return (
@@ -287,6 +290,17 @@ export function AdminUsersTable({
                             title="Manual wallet debit"
                           >
                             <MinusCircle className="h-3 w-3 text-rose-600 dark:text-rose-400" /> Debit
+                          </Button>
+                        )}
+                        {onMessage && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onMessage(u)}
+                            className="h-7 text-xs text-brand-700 border-brand-200 hover:bg-brand-50 dark:text-brand-300 dark:border-brand-500/30 dark:hover:bg-brand-950/30"
+                            title="Contact user via system chat"
+                          >
+                            <MessageSquare className="h-3 w-3 text-brand-600 dark:text-brand-400" /> Chat
                           </Button>
                         )}
                         <Button size="sm" variant="outline" onClick={() => onEdit(u)} className="h-7 text-xs">

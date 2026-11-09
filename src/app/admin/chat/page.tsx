@@ -6,18 +6,18 @@ import {
   Search,
   Trash2,
   Send,
-  Sparkles,
   Check,
   CheckCheck,
   RefreshCw,
   X,
   ArrowDown,
-  User,
-  Shield,
-  Clock,
+  UserPlus,
+  Users,
+  Megaphone,
 } from "lucide-react";
-import { PageHeader, Spinner, EmptyState } from "@/components/shared";
+import { PageHeader, Spinner } from "@/components/shared";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/toast";
 
 interface Message {
@@ -33,18 +33,32 @@ interface Conversation {
   userId: string;
   userName: string;
   userEmail: string;
+  userPhone?: string | null;
+  userRole?: string;
+  userStatus?: string;
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+  hasMessages?: boolean;
 }
+
+type BroadcastGroup =
+  | "ALL"
+  | "ACTIVE"
+  | "PENDING_PAYMENT"
+  | "ZERO_BALANCE"
+  | "RESELLERS"
+  | "FROZEN";
 
 export default function AdminChatPage() {
   const { toast } = useToast();
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
+  const [selectedUserInfo, setSelectedUserInfo] = React.useState<Conversation | null>(null);
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [showAllUsers, setShowAllUsers] = React.useState(false);
   const [loadingList, setLoadingList] = React.useState(true);
   const [loadingThread, setLoadingThread] = React.useState(false);
   const [sending, setSending] = React.useState(false);
@@ -55,13 +69,30 @@ export default function AdminChatPage() {
   const [deletingMsgId, setDeletingMsgId] = React.useState<string | null>(null);
   const [showScrollBottom, setShowScrollBottom] = React.useState(false);
 
+  // Broadcast modal state
+  const [broadcastOpen, setBroadcastOpen] = React.useState(false);
+  const [broadcastGroup, setBroadcastGroup] = React.useState<BroadcastGroup>("ALL");
+  const [broadcastText, setBroadcastText] = React.useState("");
+  const [broadcastSending, setBroadcastSending] = React.useState(false);
+
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
   const isNearBottomRef = React.useRef(true);
   const selectedUserIdRef = React.useRef<string | null>(selectedUserId);
 
   React.useEffect(() => {
     selectedUserIdRef.current = selectedUserId;
   }, [selectedUserId]);
+
+  // Support deep linking via /admin/chat?userId=...
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const uid = params.get("userId");
+    if (uid) {
+      setSelectedUserId(uid);
+    }
+  }, []);
 
   const scrollToBottom = React.useCallback((smooth = false) => {
     const container = scrollContainerRef.current;
@@ -84,25 +115,32 @@ export default function AdminChatPage() {
     setShowScrollBottom(distanceFromBottom > 160);
   };
 
-  const loadConversations = React.useCallback(async (search?: string, silent = false) => {
-    if (!silent) setLoadingList(true);
-    try {
-      const url = search ? `/api/admin/chat?search=${encodeURIComponent(search)}` : "/api/admin/chat";
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const json = await res.json();
-      const convs: Conversation[] = json.conversations ?? [];
-      const currentActiveId = selectedUserIdRef.current;
-      const updatedConvs = convs.map((c) =>
-        c.userId === currentActiveId ? { ...c, unreadCount: 0 } : c
-      );
-      setConversations(updatedConvs);
-    } catch {
-      // silent
-    } finally {
-      if (!silent) setLoadingList(false);
-    }
-  }, []);
+  const loadConversations = React.useCallback(
+    async (search?: string, includeAll = false, silent = false) => {
+      if (!silent) setLoadingList(true);
+      try {
+        const params = new URLSearchParams();
+        if (search) params.set("search", search);
+        if (includeAll) params.set("includeAll", "true");
+        const qs = params.toString();
+        const url = qs ? `/api/admin/chat?${qs}` : "/api/admin/chat";
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const json = await res.json();
+        const convs: Conversation[] = json.conversations ?? [];
+        const currentActiveId = selectedUserIdRef.current;
+        const updatedConvs = convs.map((c) =>
+          c.userId === currentActiveId ? { ...c, unreadCount: 0 } : c
+        );
+        setConversations(updatedConvs);
+      } catch {
+        // silent
+      } finally {
+        if (!silent) setLoadingList(false);
+      }
+    },
+    []
+  );
 
   const loadThread = React.useCallback(async (targetUserId: string, silent = false) => {
     if (!silent) setLoadingThread(true);
@@ -110,11 +148,15 @@ export default function AdminChatPage() {
       const res = await fetch(`/api/admin/chat?userId=${targetUserId}`);
       if (!res.ok) return;
       const json = await res.json();
+      if (json.user) {
+        setSelectedUserInfo(json.user);
+      }
       const newMsgs: Message[] = json.messages ?? [];
       setMessages((prev) => {
         if (
           prev.length === newMsgs.length &&
-          prev[prev.length - 1]?.id === newMsgs[newMsgs.length - 1]?.id
+          prev[prev.length - 1]?.id === newMsgs[newMsgs.length - 1]?.id &&
+          prev[prev.length - 1]?.read === newMsgs[newMsgs.length - 1]?.read
         ) {
           return prev;
         }
@@ -130,12 +172,12 @@ export default function AdminChatPage() {
 
   // Initial load and periodic polling
   React.useEffect(() => {
-    loadConversations(searchQuery.trim() || undefined);
+    loadConversations(searchQuery.trim() || undefined, showAllUsers);
     const interval = setInterval(() => {
-      loadConversations(searchQuery.trim() || undefined, true);
+      loadConversations(searchQuery.trim() || undefined, showAllUsers, true);
     }, 10000);
     return () => clearInterval(interval);
-  }, [searchQuery, loadConversations]);
+  }, [searchQuery, showAllUsers, loadConversations]);
 
   React.useEffect(() => {
     if (selectedUserId) {
@@ -167,7 +209,7 @@ export default function AdminChatPage() {
       const res = await fetch(`/api/admin/chat?messageId=${msgId}`, { method: "DELETE" });
       if (res.ok) {
         setMessages((prev) => prev.filter((m) => m.id !== msgId));
-        loadConversations(searchQuery.trim() || undefined, true);
+        loadConversations(searchQuery.trim() || undefined, showAllUsers, true);
         toast("Message deleted", "success");
       }
     } catch {
@@ -186,9 +228,10 @@ export default function AdminChatPage() {
         if (selectedUserId === targetUserId) {
           setMessages([]);
           setSelectedUserId(null);
+          setSelectedUserInfo(null);
         }
         setConfirmDeleteUserId(null);
-        await loadConversations(searchQuery.trim() || undefined);
+        await loadConversations(searchQuery.trim() || undefined, showAllUsers);
         toast("Conversation deleted", "success");
       }
     } catch {
@@ -217,7 +260,7 @@ export default function AdminChatPage() {
         setMessages((prev) => [...prev, json.message]);
         isNearBottomRef.current = true;
         setTimeout(() => scrollToBottom(true), 50);
-        loadConversations(searchQuery.trim() || undefined, true);
+        loadConversations(searchQuery.trim() || undefined, showAllUsers, true);
       } else {
         toast("Failed to send message", "error");
       }
@@ -226,7 +269,43 @@ export default function AdminChatPage() {
     }
   };
 
-  const activeConversation = conversations.find((c) => c.userId === selectedUserId);
+  const handleBroadcastSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = broadcastText.trim();
+    if (!text || broadcastSending) return;
+    setBroadcastSending(true);
+    try {
+      const res = await fetch("/api/admin/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetGroup: broadcastGroup,
+          message: text,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? "Failed to send broadcast message", "error");
+        return;
+      }
+      toast(
+        json.message ?? `Broadcast sent to ${json.sentCount ?? 0} user(s)`,
+        "success"
+      );
+      setBroadcastText("");
+      setBroadcastOpen(false);
+      loadConversations(searchQuery.trim() || undefined, showAllUsers);
+      if (selectedUserId) loadThread(selectedUserId, true);
+    } catch {
+      toast("Failed to send broadcast message", "error");
+    } finally {
+      setBroadcastSending(false);
+    }
+  };
+
+  const activeConversation =
+    conversations.find((c) => c.userId === selectedUserId) ||
+    (selectedUserInfo?.userId === selectedUserId ? selectedUserInfo : null);
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
   const filteredConversations = React.useMemo(() => {
@@ -235,7 +314,8 @@ export default function AdminChatPage() {
     return conversations.filter(
       (c) =>
         c.userName.toLowerCase().includes(q) ||
-        c.userEmail.toLowerCase().includes(q)
+        c.userEmail.toLowerCase().includes(q) ||
+        (c.userPhone && c.userPhone.toLowerCase().includes(q))
     );
   }, [conversations, searchQuery]);
 
@@ -243,14 +323,35 @@ export default function AdminChatPage() {
     <div className="space-y-4">
       <PageHeader
         title="Support Chat Desk"
-        description="Respond to live support requests from users and customers with instant messaging."
+        description="Contact any user on the website, broadcast announcements, or reply to live customer support messages."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                loadConversations(searchQuery.trim() || undefined);
+                setSelectedUserId(null);
+                setShowAllUsers(true);
+                setTimeout(() => searchInputRef.current?.focus(), 50);
+              }}
+              className="h-8.5 text-xs font-semibold text-brand-700 border-brand-200 bg-brand-50/70 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-950/30 dark:text-brand-300"
+            >
+              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+              Message a User
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setBroadcastOpen(true)}
+              className="h-8.5 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white"
+            >
+              <Megaphone className="h-3.5 w-3.5 mr-1.5" />
+              Broadcast to Users
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                loadConversations(searchQuery.trim() || undefined, showAllUsers);
                 if (selectedUserId) loadThread(selectedUserId);
               }}
               className="h-8.5 text-xs"
@@ -275,8 +376,9 @@ export default function AdminChatPage() {
             <div className="relative flex items-center">
               <Search className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
               <input
+                ref={searchInputRef}
                 type="text"
-                placeholder="Search customers by name or email..."
+                placeholder="Search any user by name, email or phone..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-8 text-xs text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-slate-800 dark:text-slate-100"
@@ -293,14 +395,42 @@ export default function AdminChatPage() {
             </div>
 
             <div className="mt-2.5 flex items-center justify-between text-xs text-slate-500">
-              <span className="font-semibold text-slate-700 dark:text-slate-300">
-                Customer Chats ({filteredConversations.length})
-              </span>
-              {totalUnread > 0 && (
-                <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white">
-                  {totalUnread} unread
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAllUsers(false)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                    !showAllUsers && !searchQuery.trim()
+                      ? "bg-brand-600 text-white shadow-2xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                  }`}
+                >
+                  Active Chats
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAllUsers(true)}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                    showAllUsers
+                      ? "bg-brand-600 text-white shadow-2xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                  }`}
+                  title="Browse all registered users on the website to start a new chat"
+                >
+                  <Users className="h-3 w-3" />
+                  <span>All Users</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-slate-400">
+                  {filteredConversations.length}
                 </span>
-              )}
+                {totalUnread > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white">
+                    {totalUnread} unread
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -311,11 +441,22 @@ export default function AdminChatPage() {
                 <Spinner className="h-6 w-6 text-brand-600" />
               </div>
             ) : filteredConversations.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-400">
+              <div className="p-8 text-center text-xs text-slate-400 space-y-2.5">
                 {searchQuery.trim() ? (
-                  <p>No customers match &quot;{searchQuery}&quot;</p>
+                  <p>No users match &quot;{searchQuery}&quot;</p>
                 ) : (
-                  <p>No active customer conversations yet.</p>
+                  <>
+                    <p>No active customer conversations yet.</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowAllUsers(true)}
+                      className="h-8 text-xs"
+                    >
+                      <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                      Browse All Users to Message
+                    </Button>
+                  </>
                 )}
               </div>
             ) : (
@@ -334,6 +475,7 @@ export default function AdminChatPage() {
                       type="button"
                       onClick={() => {
                         setSelectedUserId(c.userId);
+                        setSelectedUserInfo(c);
                         setConversations((prev) =>
                           prev.map((item) =>
                             item.userId === c.userId ? { ...item, unreadCount: 0 } : item
@@ -350,52 +492,65 @@ export default function AdminChatPage() {
                           <p className="truncate text-xs font-bold text-slate-900 dark:text-slate-100">
                             {c.userName}
                           </p>
-                          {c.unreadCount > 0 && (
+                          {c.unreadCount > 0 ? (
                             <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white shrink-0 ml-1">
                               {c.unreadCount}
                             </span>
-                          )}
+                          ) : c.hasMessages === false ? (
+                            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 ml-1">
+                              New Chat
+                            </span>
+                          ) : null}
                         </div>
-                        <p className="truncate text-[11px] text-slate-400">{c.userEmail}</p>
+                        <p className="truncate text-[11px] text-slate-400">
+                          {c.userEmail}
+                          {c.userPhone ? ` · ${c.userPhone}` : ""}
+                        </p>
                         <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">
-                          {c.lastMessage}
+                          {c.lastMessage || (
+                            <span className="italic text-slate-400">
+                              Click to send first message…
+                            </span>
+                          )}
                         </p>
                       </div>
                     </button>
 
                     {/* Delete conversation action */}
-                    <div className="pr-3 shrink-0">
-                      {confirmDeleteUserId === c.userId ? (
-                        <div className="flex items-center gap-1 rounded bg-red-50 px-2 py-1 border border-red-200 dark:bg-red-950/60 dark:border-red-800 text-[11px] shadow-sm">
-                          <span className="text-red-600 dark:text-red-400 font-medium">Delete?</span>
+                    {c.hasMessages !== false && (
+                      <div className="pr-3 shrink-0">
+                        {confirmDeleteUserId === c.userId ? (
+                          <div className="flex items-center gap-1 rounded bg-red-50 px-2 py-1 border border-red-200 dark:bg-red-950/60 dark:border-red-800 text-[11px] shadow-sm">
+                            <span className="text-red-600 dark:text-red-400 font-medium">Delete?</span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteThread(c.userId)}
+                              disabled={deletingThread}
+                              className="font-bold text-red-600 hover:text-red-800 dark:text-red-400 hover:underline"
+                            >
+                              {deletingThread ? "…" : "Yes"}
+                            </button>
+                            <span className="text-slate-300">|</span>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteUserId(null)}
+                              className="text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             type="button"
-                            onClick={() => handleDeleteThread(c.userId)}
-                            disabled={deletingThread}
-                            className="font-bold text-red-600 hover:text-red-800 dark:text-red-400 hover:underline"
+                            onClick={() => setConfirmDeleteUserId(c.userId)}
+                            title="Delete thread"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
                           >
-                            {deletingThread ? "…" : "Yes"}
+                            <Trash2 className="h-4 w-4" />
                           </button>
-                          <span className="text-slate-300">|</span>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteUserId(null)}
-                            className="text-slate-500 hover:text-slate-700 dark:text-slate-400"
-                          >
-                            No
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteUserId(c.userId)}
-                          title="Delete thread"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -618,12 +773,102 @@ export default function AdminChatPage() {
                 No Customer Selected
               </h3>
               <p className="mt-1 text-xs text-slate-500 max-w-sm">
-                Select a customer conversation from the list on the left to review support messages and reply instantly.
+                Select a conversation on the left, search for any website user to start a new chat, or send a broadcast message.
               </p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowAllUsers(true);
+                    setTimeout(() => searchInputRef.current?.focus(), 50);
+                  }}
+                  className="h-8.5 text-xs"
+                >
+                  <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                  Browse & Message Any User
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setBroadcastOpen(true)}
+                  className="h-8.5 text-xs bg-brand-600 hover:bg-brand-700 text-white"
+                >
+                  <Megaphone className="h-3.5 w-3.5 mr-1.5" />
+                  Broadcast to Users
+                </Button>
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Broadcast Message Dialog */}
+      <Dialog
+        open={broadcastOpen}
+        onClose={() => setBroadcastOpen(false)}
+        title="Broadcast Message via System Chat"
+      >
+        <form onSubmit={handleBroadcastSend} className="space-y-4 text-sm">
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            Send a direct system chat message to an entire group of users. Each recipient will see an unread notification badge and message preview in their website chat widget.
+          </p>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Target Audience
+            </label>
+            <select
+              value={broadcastGroup}
+              onChange={(e) => setBroadcastGroup(e.target.value as BroadcastGroup)}
+              className="w-full h-9.5 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-900 outline-none transition focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            >
+              <option value="ALL">All Website Users & Customers</option>
+              <option value="ACTIVE">Active Users Only</option>
+              <option value="PENDING_PAYMENT">Users Awaiting Registration Payment</option>
+              <option value="ZERO_BALANCE">Zero Balance Users (GHS 0.00)</option>
+              <option value="RESELLERS">Reseller Accounts Only</option>
+              <option value="FROZEN">Frozen User Accounts</option>
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Message
+            </label>
+            <textarea
+              rows={4}
+              value={broadcastText}
+              onChange={(e) => setBroadcastText(e.target.value)}
+              placeholder="Write your announcement or message to users…"
+              maxLength={2000}
+              required
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+            <div className="flex justify-end text-[11px] text-slate-400">
+              {broadcastText.length} / 2000
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBroadcastOpen(false)}
+              disabled={broadcastSending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={!broadcastText.trim() || broadcastSending}
+              className="bg-brand-600 text-white hover:bg-brand-700"
+            >
+              <Send className="h-3.5 w-3.5 mr-1.5" />
+              {broadcastSending ? "Sending Broadcast…" : "Send Broadcast"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }

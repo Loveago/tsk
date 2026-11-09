@@ -16,6 +16,8 @@ import {
   Minimize2,
   ExternalLink,
   ArrowDown,
+  UserPlus,
+  Users,
 } from "lucide-react";
 import type { AuthUser } from "@/lib/types";
 
@@ -32,9 +34,13 @@ interface Conversation {
   userId: string;
   userName: string;
   userEmail: string;
+  userPhone?: string | null;
+  userRole?: string;
+  userStatus?: string;
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+  hasMessages?: boolean;
 }
 
 export function SystemChatWidget({ user }: { user: AuthUser }) {
@@ -47,11 +53,14 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
   const [loading, setLoading] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [showScrollBottom, setShowScrollBottom] = React.useState(false);
+  const [dismissedMsgId, setDismissedMsgId] = React.useState<string | null>(null);
 
   // Admin staff view state
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
+  const [selectedUserInfo, setSelectedUserInfo] = React.useState<Conversation | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [showAllUsers, setShowAllUsers] = React.useState(false);
   const [confirmDeleteMsgId, setConfirmDeleteMsgId] = React.useState<string | null>(null);
   const [deletingMsgId, setDeletingMsgId] = React.useState<string | null>(null);
   const [confirmDeleteThread, setConfirmDeleteThread] = React.useState(false);
@@ -61,10 +70,28 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const isNearBottomRef = React.useRef(true);
   const selectedUserIdRef = React.useRef<string | null>(selectedUserId);
+  const openRef = React.useRef(open);
 
   React.useEffect(() => {
     selectedUserIdRef.current = selectedUserId;
   }, [selectedUserId]);
+
+  React.useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  // Allow any page/component to open the chat widget for a specific user
+  React.useEffect(() => {
+    const onOpenChat = (e: Event) => {
+      const custom = e as CustomEvent<{ userId?: string }>;
+      setOpen(true);
+      if (isStaff && custom.detail?.userId) {
+        setSelectedUserId(custom.detail.userId);
+      }
+    };
+    window.addEventListener("open-system-chat", onOpenChat);
+    return () => window.removeEventListener("open-system-chat", onOpenChat);
+  }, [isStaff]);
 
   const scrollToBottom = React.useCallback((smooth = false) => {
     const container = scrollContainerRef.current;
@@ -88,46 +115,58 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
     setShowScrollBottom(distanceFromBottom > 160);
   };
 
-  const loadUserMessages = React.useCallback(async () => {
+  const loadUserMessages = React.useCallback(async (forceMarkRead?: boolean) => {
     try {
-      const res = await fetch("/api/chat/messages");
+      const shouldMarkRead = forceMarkRead ?? openRef.current;
+      const url = shouldMarkRead ? "/api/chat/messages?markRead=true" : "/api/chat/messages";
+      const res = await fetch(url);
       if (!res.ok) return;
       const json = await res.json();
       const msgs: Message[] = json.messages ?? [];
       setMessages((prev) => {
         if (
           prev.length === msgs.length &&
-          prev[prev.length - 1]?.id === msgs[msgs.length - 1]?.id
+          prev[prev.length - 1]?.id === msgs[msgs.length - 1]?.id &&
+          prev[prev.length - 1]?.read === msgs[msgs.length - 1]?.read
         ) {
           return prev;
         }
         return msgs;
       });
-      const unread = msgs.filter((m) => m.sender === "ADMIN" && !m.read).length;
+      const unread = shouldMarkRead
+        ? 0
+        : msgs.filter((m) => m.sender === "ADMIN" && !m.read).length;
       setUnreadCount(unread);
     } catch {
       // silent
     }
   }, []);
 
-  const loadAdminConversations = React.useCallback(async (search?: string) => {
-    try {
-      const url = search ? `/api/admin/chat?search=${encodeURIComponent(search)}` : "/api/admin/chat";
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const json = await res.json();
-      const convs: Conversation[] = json.conversations ?? [];
-      const currentActiveId = selectedUserIdRef.current;
-      const updatedConvs = convs.map((c) =>
-        c.userId === currentActiveId ? { ...c, unreadCount: 0 } : c
-      );
-      setConversations(updatedConvs);
-      const totalUnread = updatedConvs.reduce((sum, c) => sum + c.unreadCount, 0);
-      setUnreadCount(totalUnread);
-    } catch {
-      // silent
-    }
-  }, []);
+  const loadAdminConversations = React.useCallback(
+    async (search?: string, includeAll?: boolean) => {
+      try {
+        const params = new URLSearchParams();
+        if (search) params.set("search", search);
+        if (includeAll) params.set("includeAll", "true");
+        const qs = params.toString();
+        const url = qs ? `/api/admin/chat?${qs}` : "/api/admin/chat";
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const json = await res.json();
+        const convs: Conversation[] = json.conversations ?? [];
+        const currentActiveId = selectedUserIdRef.current;
+        const updatedConvs = convs.map((c) =>
+          c.userId === currentActiveId ? { ...c, unreadCount: 0 } : c
+        );
+        setConversations(updatedConvs);
+        const totalUnread = updatedConvs.reduce((sum, c) => sum + c.unreadCount, 0);
+        setUnreadCount(totalUnread);
+      } catch {
+        // silent
+      }
+    },
+    []
+  );
 
   const loadAdminThread = React.useCallback(async (targetUserId: string, isPoll = false) => {
     if (!isPoll) setLoading(true);
@@ -135,11 +174,15 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
       const res = await fetch(`/api/admin/chat?userId=${targetUserId}`);
       if (!res.ok) return;
       const json = await res.json();
+      if (json.user) {
+        setSelectedUserInfo(json.user);
+      }
       const newMsgs: Message[] = json.messages ?? [];
       setMessages((prev) => {
         if (
           prev.length === newMsgs.length &&
-          prev[prev.length - 1]?.id === newMsgs[newMsgs.length - 1]?.id
+          prev[prev.length - 1]?.id === newMsgs[newMsgs.length - 1]?.id &&
+          prev[prev.length - 1]?.read === newMsgs[newMsgs.length - 1]?.read
         ) {
           return prev;
         }
@@ -164,24 +207,25 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
     return conversations.filter(
       (c) =>
         c.userName.toLowerCase().includes(q) ||
-        c.userEmail.toLowerCase().includes(q)
+        c.userEmail.toLowerCase().includes(q) ||
+        (c.userPhone && c.userPhone.toLowerCase().includes(q))
     );
   }, [conversations, searchQuery]);
 
   // Polling for conversations or messages
   React.useEffect(() => {
     if (isStaff) {
-      loadAdminConversations(searchQuery.trim() || undefined);
+      loadAdminConversations(searchQuery.trim() || undefined, showAllUsers);
       const interval = setInterval(() => {
-        loadAdminConversations(searchQuery.trim() || undefined);
+        loadAdminConversations(searchQuery.trim() || undefined, showAllUsers);
       }, 12000);
       return () => clearInterval(interval);
     } else {
       loadUserMessages();
-      const interval = setInterval(loadUserMessages, 10000);
+      const interval = setInterval(() => loadUserMessages(), 10000);
       return () => clearInterval(interval);
     }
-  }, [isStaff, searchQuery, loadAdminConversations, loadUserMessages]);
+  }, [isStaff, searchQuery, showAllUsers, loadAdminConversations, loadUserMessages]);
 
   React.useEffect(() => {
     if (isStaff && selectedUserId) {
@@ -208,10 +252,11 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
       const t = setTimeout(() => scrollToBottom(false), 100);
       if (!isStaff) {
         setUnreadCount(0);
+        loadUserMessages(true);
       }
       return () => clearTimeout(t);
     }
-  }, [open, selectedUserId, isStaff, scrollToBottom]);
+  }, [open, selectedUserId, isStaff, scrollToBottom, loadUserMessages]);
 
   const handleDeleteMessage = async (msgId: string) => {
     setDeletingMsgId(msgId);
@@ -219,7 +264,7 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
       const res = await fetch(`/api/admin/chat?messageId=${msgId}`, { method: "DELETE" });
       if (res.ok) {
         setMessages((prev) => prev.filter((m) => m.id !== msgId));
-        loadAdminConversations(searchQuery.trim() || undefined);
+        loadAdminConversations(searchQuery.trim() || undefined, showAllUsers);
       }
     } catch (err) {
       console.error("Failed to delete message:", err);
@@ -237,10 +282,11 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
         if (selectedUserId === targetUserId) {
           setMessages([]);
           setSelectedUserId(null);
+          setSelectedUserInfo(null);
           setConfirmDeleteThread(false);
         }
         setConfirmDeleteUserId(null);
-        await loadAdminConversations(searchQuery.trim() || undefined);
+        await loadAdminConversations(searchQuery.trim() || undefined, showAllUsers);
       }
     } catch (err) {
       console.error("Failed to delete chat thread:", err);
@@ -269,7 +315,7 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
           setMessages((prev) => [...prev, json.message]);
           isNearBottomRef.current = true;
           setTimeout(() => scrollToBottom(true), 50);
-          loadAdminConversations();
+          loadAdminConversations(searchQuery.trim() || undefined, showAllUsers);
         }
       } else {
         const res = await fetch("/api/chat/messages", {
@@ -289,12 +335,69 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
     }
   };
 
-  const activeConversation = isStaff && selectedUserId
-    ? conversations.find((c) => c.userId === selectedUserId)
-    : null;
+  const activeConversation =
+    isStaff && selectedUserId
+      ? conversations.find((c) => c.userId === selectedUserId) ||
+        (selectedUserInfo?.userId === selectedUserId ? selectedUserInfo : null)
+      : null;
+
+  const latestUnreadAdminMsg = React.useMemo(() => {
+    if (isStaff || open || unreadCount <= 0) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.sender === "ADMIN" && !m.read) return m;
+    }
+    return null;
+  }, [isStaff, open, unreadCount, messages]);
 
   return (
     <>
+      {/* Unread Admin Message Preview Callout for Users */}
+      {!isStaff &&
+        !open &&
+        latestUnreadAdminMsg &&
+        dismissedMsgId !== latestUnreadAdminMsg.id && (
+          <div className="fixed bottom-20 right-5 z-40 w-72 sm:w-80 rounded-2xl border border-blue-500/30 bg-white p-3.5 shadow-2xl shadow-blue-600/20 animate-in fade-in slide-in-from-bottom-3 dark:border-blue-400/30 dark:bg-[#0d1526]">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-violet-600 text-white">
+                  <Headphones className="h-3.5 w-3.5" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">
+                    Message from Support
+                  </p>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                    {unreadCount} unread {unreadCount === 1 ? "message" : "messages"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDismissedMsgId(latestUnreadAdminMsg.id);
+                }}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-200"
+                aria-label="Dismiss message preview"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <p className="mt-2 line-clamp-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              {latestUnreadAdminMsg.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 py-1.5 text-xs font-bold text-white shadow-sm transition hover:opacity-95"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>Open Chat & Reply</span>
+            </button>
+          </div>
+        )}
+
       {/* Floating Chat Trigger Button */}
       <button
         onClick={() => setOpen((v) => !v)}
@@ -340,7 +443,7 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                     {isStaff
                       ? selectedUserId
                         ? `Chat with ${activeConversation?.userName || "User"}`
-                        : `${conversations.length} Active Customer Chats`
+                        : `${conversations.length} Customer${conversations.length === 1 ? "" : "s"}`
                       : "Customer Care · Instant Replies"}
                   </span>
                 </p>
@@ -350,7 +453,7 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
             <div className="flex items-center gap-1 shrink-0">
               {isStaff && (
                 <Link
-                  href="/admin/chat"
+                  href={selectedUserId ? `/admin/chat?userId=${selectedUserId}` : "/admin/chat"}
                   title="Open in full screen admin page"
                   className="rounded-lg p-1.5 text-white/80 hover:bg-white/20 hover:text-white transition"
                 >
@@ -395,7 +498,7 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search by name or email..."
+                      placeholder="Search any user by name, email or phone..."
                       className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-7 text-xs text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none dark:border-white/10 dark:bg-[#131d31] dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                     {searchQuery && (
@@ -410,10 +513,35 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                     )}
                   </div>
                   <div className="mt-2 flex items-center justify-between px-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                    <span>Conversations</span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowAllUsers(false)}
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-semibold transition ${
+                          !showAllUsers && !searchQuery.trim()
+                            ? "bg-brand-600 text-white"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/10 dark:text-slate-300"
+                        }`}
+                      >
+                        Active Chats
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAllUsers(true)}
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold transition ${
+                          showAllUsers
+                            ? "bg-brand-600 text-white"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/10 dark:text-slate-300"
+                        }`}
+                        title="Browse all registered website users to start a new chat"
+                      >
+                        <UserPlus className="h-2.5 w-2.5" />
+                        <span>All Users</span>
+                      </button>
+                    </div>
                     <span>
                       {filteredConversations.length}
-                      {searchQuery.trim() ? " found" : " total"}
+                      {searchQuery.trim() ? " found" : ""}
                     </span>
                   </div>
                 </div>
@@ -421,10 +549,10 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                 {/* Conversation items list with smooth native overscroll-contain */}
                 <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-slate-100 dark:divide-white/5">
                   {filteredConversations.length === 0 ? (
-                    <div className="py-16 px-4 text-center text-xs text-slate-400">
+                    <div className="py-12 px-4 text-center text-xs text-slate-400 space-y-2">
                       {searchQuery.trim() ? (
-                        <div className="space-y-2">
-                          <p>No conversations matching &quot;{searchQuery}&quot;</p>
+                        <>
+                          <p>No users matching &quot;{searchQuery}&quot;</p>
                           <button
                             type="button"
                             onClick={() => setSearchQuery("")}
@@ -432,9 +560,19 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                           >
                             Clear search
                           </button>
-                        </div>
+                        </>
                       ) : (
-                        "No customer conversations yet."
+                        <>
+                          <p>No active customer conversations yet.</p>
+                          <button
+                            type="button"
+                            onClick={() => setShowAllUsers(true)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1.5 text-[11px] font-semibold text-brand-600 hover:bg-brand-100 dark:bg-brand-500/15 dark:text-brand-300"
+                          >
+                            <Users className="h-3 w-3" />
+                            <span>Browse all users to message</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   ) : (
@@ -453,6 +591,7 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                             type="button"
                             onClick={() => {
                               setSelectedUserId(c.userId);
+                              setSelectedUserInfo(c);
                               setConversations((prev) => {
                                 const next = prev.map((item) =>
                                   item.userId === c.userId ? { ...item, unreadCount: 0 } : item
@@ -472,61 +611,69 @@ export function SystemChatWidget({ user }: { user: AuthUser }) {
                                 <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
                                   {c.userName}
                                 </p>
-                                {c.unreadCount > 0 && (
+                                {c.unreadCount > 0 ? (
                                   <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white shrink-0 ml-1">
                                     {c.unreadCount}
                                   </span>
-                                )}
+                                ) : c.hasMessages === false ? (
+                                  <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 ml-1">
+                                    New
+                                  </span>
+                                ) : null}
                               </div>
                               <p className="truncate text-[11px] text-slate-400">{c.userEmail}</p>
                               <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">
-                                {c.lastMessage}
+                                {c.lastMessage || (
+                                  <span className="italic text-slate-400">Click to send first message…</span>
+                                )}
                               </p>
                             </div>
                           </button>
 
                           {/* Delete conversation button */}
-                          <div className="pr-2 shrink-0">
-                            {confirmDeleteUserId === c.userId ? (
-                              <div className="flex items-center gap-1 rounded bg-red-50 px-1.5 py-1 border border-red-200 dark:bg-red-950/60 dark:border-red-800 text-[10px] shadow-sm">
-                                <span className="text-red-600 dark:text-red-400 font-medium">Del?</span>
+                          {c.hasMessages !== false && (
+                            <div className="pr-2 shrink-0">
+                              {confirmDeleteUserId === c.userId ? (
+                                <div className="flex items-center gap-1 rounded bg-red-50 px-1.5 py-1 border border-red-200 dark:bg-red-950/60 dark:border-red-800 text-[10px] shadow-sm">
+                                  <span className="text-red-600 dark:text-red-400 font-medium">Del?</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteThread(c.userId);
+                                    }}
+                                    disabled={deletingThread}
+                                    className="font-bold text-red-600 hover:text-red-800 dark:text-red-400 hover:underline"
+                                  >
+                                    {deletingThread ? "…" : "Yes"}
+                                  </button>
+                                  <span className="text-slate-300">|</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmDeleteUserId(null);
+                                    }}
+                                    className="text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDeleteThread(c.userId);
+                                    setConfirmDeleteUserId(c.userId);
                                   }}
-                                  disabled={deletingThread}
-                                  className="font-bold text-red-600 hover:text-red-800 dark:text-red-400 hover:underline"
+                                  title="Delete conversation"
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
                                 >
-                                  {deletingThread ? "…" : "Yes"}
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </button>
-                                <span className="text-slate-300">|</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setConfirmDeleteUserId(null);
-                                  }}
-                                  className="text-slate-500 hover:text-slate-700 dark:text-slate-400"
-                                >
-                                  No
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmDeleteUserId(c.userId);
-                                }}
-                                title="Delete conversation"
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })
