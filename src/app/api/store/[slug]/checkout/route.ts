@@ -126,24 +126,40 @@ export async function POST(
       return apiError(500, "This bundle is mispriced. Please contact support.");
     }
 
-    const seq = await prisma.$transaction(async (tx) => nextStorefrontSeq(tx, "storefrontOrder"));
     const paymentReference = generateStorefrontOrderCode();
 
-    const row = await prisma.storefrontOrder.create({
-      data: {
-        seq,
-        storefrontId: storefront.id,
-        productId: product.id,
-        customerPhone: input.customerPhone,
-        customerEmail: input.customerEmail,
-        sellingPrice,
-        productCost,
-        commission,
-        status: "PENDING",
-        commissionState: "PENDING",
-        paymentReference,
-      },
-    });
+    // `seq` is max+1 computed outside the insert, so concurrent checkouts can collide
+    // on the unique constraint. Retry with a fresh seq when that happens.
+    let seq = 0;
+    let row: Awaited<ReturnType<typeof prisma.storefrontOrder.create>> | null = null;
+    for (let attempt = 0; attempt < 5 && !row; attempt++) {
+      seq = await prisma.$transaction(async (tx) => nextStorefrontSeq(tx, "storefrontOrder"));
+      try {
+        row = await prisma.storefrontOrder.create({
+          data: {
+            seq,
+            storefrontId: storefront.id,
+            productId: product.id,
+            customerPhone: input.customerPhone,
+            customerEmail: input.customerEmail,
+            sellingPrice,
+            productCost,
+            commission,
+            status: "PENDING",
+            commissionState: "PENDING",
+            paymentReference,
+          },
+        });
+      } catch (e: any) {
+        const isSeqCollision =
+          e?.code === "P2002" && JSON.stringify(e?.meta?.target ?? "").includes("seq");
+        if (!isSeqCollision || attempt === 4) throw e;
+        await new Promise((r) => setTimeout(r, 20 + Math.random() * 60));
+      }
+    }
+    if (!row) {
+      return apiError(500, "Could not create order. Please try again.");
+    }
 
     const feePesewas = Math.round(sellingPrice * 0.02);
     const totalPesewas = sellingPrice + feePesewas;
