@@ -132,6 +132,8 @@ model Order {
   @@index([batchId])
   @@index([exportBatchId])
   @@index([userId, externalReference])
+  @@index([providerReference])
+  @@index([externalReference])
   @@index([apiCredentialId])
   @@index([isSandbox])
   @@index([isUnverified])

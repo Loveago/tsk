@@ -109,7 +109,6 @@ export async function POST(request: NextRequest) {
           OR: [
             ...searchKeys.map((k) => ({ providerReference: `CLICKYFIED:${k}` })),
             ...searchKeys.map((k) => ({ providerReference: { startsWith: `CLICKYFIED:${k}:` } })),
-            ...searchKeys.map((k) => ({ providerReference: { contains: k } })),
             ...searchKeys.map((k) => ({ externalReference: k })),
             ...searchKeys
               .filter((k) => k.startsWith("TSK-ORD-"))
