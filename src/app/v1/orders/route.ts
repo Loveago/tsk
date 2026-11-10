@@ -449,7 +449,7 @@ export async function POST(request: NextRequest) {
     // Resolve price server-side using centralized pricing resolution
     const user = await prisma.user.findUnique({
       where: { id: authContext.userId },
-      select: { id: true, role: true, pricingProfileId: true, balance: true },
+      select: { id: true, role: true, pricingProfileId: true, balance: true, overdraftEnabled: true },
     });
 
     if (!user) {
@@ -514,8 +514,8 @@ export async function POST(request: NextRequest) {
           const debited = await tx.user.updateMany({
             where: {
               id: authContext.userId,
-              balance: { gte: price },
               status: "ACTIVE",
+              OR: [{ balance: { gte: price } }, { overdraftEnabled: true }],
             },
             data: {
               balance: { decrement: price },

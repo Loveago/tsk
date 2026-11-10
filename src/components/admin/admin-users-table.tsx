@@ -51,6 +51,7 @@ export interface UserRow {
   role: string;
   status: string;
   balance: number;
+  overdraftEnabled?: boolean;
   pricingProfileId: string | null;
   _count: { orders: number };
   lastLoginAt: string | null;
@@ -79,6 +80,7 @@ export function AdminUsersTable({
   onEdit,
   onManualCredit,
   onManualDebit,
+  onToggleOverdraft,
   onToggleFreeze,
   onActivate,
   onDelete,
@@ -93,6 +95,7 @@ export function AdminUsersTable({
   onEdit: (u: UserRow) => void;
   onManualCredit?: (u: UserRow) => void;
   onManualDebit?: (u: UserRow) => void;
+  onToggleOverdraft?: (u: UserRow) => void;
   onToggleFreeze?: (u: UserRow) => void;
   onActivate?: (u: UserRow) => void;
   onDelete?: (u: UserRow) => void;
@@ -217,15 +220,33 @@ export function AdminUsersTable({
                         <span className="text-xs text-slate-400">Exempt / Free</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">
-                      <Link
-                        href={`/admin/wallets?userId=${u.id}`}
-                        className="inline-flex items-center gap-1.5 hover:underline group"
-                        title="Inspect user wallet balance and activity ledger"
-                      >
-                        <Wallet className="h-3.5 w-3.5 text-emerald-500 opacity-70 group-hover:opacity-100 transition-opacity" />
-                        <span>{formatGHS(u.balance)}</span>
-                      </Link>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col items-start gap-1">
+                        <Link
+                          href={`/admin/wallets?userId=${u.id}`}
+                          className={`inline-flex items-center gap-1.5 font-bold hover:underline group ${
+                            u.balance < 0
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-emerald-600 dark:text-emerald-400"
+                          }`}
+                          title="Inspect user wallet balance and activity ledger"
+                        >
+                          <Wallet
+                            className={`h-3.5 w-3.5 opacity-70 group-hover:opacity-100 transition-opacity ${
+                              u.balance < 0 ? "text-rose-500" : "text-emerald-500"
+                            }`}
+                          />
+                          <span>{formatGHS(u.balance)}</span>
+                        </Link>
+                        {u.overdraftEnabled && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/20"
+                            title="Overdraft is enabled for this user"
+                          >
+                            Overdraft ON
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="hidden px-4 py-3 md:table-cell text-xs">
                       {u.signupCodeUsage?.signupCode?.code ? (
@@ -252,6 +273,25 @@ export function AdminUsersTable({
                           >
                             <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600 dark:text-emerald-400" />
                             Activate
+                          </Button>
+                        )}
+                        {onToggleOverdraft && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onToggleOverdraft(u)}
+                            className={`h-7 text-xs ${
+                              u.overdraftEnabled
+                                ? "text-violet-700 bg-violet-50 border-violet-300 hover:bg-violet-100 dark:bg-violet-950/40 dark:border-violet-700 dark:text-violet-300"
+                                : "text-slate-600 border-slate-200 hover:bg-slate-50 dark:text-slate-400 dark:border-slate-700 dark:hover:bg-slate-800"
+                            }`}
+                            title={
+                              u.overdraftEnabled
+                                ? "Overdraft is ON — click to turn OFF"
+                                : "Overdraft is OFF — click to turn ON"
+                            }
+                          >
+                            {u.overdraftEnabled ? "Overdraft: ON" : "Overdraft: OFF"}
                           </Button>
                         )}
                         {onToggleFreeze && u.role !== "ADMIN" && (

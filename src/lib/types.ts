@@ -176,6 +176,7 @@ export interface AuthUser {
   role: UserRole;
   status: string;
   balance: number;
+  overdraftEnabled?: boolean;
   phone?: string | null;
   pricingProfileId: string | null;
 }
@@ -257,7 +258,8 @@ export const STATUS_META: Record<
 };
 
 export function formatGHS(amount: number): string {
-  return `GHS ${amount.toFixed(2)}`;
+  const clean = Math.abs(amount) < 0.005 ? 0 : amount;
+  return `GHS ${clean.toFixed(2)}`;
 }
 
 /** Matches internal provider / HTTP / configuration error text that customers must not see. */

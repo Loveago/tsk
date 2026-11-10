@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const role = searchParams.get("role");
     const status = searchParams.get("status");
     const balance = searchParams.get("balance");
+    const overdraft = searchParams.get("overdraft");
     const pricingProfileId = searchParams.get("pricingProfileId");
     const hasOrders = searchParams.get("hasOrders");
     const hasSignupCode = searchParams.get("hasSignupCode");
@@ -29,6 +30,12 @@ export async function GET(request: NextRequest) {
     if (role) where.role = role;
     if (status) where.status = status;
     if (pricingProfileId) where.pricingProfileId = pricingProfileId;
+
+    if (overdraft === "enabled") {
+      where.overdraftEnabled = true;
+    } else if (overdraft === "disabled") {
+      where.overdraftEnabled = false;
+    }
 
     if (balance === "zero") {
       where.balance = { equals: 0 };
@@ -69,7 +76,18 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const [data, total, allUsersCount, awaitingPaymentCount, zeroBalanceCount, frozenCount, activeCount, paidRegistrationCount] = await Promise.all([
+    const [
+      data,
+      total,
+      allUsersCount,
+      awaitingPaymentCount,
+      zeroBalanceCount,
+      frozenCount,
+      activeCount,
+      paidRegistrationCount,
+      overdraftEnabledCount,
+      negativeBalanceCount,
+    ] = await Promise.all([
       prisma.user.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -82,6 +100,7 @@ export async function GET(request: NextRequest) {
           role: true,
           status: true,
           balance: true,
+          overdraftEnabled: true,
           phone: true,
           pricingProfileId: true,
           lastLoginAt: true,
@@ -116,6 +135,8 @@ export async function GET(request: NextRequest) {
       prisma.user.count({ where: { status: "FROZEN" } }),
       prisma.user.count({ where: { status: "ACTIVE" } }),
       prisma.walletTransaction.count({ where: { type: "SIGNUP_FEE", status: "APPROVED" } }),
+      prisma.user.count({ where: { overdraftEnabled: true } }),
+      prisma.user.count({ where: { balance: { lt: 0 } } }),
     ]);
 
     const users = data.map((u) => {
@@ -127,6 +148,7 @@ export async function GET(request: NextRequest) {
         role: u.role,
         status: u.status,
         balance: u.balance,
+        overdraftEnabled: u.overdraftEnabled,
         phone: u.phone,
         pricingProfileId: u.pricingProfileId,
         lastLoginAt: u.lastLoginAt,
@@ -160,6 +182,8 @@ export async function GET(request: NextRequest) {
         frozen: frozenCount,
         active: activeCount,
         paidRegistration: paidRegistrationCount,
+        overdraftEnabled: overdraftEnabledCount,
+        negativeBalance: negativeBalanceCount,
       },
     });
   } catch (err) {
@@ -185,6 +209,7 @@ export async function POST(request: NextRequest) {
         passwordHash,
         role: input.role,
         balance: input.balance,
+        overdraftEnabled: input.overdraftEnabled ?? false,
         pricingProfileId: input.pricingProfileId || null,
       },
     });
@@ -194,7 +219,12 @@ export async function POST(request: NextRequest) {
       actorLabel: actor.email,
       action: "user.create",
       target: `user:${user.id}`,
-      newValue: JSON.stringify({ email, role: input.role, balance: input.balance }),
+      newValue: JSON.stringify({
+        email,
+        role: input.role,
+        balance: input.balance,
+        overdraftEnabled: input.overdraftEnabled ?? false,
+      }),
     });
 
     return NextResponse.json({ user: { id: user.id, email: user.email, role: user.role } });

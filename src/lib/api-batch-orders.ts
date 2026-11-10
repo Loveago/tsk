@@ -508,7 +508,7 @@ export async function handleBatchOrderSubmission({
   // 3. User resolution
   const user = await prisma.user.findUnique({
     where: { id: authContext.userId },
-    select: { id: true, role: true, pricingProfileId: true, balance: true },
+    select: { id: true, role: true, pricingProfileId: true, balance: true, overdraftEnabled: true },
   });
 
   if (!user) {
@@ -573,7 +573,7 @@ export async function handleBatchOrderSubmission({
   }
 
   if (!authContext.isSandbox) {
-    if ((user.balance ?? 0) < totalCost) {
+    if (!user.overdraftEnabled && (user.balance ?? 0) < totalCost) {
       if (idemKey) {
         await prisma.idempotencyKey.deleteMany({
           where: { key: idemKey, status: "PROCESSING" },
@@ -600,8 +600,8 @@ export async function handleBatchOrderSubmission({
         const debited = await tx.user.updateMany({
           where: {
             id: authContext.userId,
-            balance: { gte: totalCost },
             status: "ACTIVE",
+            OR: [{ balance: { gte: totalCost } }, { overdraftEnabled: true }],
           },
           data: {
             balance: { decrement: totalCost },

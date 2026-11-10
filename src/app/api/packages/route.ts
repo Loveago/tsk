@@ -99,6 +99,7 @@ export async function GET(request: NextRequest) {
       packages: data,
       submissionEnabled,
       userBalance: user.balance,
+      overdraftEnabled: Boolean(user.overdraftEnabled),
       isHalted: pauseInfo.isHalted,
       networkStatus: pauseInfo.networkStatus,
       pricingProfile: assignedProfile

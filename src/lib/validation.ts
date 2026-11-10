@@ -215,7 +215,8 @@ export const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(ROLES as [string, ...string[]]),
-  balance: z.coerce.number().min(0).default(0),
+  balance: z.coerce.number().default(0),
+  overdraftEnabled: z.boolean().optional().default(false),
   pricingProfileId: z.string().optional().or(z.literal("")),
 });
 
@@ -224,7 +225,8 @@ export const updateUserSchema = z.object({
   email: z.string().email(),
   role: z.enum(ROLES as [string, ...string[]]),
   status: z.enum(["ACTIVE", "DISABLED", "FROZEN", "PENDING_PAYMENT"]),
-  balance: z.coerce.number().min(0),
+  balance: z.coerce.number(),
+  overdraftEnabled: z.boolean().optional(),
   pricingProfileId: z.string().optional().or(z.literal("")),
   password: z.string().min(8).optional().or(z.literal("")),
 });

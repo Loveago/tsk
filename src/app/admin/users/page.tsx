@@ -48,6 +48,7 @@ export default function AdminUsersPage() {
   const [role, setRole] = React.useState("");
   const [status, setStatus] = React.useState("");
   const [balance, setBalance] = React.useState("");
+  const [overdraft, setOverdraft] = React.useState("");
   const [pricingProfileId, setPricingProfileId] = React.useState("");
   const [hasOrders, setHasOrders] = React.useState("");
   const [hasSignupCode, setHasSignupCode] = React.useState("");
@@ -61,6 +62,8 @@ export default function AdminUsersPage() {
     frozen: 0,
     active: 0,
     paidRegistration: 0,
+    overdraftEnabled: 0,
+    negativeBalance: 0,
   });
 
   // Modals & single actions
@@ -78,7 +81,7 @@ export default function AdminUsersPage() {
   // Selection & Bulk actions
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [bulkActionConfirm, setBulkActionConfirm] = React.useState<{
-    action: "FREEZE" | "UNFREEZE" | "ACTIVATE" | "DELETE";
+    action: "FREEZE" | "UNFREEZE" | "ACTIVATE" | "DELETE" | "ENABLE_OVERDRAFT" | "DISABLE_OVERDRAFT";
     title: string;
     description: string;
     isDestructive?: boolean;
@@ -110,6 +113,7 @@ export default function AdminUsersPage() {
     if (role) params.set("role", role);
     if (status) params.set("status", status);
     if (balance) params.set("balance", balance);
+    if (overdraft) params.set("overdraft", overdraft);
     if (pricingProfileId) params.set("pricingProfileId", pricingProfileId);
     if (hasOrders) params.set("hasOrders", hasOrders);
     if (hasSignupCode) params.set("hasSignupCode", hasSignupCode);
@@ -129,7 +133,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, q, role, status, balance, pricingProfileId, hasOrders, hasSignupCode, registrationPayment, toast]);
+  }, [page, pageSize, q, role, status, balance, overdraft, pricingProfileId, hasOrders, hasSignupCode, registrationPayment, toast]);
 
   React.useEffect(() => {
     const t = setTimeout(load, 250);
@@ -174,6 +178,29 @@ export default function AdminUsersPage() {
       load();
     } catch {
       toast("Failed to activate user", "error");
+    }
+  };
+
+  // Single user overdraft toggle
+  const handleToggleOverdraft = async (u: UserRow) => {
+    const nextState = !u.overdraftEnabled;
+    try {
+      const res = await fetch(`/api/admin/users/${u.id}/overdraft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overdraftEnabled: nextState }),
+      });
+      const json = await res.json();
+      if (!res.ok) return toast(json.error ?? "Failed to update overdraft setting", "error");
+      toast(
+        nextState
+          ? `Overdraft enabled for ${u.name}`
+          : `Overdraft turned off for ${u.name}`,
+        "success"
+      );
+      load();
+    } catch {
+      toast("Failed to update overdraft setting", "error");
     }
   };
 
@@ -310,6 +337,7 @@ export default function AdminUsersPage() {
     Boolean(role) ||
     Boolean(status) ||
     Boolean(balance) ||
+    Boolean(overdraft) ||
     Boolean(pricingProfileId) ||
     Boolean(hasOrders) ||
     Boolean(hasSignupCode) ||
@@ -321,6 +349,7 @@ export default function AdminUsersPage() {
     setRole("");
     setStatus("");
     setBalance("");
+    setOverdraft("");
     setPricingProfileId("");
     setHasOrders("");
     setHasSignupCode("");
@@ -357,11 +386,12 @@ export default function AdminUsersPage() {
           onClick={() => {
             setStatus("");
             setBalance("");
+            setOverdraft("");
             setRegistrationPayment("");
             setPage(1);
           }}
           className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
-            !status && !balance && !registrationPayment && pageSize < 10000
+            !status && !balance && !overdraft && !registrationPayment && pageSize < 10000
               ? "bg-brand-600 text-white shadow-sm"
               : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
           }`}
@@ -397,6 +427,7 @@ export default function AdminUsersPage() {
           onClick={() => {
             setStatus("PENDING_PAYMENT");
             setBalance("");
+            setOverdraft("");
             setPage(1);
           }}
           className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
@@ -419,6 +450,7 @@ export default function AdminUsersPage() {
           onClick={() => {
             setBalance("zero");
             setStatus("");
+            setOverdraft("");
             setPage(1);
           }}
           className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
@@ -436,8 +468,49 @@ export default function AdminUsersPage() {
         <button
           type="button"
           onClick={() => {
+            setOverdraft(overdraft === "enabled" ? "" : "enabled");
+            setStatus("");
+            setBalance("");
+            setPage(1);
+          }}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+            overdraft === "enabled"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "bg-violet-50 text-violet-800 border border-violet-200/80 hover:bg-violet-100 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800/40"
+          }`}
+        >
+          Overdraft ON
+          <span className="rounded-full bg-violet-600/20 dark:bg-violet-400/20 px-1.5 py-0.2 text-[10px] font-bold">
+            {counts.overdraftEnabled ?? 0}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setBalance(balance === "negative" ? "" : "negative");
+            setStatus("");
+            setOverdraft("");
+            setPage(1);
+          }}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+            balance === "negative"
+              ? "bg-rose-600 text-white shadow-sm"
+              : "bg-rose-50 text-rose-800 border border-rose-200/80 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800/40"
+          }`}
+        >
+          Negative Balance (&lt; 0)
+          <span className="rounded-full bg-rose-600/20 dark:bg-rose-400/20 px-1.5 py-0.2 text-[10px] font-bold">
+            {counts.negativeBalance ?? 0}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
             setStatus("FROZEN");
             setBalance("");
+            setOverdraft("");
             setPage(1);
           }}
           className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
@@ -460,6 +533,7 @@ export default function AdminUsersPage() {
           onClick={() => {
             setStatus("ACTIVE");
             setBalance("");
+            setOverdraft("");
             setPage(1);
           }}
           className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
@@ -481,6 +555,7 @@ export default function AdminUsersPage() {
             setRegistrationPayment(registrationPayment === "paid" ? "" : "paid");
             setStatus("");
             setBalance("");
+            setOverdraft("");
             setPage(1);
           }}
           className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
@@ -541,6 +616,20 @@ export default function AdminUsersPage() {
           <option value="positive">Positive Balance (&gt; 0)</option>
           <option value="low">Low Balance (&le; GHS 10)</option>
           <option value="negative">Negative Balance (&lt; 0)</option>
+        </Select>
+
+        {/* Overdraft Filter */}
+        <Select
+          value={overdraft}
+          onChange={(e) => {
+            setOverdraft(e.target.value);
+            setPage(1);
+          }}
+          className="w-40 h-9 text-xs font-medium"
+        >
+          <option value="">All Overdraft</option>
+          <option value="enabled">Overdraft: ON</option>
+          <option value="disabled">Overdraft: OFF</option>
         </Select>
 
         {/* Role Filter */}
@@ -723,6 +812,40 @@ export default function AdminUsersPage() {
               Change Pricing Profile
             </Button>
 
+            {/* Bulk Enable Overdraft */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setBulkActionConfirm({
+                  action: "ENABLE_OVERDRAFT",
+                  title: `Enable Overdraft for ${selectedIds.length} User Account(s)?`,
+                  description:
+                    "Selected users will be allowed to place orders that take their wallet balance into negative. Future top-ups will automatically pay off the negative balance.",
+                })
+              }
+              className="h-8 text-xs font-semibold text-violet-700 bg-violet-50 border-violet-300 hover:bg-violet-100 dark:bg-violet-950/40 dark:border-violet-700 dark:text-violet-300"
+            >
+              Enable Overdraft
+            </Button>
+
+            {/* Bulk Disable Overdraft */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setBulkActionConfirm({
+                  action: "DISABLE_OVERDRAFT",
+                  title: `Disable Overdraft for ${selectedIds.length} User Account(s)?`,
+                  description:
+                    "Selected users will no longer be able to place orders without sufficient positive wallet balance.",
+                })
+              }
+              className="h-8 text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Disable Overdraft
+            </Button>
+
             {/* Bulk Freeze */}
             <Button
               size="sm"
@@ -810,6 +933,7 @@ export default function AdminUsersPage() {
           setChatMessageText("");
           setChatDialogOpen(true);
         }}
+        onToggleOverdraft={handleToggleOverdraft}
         onToggleFreeze={handleFreeze}
       />
 

@@ -143,10 +143,23 @@ export default function BillingPage() {
 
       {/* Balance Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard title="Current Balance" value={formatGHS(balance)} icon={Wallet} />
+        <StatCard
+          title="Current Balance"
+          value={formatGHS(balance)}
+          icon={Wallet}
+          hint={balance < 0 ? "Overdraft balance (auto-paid on top-up)" : undefined}
+        />
         <StatCard title="Total Top-ups" value={formatGHS(summary.topups)} icon={ArrowDownLeft} />
         <StatCard title="Total Spending" value={formatGHS(summary.spend)} icon={ArrowUpRight} />
       </div>
+
+      {balance < 0 && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-xs text-rose-800 dark:border-rose-500/20 dark:bg-rose-950/30 dark:text-rose-200">
+          Your wallet currently has a negative overdraft balance of{" "}
+          <strong>{formatGHS(balance)}</strong>. Any new wallet top-up will automatically pay off{" "}
+          <strong>{formatGHS(Math.abs(balance))}</strong> first, and any remaining amount will be credited to your available balance.
+        </div>
+      )}
 
       {/* Tab Navigation — scrollable on mobile */}
       <div className="overflow-x-auto">

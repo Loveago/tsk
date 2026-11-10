@@ -47,6 +47,7 @@ interface UserProfile {
   role: string;
   status: string;
   balance: number;
+  overdraftEnabled?: boolean;
   createdAt: string;
   lastLoginAt: string | null;
   pricingProfile?: { id: string; name: string; type: string } | null;
@@ -114,6 +115,7 @@ interface UserDirectoryItem {
   role: string;
   status: string;
   balance: number;
+  overdraftEnabled?: boolean;
   createdAt: string;
   lastLoginAt: string | null;
   _count: { orders: number; walletTransactions: number };
@@ -124,6 +126,7 @@ interface OverviewStats {
   activeWalletsCount: number;
   zeroBalanceCount: number;
   negativeBalanceCount: number;
+  overdraftEnabledCount?: number;
 }
 
 export default function AdminWalletsPage() {
@@ -169,6 +172,7 @@ export default function AdminWalletsPage() {
   const [dirPage, setDirPage] = React.useState(1);
   const [dirPages, setDirPages] = React.useState(1);
   const [dirFilterBalance, setDirFilterBalance] = React.useState("");
+  const [dirFilterOverdraft, setDirFilterOverdraft] = React.useState("");
   const [dirFilterRole, setDirFilterRole] = React.useState("");
   const [dirQuery, setDirQuery] = React.useState("");
   const [overviewLoading, setOverviewLoading] = React.useState(false);
@@ -177,6 +181,7 @@ export default function AdminWalletsPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [dialogMode, setDialogMode] = React.useState<"CREDIT" | "DEBIT">("CREDIT");
   const [busyActionId, setBusyActionId] = React.useState<string | null>(null);
+  const [togglingOverdraftId, setTogglingOverdraftId] = React.useState<string | null>(null);
 
   // Load live autocomplete suggestions when typing in search bar
   React.useEffect(() => {
@@ -250,6 +255,7 @@ export default function AdminWalletsPage() {
       });
       if (dirQuery) params.set("q", dirQuery);
       if (dirFilterBalance) params.set("balance", dirFilterBalance);
+      if (dirFilterOverdraft) params.set("overdraft", dirFilterOverdraft);
       if (dirFilterRole) params.set("role", dirFilterRole);
 
       const res = await fetch(`/api/admin/wallets?${params.toString()}`);
@@ -265,7 +271,7 @@ export default function AdminWalletsPage() {
     } finally {
       setOverviewLoading(false);
     }
-  }, [activeUserId, dirPage, dirQuery, dirFilterBalance, dirFilterRole, toast]);
+  }, [activeUserId, dirPage, dirQuery, dirFilterBalance, dirFilterOverdraft, dirFilterRole, toast]);
 
   React.useEffect(() => {
     if (activeUserId) {
@@ -290,6 +296,41 @@ export default function AdminWalletsPage() {
   const openAdjustDialog = (mode: "CREDIT" | "DEBIT") => {
     setDialogMode(mode);
     setDialogOpen(true);
+  };
+
+  const toggleUserOverdraft = async (
+    targetId: string,
+    targetName: string,
+    currentOverdraft?: boolean
+  ) => {
+    const nextState = !currentOverdraft;
+    setTogglingOverdraftId(targetId);
+    try {
+      const res = await fetch(`/api/admin/users/${targetId}/overdraft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overdraftEnabled: nextState }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        return toast(json.error ?? "Failed to update overdraft setting", "error");
+      }
+      toast(
+        nextState
+          ? `Overdraft enabled for ${targetName}`
+          : `Overdraft turned off for ${targetName}`,
+        "success"
+      );
+      if (activeUserId) {
+        loadSingleUser();
+      } else {
+        loadOverview();
+      }
+    } catch {
+      toast("Failed to update overdraft setting", "error");
+    } finally {
+      setTogglingOverdraftId(null);
+    }
   };
 
   const handleTxDecision = async (id: string, decision: "APPROVED" | "REJECTED") => {
@@ -553,6 +594,34 @@ export default function AdminWalletsPage() {
                           {userProfile.pricingProfile.name}
                         </span>
                       )}
+                      <button
+                        type="button"
+                        disabled={togglingOverdraftId === userProfile.id}
+                        onClick={() =>
+                          toggleUserOverdraft(
+                            userProfile.id,
+                            userProfile.name,
+                            userProfile.overdraftEnabled
+                          )
+                        }
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold border transition cursor-pointer ${
+                          userProfile.overdraftEnabled
+                            ? "bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30"
+                            : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                        }`}
+                        title={
+                          userProfile.overdraftEnabled
+                            ? "Overdraft is enabled for this user — click to turn OFF"
+                            : "Overdraft is off for this user — click to turn ON"
+                        }
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        {togglingOverdraftId === userProfile.id
+                          ? "Updating..."
+                          : userProfile.overdraftEnabled
+                          ? "Overdraft: ON (Turn Off)"
+                          : "Overdraft: OFF (Enable)"}
+                      </button>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
                       <span className="flex items-center gap-1.5">
@@ -574,17 +643,46 @@ export default function AdminWalletsPage() {
                 </div>
 
                 {/* Big Wallet Balance Banner */}
-                <div className="flex items-center gap-4 rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent px-5 py-3 dark:border-emerald-500/20">
-                  <div className="rounded-xl bg-emerald-600/10 p-3 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400">
+                <div
+                  className={`flex items-center gap-4 rounded-xl border px-5 py-3 ${
+                    userProfile.balance < 0
+                      ? "border-rose-200/80 bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent dark:border-rose-500/20"
+                      : "border-emerald-200/80 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent dark:border-emerald-500/20"
+                  }`}
+                >
+                  <div
+                    className={`rounded-xl p-3 ${
+                      userProfile.balance < 0
+                        ? "bg-rose-600/10 text-rose-600 dark:bg-rose-400/10 dark:text-rose-400"
+                        : "bg-emerald-600/10 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"
+                    }`}
+                  >
                     <Wallet className="h-6 w-6" />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                      Current Wallet Balance
+                    <p
+                      className={`text-xs font-semibold uppercase tracking-wider ${
+                        userProfile.balance < 0
+                          ? "text-rose-700 dark:text-rose-400"
+                          : "text-emerald-700 dark:text-emerald-400"
+                      }`}
+                    >
+                      {userProfile.balance < 0 ? "Overdraft / Negative Balance" : "Current Wallet Balance"}
                     </p>
-                    <p className="text-2xl font-black text-slate-900 dark:text-white">
+                    <p
+                      className={`text-2xl font-black ${
+                        userProfile.balance < 0
+                          ? "text-rose-600 dark:text-rose-400"
+                          : "text-slate-900 dark:text-white"
+                      }`}
+                    >
                       {formatGHS(userProfile.balance)}
                     </p>
+                    {userProfile.balance < 0 && (
+                      <p className="text-[11px] text-rose-600/90 dark:text-rose-400/90 mt-0.5">
+                        Automatically paid off when user tops up
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1149,7 +1247,11 @@ export default function AdminWalletsPage() {
                 value={String(overview.negativeBalanceCount)}
                 icon={XCircle}
                 hint={
-                  overview.negativeBalanceCount > 0 ? "Requires admin reconciliation" : "All clean"
+                  overview.overdraftEnabledCount
+                    ? `${overview.overdraftEnabledCount} user(s) with Overdraft ON`
+                    : overview.negativeBalanceCount > 0
+                    ? "Requires admin reconciliation"
+                    : "All clean"
                 }
               />
             </div>
@@ -1186,6 +1288,21 @@ export default function AdminWalletsPage() {
               </Select>
             </div>
             <div className="w-40 space-y-1.5">
+              <Label className="text-xs">Overdraft Access</Label>
+              <Select
+                value={dirFilterOverdraft}
+                onChange={(e) => {
+                  setDirFilterOverdraft(e.target.value);
+                  setDirPage(1);
+                }}
+                className="h-9 text-xs"
+              >
+                <option value="">All Overdraft</option>
+                <option value="enabled">Overdraft: ON</option>
+                <option value="disabled">Overdraft: OFF</option>
+              </Select>
+            </div>
+            <div className="w-40 space-y-1.5">
               <Label className="text-xs">Role</Label>
               <Select
                 value={dirFilterRole}
@@ -1202,13 +1319,14 @@ export default function AdminWalletsPage() {
                 <option value="ADMIN">ADMIN</option>
               </Select>
             </div>
-            {(dirQuery || dirFilterBalance || dirFilterRole) && (
+            {(dirQuery || dirFilterBalance || dirFilterOverdraft || dirFilterRole) && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setDirQuery("");
                   setDirFilterBalance("");
+                  setDirFilterOverdraft("");
                   setDirFilterRole("");
                   setDirPage(1);
                 }}
@@ -1242,6 +1360,7 @@ export default function AdminWalletsPage() {
                         <th className="px-5 py-3">User</th>
                         <th className="px-4 py-3">Role &amp; Status</th>
                         <th className="px-4 py-3">Current Balance</th>
+                        <th className="px-4 py-3">Overdraft</th>
                         <th className="px-4 py-3">Orders</th>
                         <th className="px-4 py-3">Transactions</th>
                         <th className="px-4 py-3 text-right">Action</th>
@@ -1276,8 +1395,37 @@ export default function AdminWalletsPage() {
                               <StatusBadge status={u.status} />
                             </div>
                           </td>
-                          <td className="px-4 py-3.5 font-bold text-emerald-600 dark:text-emerald-400 text-base">
+                          <td
+                            className={`px-4 py-3.5 font-bold text-base ${
+                              u.balance < 0
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-emerald-600 dark:text-emerald-400"
+                            }`}
+                          >
                             {formatGHS(u.balance)}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <button
+                              type="button"
+                              disabled={togglingOverdraftId === u.id}
+                              onClick={() => toggleUserOverdraft(u.id, u.name, u.overdraftEnabled)}
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border transition cursor-pointer ${
+                                u.overdraftEnabled
+                                  ? "bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30"
+                                  : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                              }`}
+                              title={
+                                u.overdraftEnabled
+                                  ? "Overdraft is ON — click to turn OFF"
+                                  : "Overdraft is OFF — click to turn ON"
+                              }
+                            >
+                              {togglingOverdraftId === u.id
+                                ? "Updating..."
+                                : u.overdraftEnabled
+                                ? "ON"
+                                : "OFF"}
+                            </button>
                           </td>
                           <td className="px-4 py-3.5 text-xs text-slate-600 dark:text-slate-300">
                             {u._count.orders} orders

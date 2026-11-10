@@ -350,7 +350,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (user.balance < total) {
+    if (!user.overdraftEnabled && user.balance < total) {
       return apiError(402, `Insufficient balance. You need GHS ${total.toFixed(2)} but have GHS ${user.balance.toFixed(2)}.`);
     }
 
@@ -370,9 +370,13 @@ export async function POST(request: NextRequest) {
     try {
       const txResult = await prisma.$transaction(
         async (tx) => {
-          // 1. Atomic balance deduction with balance check
+          // 1. Atomic balance deduction with balance / overdraft check
           const debited = await tx.user.updateMany({
-            where: { id: user.id, balance: { gte: total }, status: "ACTIVE" },
+            where: {
+              id: user.id,
+              status: "ACTIVE",
+              OR: [{ balance: { gte: total } }, { overdraftEnabled: true }],
+            },
             data: { balance: { decrement: total } },
           });
 

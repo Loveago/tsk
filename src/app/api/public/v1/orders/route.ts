@@ -161,7 +161,11 @@ export async function POST(request: NextRequest) {
       order = await prisma.$transaction(async (tx) => {
         // Atomic balance decrement
         const debited = await tx.user.updateMany({
-          where: { id: userId, balance: { gte: amount }, status: "ACTIVE" },
+          where: {
+            id: userId,
+            status: "ACTIVE",
+            OR: [{ balance: { gte: amount } }, { overdraftEnabled: true }],
+          },
           data: { balance: { decrement: amount } },
         });
 

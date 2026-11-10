@@ -10,7 +10,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const { action, userIds, data } = body as {
-      action: "FREEZE" | "UNFREEZE" | "ACTIVATE" | "DELETE" | "SET_ROLE" | "SET_PROFILE";
+      action:
+        | "FREEZE"
+        | "UNFREEZE"
+        | "ACTIVATE"
+        | "DELETE"
+        | "SET_ROLE"
+        | "SET_PROFILE"
+        | "ENABLE_OVERDRAFT"
+        | "DISABLE_OVERDRAFT";
       userIds: string[];
       data?: {
         role?: string;
@@ -21,6 +29,28 @@ export async function POST(request: NextRequest) {
     if (!action) return apiError(400, "Action is required");
     if (!Array.isArray(userIds) || userIds.length === 0) {
       return apiError(400, "userIds array must contain at least 1 user ID");
+    }
+
+    if (action === "ENABLE_OVERDRAFT" || action === "DISABLE_OVERDRAFT") {
+      const nextState = action === "ENABLE_OVERDRAFT";
+      const res = await prisma.user.updateMany({
+        where: { id: { in: userIds } },
+        data: { overdraftEnabled: nextState },
+      });
+
+      await recordAudit({
+        userId: actor.id,
+        actorLabel: actor.email,
+        action: nextState ? "user.bulk_enable_overdraft" : "user.bulk_disable_overdraft",
+        target: `users:${userIds.length}`,
+        newValue: JSON.stringify({ overdraftEnabled: nextState, count: res.count, ids: userIds }),
+      });
+
+      return NextResponse.json({
+        ok: true,
+        count: res.count,
+        message: `Overdraft ${nextState ? "enabled" : "disabled"} for ${res.count} user account(s)`,
+      });
     }
 
     // Never allow the calling admin to freeze or delete themselves via bulk action

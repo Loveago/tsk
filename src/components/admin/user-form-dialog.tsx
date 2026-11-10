@@ -14,6 +14,7 @@ export interface AdminUser {
   role: string;
   status: string;
   balance: number;
+  overdraftEnabled?: boolean;
   pricingProfileId: string | null;
   signupCodeUsage?: {
     signupCode: { code: string };
@@ -52,6 +53,7 @@ export function UserFormDialog({
   const [role, setRole] = React.useState("USER");
   const [status, setStatus] = React.useState("ACTIVE");
   const [balance, setBalance] = React.useState("0");
+  const [overdraftEnabled, setOverdraftEnabled] = React.useState(false);
   const [profileId, setProfileId] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
@@ -63,6 +65,7 @@ export function UserFormDialog({
       setRole(user?.role ?? "USER");
       setStatus(user?.status ?? "ACTIVE");
       setBalance(String(user?.balance ?? 0));
+      setOverdraftEnabled(Boolean(user?.overdraftEnabled));
       setProfileId(user?.pricingProfileId ?? "");
     }
   }, [open, user]);
@@ -71,7 +74,15 @@ export function UserFormDialog({
     setSaving(true);
     try {
       const url = user ? `/api/admin/users/${user.id}` : "/api/admin/users";
-      const body: Record<string, unknown> = { name, email, role, status, balance: Number(balance), pricingProfileId: profileId };
+      const body: Record<string, unknown> = {
+        name,
+        email,
+        role,
+        status,
+        balance: Number(balance),
+        overdraftEnabled,
+        pricingProfileId: profileId,
+      };
       if (!user) body.password = password || undefined;
       else if (password) body.password = password;
 
@@ -172,7 +183,7 @@ export function UserFormDialog({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label>Wallet balance (GHS)</Label>
-            <Input type="number" min="0" step="0.01" value={balance} onChange={(e) => setBalance(e.target.value)} />
+            <Input type="number" step="0.01" value={balance} onChange={(e) => setBalance(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Pricing profile</Label>
@@ -185,6 +196,24 @@ export function UserFormDialog({
               ))}
             </Select>
           </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-800/40">
+          <label className="flex items-start justify-between gap-3 cursor-pointer">
+            <div className="space-y-0.5">
+              <span className="font-semibold text-xs text-slate-900 dark:text-slate-100 block">
+                Wallet Overdraft Access
+              </span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block leading-snug">
+                When enabled, this user can place orders even with insufficient balance (placing their wallet into negative). Any future wallet top-up automatically pays off the negative balance.
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={overdraftEnabled}
+              onChange={(e) => setOverdraftEnabled(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-900 cursor-pointer"
+            />
+          </label>
         </div>
         {user?.registrationPayment && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5 dark:border-slate-800 dark:bg-slate-800/40">

@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
           role: true,
           status: true,
           balance: true,
+          overdraftEnabled: true,
         },
       });
       return NextResponse.json({ suggestions });
@@ -48,6 +49,7 @@ export async function GET(request: NextRequest) {
           role: true,
           status: true,
           balance: true,
+          overdraftEnabled: true,
           createdAt: true,
           lastLoginAt: true,
           pricingProfile: { select: { id: true, name: true, type: true } },
@@ -408,6 +410,7 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") ?? 20)));
     const q = searchParams.get("q")?.trim();
     const balanceFilter = searchParams.get("balance");
+    const overdraftFilter = searchParams.get("overdraft");
     const role = searchParams.get("role");
 
     const where: Prisma.UserWhereInput = {};
@@ -415,6 +418,8 @@ export async function GET(request: NextRequest) {
     if (balanceFilter === "positive") where.balance = { gt: 0 };
     else if (balanceFilter === "zero") where.balance = 0;
     else if (balanceFilter === "negative") where.balance = { lt: 0 };
+    if (overdraftFilter === "enabled") where.overdraftEnabled = true;
+    else if (overdraftFilter === "disabled") where.overdraftEnabled = false;
 
     if (q) {
       where.OR = [
@@ -424,7 +429,7 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const [systemBalanceAgg, activeWalletsCount, zeroBalanceCount, negativeBalanceCount, users, total] =
+    const [systemBalanceAgg, activeWalletsCount, zeroBalanceCount, negativeBalanceCount, overdraftEnabledCount, users, total] =
       await Promise.all([
         prisma.user.aggregate({
           _sum: { balance: true },
@@ -432,6 +437,7 @@ export async function GET(request: NextRequest) {
         prisma.user.count({ where: { balance: { gt: 0 } } }),
         prisma.user.count({ where: { balance: 0 } }),
         prisma.user.count({ where: { balance: { lt: 0 } } }),
+        prisma.user.count({ where: { overdraftEnabled: true } }),
         prisma.user.findMany({
           where,
           orderBy: { balance: "desc" },
@@ -445,6 +451,7 @@ export async function GET(request: NextRequest) {
             role: true,
             status: true,
             balance: true,
+            overdraftEnabled: true,
             createdAt: true,
             lastLoginAt: true,
             _count: {
@@ -464,6 +471,7 @@ export async function GET(request: NextRequest) {
         activeWalletsCount,
         zeroBalanceCount,
         negativeBalanceCount,
+        overdraftEnabledCount,
       },
       users,
       total,

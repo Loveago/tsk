@@ -74,6 +74,7 @@ export default function SendOrderPage() {
   const [submitting, setSubmitting] = React.useState(false);
   const [result, setResult] = React.useState<string | null>(null);
   const [userBalance, setUserBalance] = React.useState<number | null>(null);
+  const [overdraftEnabled, setOverdraftEnabled] = React.useState<boolean>(false);
   const [draftLoaded, setDraftLoaded] = React.useState(false);
   const [copiedBulkText, setCopiedBulkText] = React.useState(false);
   const [copiedFromModal, setCopiedFromModal] = React.useState(false);
@@ -131,6 +132,9 @@ export default function SendOrderPage() {
         if (d.user && typeof d.user.balance === "number") {
           setUserBalance(d.user.balance);
         }
+        if (d.user && typeof d.user.overdraftEnabled === "boolean") {
+          setOverdraftEnabled(d.user.overdraftEnabled);
+        }
       }
     } catch {
       // ignore
@@ -175,6 +179,9 @@ export default function SendOrderPage() {
         }
         if (typeof d.userBalance === "number") {
           setUserBalance(d.userBalance);
+        }
+        if (typeof d.overdraftEnabled === "boolean") {
+          setOverdraftEnabled(d.overdraftEnabled);
         }
         if (d.whatsappChannel) {
           setWhatsappChannel(d.whatsappChannel);
@@ -873,8 +880,8 @@ export default function SendOrderPage() {
 
       const currentTotal = ordersToSubmit.reduce((s, l) => s + (l.price ?? 0), 0);
 
-      // Pre-check balance if known
-      if (userBalance !== null && userBalance < currentTotal) {
+      // Pre-check balance if known (unless overdraft is enabled for this user)
+      if (!overdraftEnabled && userBalance !== null && userBalance < currentTotal) {
         isSubmittingRef.current = false;
         setSubmitting(false);
         const deficit = Math.max(0, currentTotal - userBalance);

@@ -33,6 +33,9 @@ export async function PATCH(
       balance: input.balance,
       pricingProfileId: input.pricingProfileId || null,
     };
+    if (typeof input.overdraftEnabled === "boolean") {
+      data.overdraftEnabled = input.overdraftEnabled;
+    }
     if (input.password) {
       data.passwordHash = await bcrypt.hash(input.password, 10);
       data.tokenVersion = { increment: 1 }; // force re-login everywhere
@@ -49,12 +52,24 @@ export async function PATCH(
         role: existing.role,
         status: existing.status,
         balance: existing.balance,
+        overdraftEnabled: existing.overdraftEnabled,
       }),
-      newValue: JSON.stringify({ role: input.role, status: input.status, balance: input.balance }),
+      newValue: JSON.stringify({
+        role: input.role,
+        status: input.status,
+        balance: input.balance,
+        overdraftEnabled: updated.overdraftEnabled,
+      }),
     });
 
     return NextResponse.json({
-      user: { id: updated.id, email: updated.email, role: updated.role, status: updated.status },
+      user: {
+        id: updated.id,
+        email: updated.email,
+        role: updated.role,
+        status: updated.status,
+        overdraftEnabled: updated.overdraftEnabled,
+      },
     });
   } catch (err) {
     return handleRouteError(err);

@@ -359,8 +359,24 @@ export function AppShell({
                 className="flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-white/10"
                 title="View wallet & billing"
               >
-                <Wallet className="h-3.5 w-3.5 shrink-0 text-brand-600 dark:text-brand-400" />
-                <span className="font-bold tabular-nums text-slate-900 dark:text-white">{formatGHS(balance)}</span>
+                <Wallet
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0",
+                    balance < 0
+                      ? "text-rose-600 dark:text-rose-400"
+                      : "text-brand-600 dark:text-brand-400"
+                  )}
+                />
+                <span
+                  className={cn(
+                    "font-bold tabular-nums",
+                    balance < 0
+                      ? "text-rose-600 dark:text-rose-400"
+                      : "text-slate-900 dark:text-white"
+                  )}
+                >
+                  {formatGHS(balance)}
+                </span>
               </Link>
               <Link
                 href="/dashboard/billing"
@@ -442,9 +458,16 @@ export function AppShell({
               </div>
               <div className="min-w-0">
                 <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  Available Balance
+                  {balance < 0 ? "Overdraft Balance" : "Available Balance"}
                 </div>
-                <div className="truncate text-sm font-bold text-slate-900 dark:text-white tabular-nums">
+                <div
+                  className={cn(
+                    "truncate text-sm font-bold tabular-nums",
+                    balance < 0
+                      ? "text-rose-600 dark:text-rose-400"
+                      : "text-slate-900 dark:text-white"
+                  )}
+                >
                   {formatGHS(balance)}
                 </div>
               </div>

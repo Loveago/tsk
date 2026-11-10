@@ -25,6 +25,7 @@ export interface UserSummary {
   name: string;
   email: string;
   balance: number;
+  overdraftEnabled?: boolean;
   phone?: string | null;
   role?: string;
   status?: string;
@@ -126,7 +127,8 @@ export function ManualCreditDialog({
   const isDebit = mode === "DEBIT";
   const currentBalance = selectedUser?.balance ?? 0;
   const projectedBalance = isDebit ? currentBalance - parsedAmount : currentBalance + parsedAmount;
-  const isInsufficient = isDebit && parsedAmount > currentBalance;
+  const isInsufficient = isDebit && !selectedUser?.overdraftEnabled && parsedAmount > currentBalance;
+  const isOverdraftDebit = isDebit && Boolean(selectedUser?.overdraftEnabled) && projectedBalance < 0;
 
   const handleProceed = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -417,7 +419,12 @@ export function ManualCreditDialog({
                 />
                 {isInsufficient && (
                   <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400">
-                    Debit amount exceeds current user balance ({formatGHS(currentBalance)}).
+                    Debit amount exceeds current user balance ({formatGHS(currentBalance)}). Enable overdraft for this user to debit into negative.
+                  </p>
+                )}
+                {isOverdraftDebit && (
+                  <p className="text-[11px] font-medium text-violet-600 dark:text-violet-400">
+                    Overdraft is enabled for this user — this debit will place their wallet into negative ({formatGHS(projectedBalance)}).
                   </p>
                 )}
               </div>
