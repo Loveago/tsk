@@ -119,7 +119,7 @@ export function AdminUsersTable({
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-500 dark:border-slate-800">
                 {onSelectAll && (
-                  <th className="w-10 px-3 py-3 text-center">
+                  <th className="w-9 px-2.5 py-3 text-center">
                     <input
                       type="checkbox"
                       checked={data.length > 0 && selectedIds.length === data.length}
@@ -129,20 +129,23 @@ export function AdminUsersTable({
                     />
                   </th>
                 )}
-                <th className="px-3 py-3 font-medium">User</th>
-                <th className="px-3 py-3 font-medium">Role</th>
-                <th className="px-3 py-3 font-medium whitespace-nowrap">Status</th>
-                <th className="px-3 py-3 font-medium whitespace-nowrap">Registration / Ref</th>
-                <th className="px-3 py-3 font-medium whitespace-nowrap">Balance</th>
-                <th className="hidden px-3 py-3 font-medium xl:table-cell whitespace-nowrap">Signup Code</th>
-                <th className="hidden px-3 py-3 font-medium lg:table-cell whitespace-nowrap">Orders</th>
-                <th className="hidden px-3 py-3 font-medium xl:table-cell whitespace-nowrap">Last login</th>
-                <th className="px-3 py-3 text-right" />
+                <th className="px-2.5 py-3 font-medium">User</th>
+                <th className="px-2 py-3 font-medium">Role</th>
+                <th className="px-2 py-3 font-medium whitespace-nowrap">Status</th>
+                <th className="px-2.5 py-3 font-medium whitespace-nowrap">Registration / Ref</th>
+                <th className="px-2.5 py-3 font-medium whitespace-nowrap">Balance</th>
+                <th className="hidden px-2.5 py-3 font-medium 2xl:table-cell whitespace-nowrap">Signup Code</th>
+                <th className="hidden px-2 py-3 font-medium lg:table-cell whitespace-nowrap text-center">Orders</th>
+                <th className="hidden px-2.5 py-3 font-medium xl:table-cell whitespace-nowrap">Last login</th>
+                <th className="px-2.5 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {data.map((u) => {
                 const isSelected = selectedIds.includes(u.id);
+                const formattedLogin = u.lastLoginAt ? formatDateTime(u.lastLoginAt) : null;
+                const [loginDate, loginTime] = formattedLogin ? formattedLogin.split(", ") : [null, null];
+
                 return (
                   <tr
                     key={u.id}
@@ -151,7 +154,7 @@ export function AdminUsersTable({
                     }`}
                   >
                     {onSelect && (
-                      <td className="w-10 px-3 py-3 text-center">
+                      <td className="w-9 px-2.5 py-2.5 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -161,12 +164,16 @@ export function AdminUsersTable({
                         />
                       </td>
                     )}
-                    <td className="px-3 py-3">
-                      <p className="font-medium text-slate-900 dark:text-white">{u.name}</p>
-                      <p className="text-xs text-slate-500">{u.email}</p>
+                    <td className="px-2.5 py-2.5 max-w-[180px]">
+                      <p className="font-medium text-slate-900 dark:text-white truncate" title={u.name}>
+                        {u.name}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate" title={u.email}>
+                        {u.email}
+                      </p>
                     </td>
-                    <td className="px-3 py-3 text-xs font-semibold whitespace-nowrap">{u.role}</td>
-                    <td className="px-3 py-3 whitespace-nowrap">
+                    <td className="px-2 py-2.5 text-xs font-semibold whitespace-nowrap">{u.role}</td>
+                    <td className="px-2 py-2.5 whitespace-nowrap">
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${
                           u.status === "ACTIVE"
@@ -183,9 +190,9 @@ export function AdminUsersTable({
                         {u.status === "PENDING_PAYMENT" ? "Awaiting Payment" : u.status}
                       </span>
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
+                    <td className="px-2.5 py-2.5 whitespace-nowrap">
                       {u.registrationPayment ? (
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-0.5">
                           <div>
                             {u.registrationPayment.status === "APPROVED" ? (
                               <span
@@ -207,7 +214,7 @@ export function AdminUsersTable({
                           {u.registrationPayment.reference && (
                             <div className="flex items-center gap-1 text-[11px] font-mono text-slate-600 dark:text-slate-300">
                               <span
-                                className="truncate max-w-[125px]"
+                                className="truncate max-w-[115px]"
                                 title={u.registrationPayment.note || u.registrationPayment.reference}
                               >
                                 {u.registrationPayment.reference}
@@ -219,12 +226,19 @@ export function AdminUsersTable({
                       ) : (
                         <span className="text-xs text-slate-400">Exempt / Free</span>
                       )}
+                      {u.signupCodeUsage?.signupCode?.code && (
+                        <div className="mt-0.5 2xl:hidden">
+                          <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/10 px-1.5 py-0.5 rounded">
+                            <Ticket className="h-2.5 w-2.5" /> {u.signupCodeUsage.signupCode.code}
+                          </span>
+                        </div>
+                      )}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
+                    <td className="px-2.5 py-2.5 whitespace-nowrap">
                       <div className="flex flex-col items-start gap-1">
                         <Link
                           href={`/admin/wallets?userId=${u.id}`}
-                          className={`inline-flex items-center gap-1.5 font-bold hover:underline group whitespace-nowrap ${
+                          className={`inline-flex items-center gap-1 font-bold hover:underline group whitespace-nowrap text-xs sm:text-sm ${
                             u.balance < 0
                               ? "text-rose-600 dark:text-rose-400"
                               : "text-emerald-600 dark:text-emerald-400"
@@ -242,7 +256,7 @@ export function AdminUsersTable({
                           <button
                             type="button"
                             onClick={() => onToggleOverdraft(u)}
-                            className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold transition border whitespace-nowrap ${
+                            className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold transition border whitespace-nowrap cursor-pointer ${
                               u.overdraftEnabled
                                 ? "bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30"
                                 : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -272,7 +286,7 @@ export function AdminUsersTable({
                         )}
                       </div>
                     </td>
-                    <td className="hidden px-3 py-3 xl:table-cell text-xs whitespace-nowrap">
+                    <td className="hidden px-2.5 py-2.5 2xl:table-cell text-xs whitespace-nowrap">
                       {u.signupCodeUsage?.signupCode?.code ? (
                         <span className="inline-flex items-center gap-1 font-mono font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/10 px-2 py-0.5 rounded">
                           <Ticket className="h-3 w-3" /> {u.signupCodeUsage.signupCode.code}
@@ -281,21 +295,30 @@ export function AdminUsersTable({
                         <span className="text-slate-400">—</span>
                       )}
                     </td>
-                    <td className="hidden px-3 py-3 lg:table-cell text-xs whitespace-nowrap">{u._count.orders}</td>
-                    <td className="hidden px-3 py-3 text-slate-500 xl:table-cell text-xs whitespace-nowrap">
-                      {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}
+                    <td className="hidden px-2 py-2.5 lg:table-cell text-xs text-center whitespace-nowrap">
+                      {u._count.orders}
                     </td>
-                    <td className="px-3 py-3 text-right whitespace-nowrap">
-                      <div className="flex justify-end gap-1 items-center flex-nowrap">
+                    <td className="hidden px-2.5 py-2.5 text-slate-500 xl:table-cell text-xs whitespace-nowrap">
+                      {loginDate ? (
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-[11px] text-slate-600 dark:text-slate-300">{loginDate}</span>
+                          {loginTime && <span className="text-[10px] text-slate-400">{loginTime}</span>}
+                        </div>
+                      ) : (
+                        "Never"
+                      )}
+                    </td>
+                    <td className="px-2.5 py-2.5 text-right">
+                      <div className="flex flex-wrap justify-end gap-1 items-center">
                         {onActivate && u.status === "PENDING_PAYMENT" && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => onActivate(u)}
-                            className="h-7 px-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-700 dark:text-emerald-400 shadow-sm whitespace-nowrap"
+                            className="h-7 px-2 gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-700 dark:text-emerald-400 shadow-sm whitespace-nowrap"
                             title="Activate awaiting payment account"
                           >
-                            <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600 dark:text-emerald-400" />
+                            <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
                             Activate
                           </Button>
                         )}
@@ -304,14 +327,14 @@ export function AdminUsersTable({
                             size="sm"
                             variant="outline"
                             onClick={() => onToggleFreeze(u)}
-                            className={`h-7 px-2 text-xs whitespace-nowrap ${
+                            className={`h-7 px-2 gap-1 text-[11px] whitespace-nowrap ${
                               u.status === "FROZEN"
                                 ? "text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10"
                                 : "text-cyan-600 border-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-500/10"
                             }`}
                             title={u.status === "FROZEN" ? "Unfreeze user account" : "Freeze user account"}
                           >
-                            <Snowflake className="h-3 w-3" />
+                            <Snowflake className="h-3 w-3 shrink-0" />
                             {u.status === "FROZEN" ? "Unfreeze" : "Freeze"}
                           </Button>
                         )}
@@ -320,10 +343,10 @@ export function AdminUsersTable({
                             size="sm"
                             variant="outline"
                             onClick={() => onManualCredit(u)}
-                            className="h-7 px-2 text-xs whitespace-nowrap"
+                            className="h-7 px-2 gap-1 text-[11px] whitespace-nowrap"
                             title="Manual wallet credit"
                           >
-                            <PlusCircle className="h-3 w-3 text-emerald-600" /> Credit
+                            <PlusCircle className="h-3 w-3 shrink-0 text-emerald-600" /> Credit
                           </Button>
                         )}
                         {onManualDebit && (
@@ -331,10 +354,10 @@ export function AdminUsersTable({
                             size="sm"
                             variant="outline"
                             onClick={() => onManualDebit(u)}
-                            className="h-7 px-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-rose-200 dark:border-rose-900/40 whitespace-nowrap"
+                            className="h-7 px-2 gap-1 text-[11px] text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-rose-200 dark:border-rose-900/40 whitespace-nowrap"
                             title="Manual wallet debit"
                           >
-                            <MinusCircle className="h-3 w-3 text-rose-600 dark:text-rose-400" /> Debit
+                            <MinusCircle className="h-3 w-3 shrink-0 text-rose-600 dark:text-rose-400" /> Debit
                           </Button>
                         )}
                         {onMessage && (
@@ -342,24 +365,29 @@ export function AdminUsersTable({
                             size="sm"
                             variant="outline"
                             onClick={() => onMessage(u)}
-                            className="h-7 px-2 text-xs text-brand-700 border-brand-200 hover:bg-brand-50 dark:text-brand-300 dark:border-brand-500/30 dark:hover:bg-brand-950/30 whitespace-nowrap"
+                            className="h-7 px-2 gap-1 text-[11px] text-brand-700 border-brand-200 hover:bg-brand-50 dark:text-brand-300 dark:border-brand-500/30 dark:hover:bg-brand-950/30 whitespace-nowrap"
                             title="Contact user via system chat"
                           >
-                            <MessageSquare className="h-3 w-3 text-brand-600 dark:text-brand-400" /> Chat
+                            <MessageSquare className="h-3 w-3 shrink-0 text-brand-600 dark:text-brand-400" /> Chat
                           </Button>
                         )}
-                        <Button size="sm" variant="outline" onClick={() => onEdit(u)} className="h-7 px-2 text-xs whitespace-nowrap">
-                          <Pencil className="h-3 w-3" /> Edit
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onEdit(u)}
+                          className="h-7 px-2 gap-1 text-[11px] whitespace-nowrap"
+                        >
+                          <Pencil className="h-3 w-3 shrink-0" /> Edit
                         </Button>
                         {onDelete && u.id !== currentUserId && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => onDelete(u)}
-                            className="h-7 px-2 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 dark:text-rose-400 dark:border-rose-900/50 dark:hover:bg-rose-950/30"
+                            className="h-7 px-1.5 text-[11px] text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 dark:text-rose-400 dark:border-rose-900/50 dark:hover:bg-rose-950/30"
                             title="Delete user account"
                           >
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-3 w-3 shrink-0" />
                           </Button>
                         )}
                       </div>
