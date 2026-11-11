@@ -6,6 +6,7 @@ import { PageHeader, Spinner, StatCard, EmptyState } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/toast";
 import { formatGHS, formatDateTime } from "@/lib/types";
 import { ManualCreditDialog } from "@/components/admin/manual-credit-dialog";
@@ -48,6 +49,7 @@ interface UserProfile {
   status: string;
   balance: number;
   overdraftEnabled?: boolean;
+  overdraftLimit?: number;
   createdAt: string;
   lastLoginAt: string | null;
   pricingProfile?: { id: string; name: string; type: string } | null;
@@ -116,6 +118,7 @@ interface UserDirectoryItem {
   status: string;
   balance: number;
   overdraftEnabled?: boolean;
+  overdraftLimit?: number;
   createdAt: string;
   lastLoginAt: string | null;
   _count: { orders: number; walletTransactions: number };
@@ -298,18 +301,45 @@ export default function AdminWalletsPage() {
     setDialogOpen(true);
   };
 
-  const toggleUserOverdraft = async (
-    targetId: string,
-    targetName: string,
-    currentOverdraft?: boolean
-  ) => {
-    const nextState = !currentOverdraft;
-    setTogglingOverdraftId(targetId);
+  const [overdraftDialogTarget, setOverdraftDialogTarget] = React.useState<{
+    id: string;
+    name: string;
+    email?: string;
+    balance: number;
+    overdraftEnabled?: boolean;
+    overdraftLimit?: number;
+  } | null>(null);
+  const [overdraftModalEnabled, setOverdraftModalEnabled] = React.useState(true);
+  const [overdraftModalLimit, setOverdraftModalLimit] = React.useState("100");
+
+  const openOverdraftDialog = (target: {
+    id: string;
+    name: string;
+    email?: string;
+    balance: number;
+    overdraftEnabled?: boolean;
+    overdraftLimit?: number;
+  }) => {
+    setOverdraftDialogTarget(target);
+    setOverdraftModalEnabled(true);
+    setOverdraftModalLimit(
+      target.overdraftLimit && target.overdraftLimit > 0 ? String(target.overdraftLimit) : "100"
+    );
+  };
+
+  const saveOverdraftSettings = async (enableOverride?: boolean) => {
+    if (!overdraftDialogTarget) return;
+    const nextState = typeof enableOverride === "boolean" ? enableOverride : overdraftModalEnabled;
+    const parsedLimit = Math.max(0, Number(overdraftModalLimit) || 0);
+    setTogglingOverdraftId(overdraftDialogTarget.id);
     try {
-      const res = await fetch(`/api/admin/users/${targetId}/overdraft`, {
+      const res = await fetch(`/api/admin/users/${overdraftDialogTarget.id}/overdraft`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ overdraftEnabled: nextState }),
+        body: JSON.stringify({
+          overdraftEnabled: nextState,
+          overdraftLimit: parsedLimit,
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -317,10 +347,13 @@ export default function AdminWalletsPage() {
       }
       toast(
         nextState
-          ? `Overdraft enabled for ${targetName}`
-          : `Overdraft turned off for ${targetName}`,
+          ? parsedLimit > 0
+            ? `Overdraft enabled for ${overdraftDialogTarget.name} (Limit: ${formatGHS(parsedLimit)})`
+            : `Overdraft enabled (Unlimited) for ${overdraftDialogTarget.name}`
+          : `Overdraft turned off for ${overdraftDialogTarget.name}`,
         "success"
       );
+      setOverdraftDialogTarget(null);
       if (activeUserId) {
         loadSingleUser();
       } else {
@@ -597,13 +630,7 @@ export default function AdminWalletsPage() {
                       <button
                         type="button"
                         disabled={togglingOverdraftId === userProfile.id}
-                        onClick={() =>
-                          toggleUserOverdraft(
-                            userProfile.id,
-                            userProfile.name,
-                            userProfile.overdraftEnabled
-                          )
-                        }
+                        onClick={() => openOverdraftDialog(userProfile)}
                         className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold border transition cursor-pointer ${
                           userProfile.overdraftEnabled
                             ? "bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30"
@@ -611,16 +638,18 @@ export default function AdminWalletsPage() {
                         }`}
                         title={
                           userProfile.overdraftEnabled
-                            ? "Overdraft is enabled for this user — click to turn OFF"
-                            : "Overdraft is off for this user — click to turn ON"
+                            ? "Click to edit overdraft limit or turn OFF"
+                            : "Click to enable overdraft and set limit"
                         }
                       >
                         <ShieldCheck className="h-3.5 w-3.5" />
                         {togglingOverdraftId === userProfile.id
                           ? "Updating..."
                           : userProfile.overdraftEnabled
-                          ? "Overdraft: ON (Turn Off)"
-                          : "Overdraft: OFF (Enable)"}
+                          ? (userProfile.overdraftLimit ?? 0) > 0
+                            ? `Overdraft: ON (Limit: ${formatGHS(userProfile.overdraftLimit ?? 0)})`
+                            : "Overdraft: ON (Unlimited)"
+                          : "Overdraft: OFF (Configure)"}
                       </button>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
@@ -1408,7 +1437,7 @@ export default function AdminWalletsPage() {
                             <button
                               type="button"
                               disabled={togglingOverdraftId === u.id}
-                              onClick={() => toggleUserOverdraft(u.id, u.name, u.overdraftEnabled)}
+                              onClick={() => openOverdraftDialog(u)}
                               className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border transition cursor-pointer ${
                                 u.overdraftEnabled
                                   ? "bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30"
@@ -1416,14 +1445,16 @@ export default function AdminWalletsPage() {
                               }`}
                               title={
                                 u.overdraftEnabled
-                                  ? "Overdraft is ON — click to turn OFF"
-                                  : "Overdraft is OFF — click to turn ON"
+                                  ? "Click to edit overdraft limit or turn OFF"
+                                  : "Click to enable overdraft and set limit"
                               }
                             >
                               {togglingOverdraftId === u.id
                                 ? "Updating..."
                                 : u.overdraftEnabled
-                                ? "ON"
+                                ? (u.overdraftLimit ?? 0) > 0
+                                  ? `ON (${formatGHS(u.overdraftLimit ?? 0)})`
+                                  : "ON (Unlimited)"
                                 : "OFF"}
                             </button>
                           </td>
@@ -1481,6 +1512,145 @@ export default function AdminWalletsPage() {
           </div>
         </div>
       )}
+
+      {/* Overdraft Settings & Limit Dialog */}
+      <Dialog
+        open={Boolean(overdraftDialogTarget)}
+        onClose={() => setOverdraftDialogTarget(null)}
+        title={`Overdraft Settings — ${overdraftDialogTarget?.name || "User"}`}
+      >
+        {overdraftDialogTarget && (
+          <div className="space-y-4 text-sm">
+            <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+              <div>
+                <p className="text-xs font-bold text-slate-900 dark:text-white">
+                  {overdraftDialogTarget.name}
+                </p>
+                {overdraftDialogTarget.email && (
+                  <p className="text-[11px] text-slate-500">{overdraftDialogTarget.email}</p>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                  Current Balance
+                </span>
+                <span
+                  className={`text-sm font-black ${
+                    overdraftDialogTarget.balance < 0
+                      ? "text-rose-600 dark:text-rose-400"
+                      : "text-emerald-600 dark:text-emerald-400"
+                  }`}
+                >
+                  {formatGHS(overdraftDialogTarget.balance)}
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-violet-200/80 bg-violet-50/40 p-3.5 space-y-3 dark:border-violet-500/20 dark:bg-violet-950/20">
+              <label className="flex items-start justify-between gap-3 cursor-pointer">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-xs text-slate-900 dark:text-white block">
+                    Enable Wallet Overdraft
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block leading-snug">
+                    Allow this user to place orders into a negative wallet balance up to their configured overdraft limit. Future top-ups automatically pay off the negative balance first.
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={overdraftModalEnabled}
+                  onChange={(e) => setOverdraftModalEnabled(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-violet-600 focus:ring-violet-500 dark:border-slate-700 dark:bg-slate-900 cursor-pointer"
+                />
+              </label>
+
+              {overdraftModalEnabled && (
+                <div className="pt-2.5 border-t border-violet-200/60 dark:border-violet-500/20 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">Overdraft Limit (GHS)</Label>
+                    <span className="text-[11px] font-semibold text-violet-700 dark:text-violet-300">
+                      {Number(overdraftModalLimit) > 0
+                        ? `Lowest allowed balance: −${formatGHS(Number(overdraftModalLimit))}`
+                        : "0 = Unlimited overdraft"}
+                    </span>
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={overdraftModalLimit}
+                    onChange={(e) => setOverdraftModalLimit(e.target.value)}
+                    placeholder="Enter max overdraft in GHS (0 for unlimited)"
+                    className="h-9 text-xs bg-white dark:bg-slate-900"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {[50, 100, 200, 500, 1000, 0].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setOverdraftModalLimit(String(preset))}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+                          Number(overdraftModalLimit) === preset
+                            ? "bg-violet-600 text-white border-violet-600 shadow-xs"
+                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700"
+                        }`}
+                      >
+                        {preset === 0 ? "Unlimited (0)" : `GHS ${preset}`}
+                      </button>
+                    ))}
+                  </div>
+                  {Number(overdraftModalLimit) > 0 && (
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 bg-white/80 dark:bg-slate-900/60 rounded-lg px-2.5 py-1.5 border border-violet-100 dark:border-violet-500/10">
+                      Total purchasing power with overdraft:{" "}
+                      <strong className="text-slate-900 dark:text-white">
+                        {formatGHS(Math.max(0, overdraftDialogTarget.balance + Number(overdraftModalLimit)))}
+                      </strong>
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              {overdraftDialogTarget.overdraftEnabled ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={Boolean(togglingOverdraftId)}
+                  onClick={() => saveOverdraftSettings(false)}
+                  className="text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:text-rose-400 dark:border-rose-900/50 dark:hover:bg-rose-950/30"
+                >
+                  Turn Off Overdraft
+                </Button>
+              ) : (
+                <div />
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOverdraftDialogTarget(null)}
+                  disabled={Boolean(togglingOverdraftId)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => saveOverdraftSettings()}
+                  disabled={Boolean(togglingOverdraftId)}
+                  className="bg-violet-600 text-white hover:bg-violet-700"
+                >
+                  {togglingOverdraftId
+                    ? "Saving…"
+                    : overdraftModalEnabled
+                    ? "Save Overdraft Settings"
+                    : "Turn Off Overdraft"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Dialog>
 
       {/* Manual Credit / Debit Dialog */}
       {dialogOpen && (

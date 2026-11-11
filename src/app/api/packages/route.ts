@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
       submissionEnabled,
       userBalance: user.balance,
       overdraftEnabled: Boolean(user.overdraftEnabled),
+      overdraftLimit: user.overdraftLimit ?? 0,
       isHalted: pauseInfo.isHalted,
       networkStatus: pauseInfo.networkStatus,
       pricingProfile: assignedProfile

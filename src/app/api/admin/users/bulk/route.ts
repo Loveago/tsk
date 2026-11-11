@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       data?: {
         role?: string;
         pricingProfileId?: string;
+        overdraftLimit?: number;
       };
     };
 
@@ -33,9 +34,20 @@ export async function POST(request: NextRequest) {
 
     if (action === "ENABLE_OVERDRAFT" || action === "DISABLE_OVERDRAFT") {
       const nextState = action === "ENABLE_OVERDRAFT";
+      const updateData: { overdraftEnabled: boolean; overdraftLimit?: number } = {
+        overdraftEnabled: nextState,
+      };
+      if (nextState && data?.overdraftLimit !== undefined && data?.overdraftLimit !== null) {
+        const parsedLimit = Number(data.overdraftLimit);
+        if (!Number.isFinite(parsedLimit) || parsedLimit < 0 || parsedLimit > 1000000) {
+          return apiError(400, "Overdraft limit must be between GHS 0 and GHS 1,000,000");
+        }
+        updateData.overdraftLimit = Number(parsedLimit.toFixed(2));
+      }
+
       const res = await prisma.user.updateMany({
         where: { id: { in: userIds } },
-        data: { overdraftEnabled: nextState },
+        data: updateData,
       });
 
       await recordAudit({
@@ -43,13 +55,21 @@ export async function POST(request: NextRequest) {
         actorLabel: actor.email,
         action: nextState ? "user.bulk_enable_overdraft" : "user.bulk_disable_overdraft",
         target: `users:${userIds.length}`,
-        newValue: JSON.stringify({ overdraftEnabled: nextState, count: res.count, ids: userIds }),
+        newValue: JSON.stringify({
+          ...updateData,
+          count: res.count,
+          ids: userIds,
+        }),
       });
 
       return NextResponse.json({
         ok: true,
         count: res.count,
-        message: `Overdraft ${nextState ? "enabled" : "disabled"} for ${res.count} user account(s)`,
+        message: nextState
+          ? updateData.overdraftLimit && updateData.overdraftLimit > 0
+            ? `Overdraft enabled (limit: GHS ${updateData.overdraftLimit.toFixed(2)}) for ${res.count} user account(s)`
+            : `Overdraft enabled for ${res.count} user account(s)`
+          : `Overdraft disabled for ${res.count} user account(s)`,
       });
     }
 

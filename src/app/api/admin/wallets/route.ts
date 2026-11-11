@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
           status: true,
           balance: true,
           overdraftEnabled: true,
+          overdraftLimit: true,
           createdAt: true,
           lastLoginAt: true,
           pricingProfile: { select: { id: true, name: true, type: true } },
@@ -452,6 +453,7 @@ export async function GET(request: NextRequest) {
             status: true,
             balance: true,
             overdraftEnabled: true,
+            overdraftLimit: true,
             createdAt: true,
             lastLoginAt: true,
             _count: {

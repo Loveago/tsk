@@ -69,6 +69,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
       status: true,
       balance: true,
       overdraftEnabled: true,
+      overdraftLimit: true,
       phone: true,
       tokenVersion: true,
       pricingProfileId: true,
@@ -87,6 +88,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     status: user.status,
     balance: user.balance,
     overdraftEnabled: user.overdraftEnabled,
+    overdraftLimit: user.overdraftLimit,
     phone: user.phone,
     pricingProfileId: user.pricingProfileId,
   };

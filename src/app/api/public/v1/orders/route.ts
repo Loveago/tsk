@@ -159,12 +159,25 @@ export async function POST(request: NextRequest) {
     let order: any;
     try {
       order = await prisma.$transaction(async (tx) => {
-        // Atomic balance decrement
+        // Atomic balance decrement with overdraft limit check
+        const liveUser = await tx.user.findUnique({
+          where: { id: userId },
+          select: { balance: true, overdraftEnabled: true, overdraftLimit: true },
+        });
+        const liveLimit = liveUser?.overdraftLimit ?? 0;
+        const minBalanceRequired = !liveUser?.overdraftEnabled
+          ? Number((amount - 0.0001).toFixed(4))
+          : liveLimit > 0
+          ? Number((amount - liveLimit - 0.0001).toFixed(4))
+          : undefined;
+
         const debited = await tx.user.updateMany({
           where: {
             id: userId,
             status: "ACTIVE",
-            OR: [{ balance: { gte: amount } }, { overdraftEnabled: true }],
+            ...(minBalanceRequired !== undefined
+              ? { balance: { gte: minBalanceRequired } }
+              : { overdraftEnabled: true }),
           },
           data: { balance: { decrement: amount } },
         });

@@ -75,6 +75,7 @@ export default function SendOrderPage() {
   const [result, setResult] = React.useState<string | null>(null);
   const [userBalance, setUserBalance] = React.useState<number | null>(null);
   const [overdraftEnabled, setOverdraftEnabled] = React.useState<boolean>(false);
+  const [overdraftLimit, setOverdraftLimit] = React.useState<number>(0);
   const [draftLoaded, setDraftLoaded] = React.useState(false);
   const [copiedBulkText, setCopiedBulkText] = React.useState(false);
   const [copiedFromModal, setCopiedFromModal] = React.useState(false);
@@ -135,6 +136,9 @@ export default function SendOrderPage() {
         if (d.user && typeof d.user.overdraftEnabled === "boolean") {
           setOverdraftEnabled(d.user.overdraftEnabled);
         }
+        if (d.user && typeof d.user.overdraftLimit === "number") {
+          setOverdraftLimit(d.user.overdraftLimit);
+        }
       }
     } catch {
       // ignore
@@ -182,6 +186,9 @@ export default function SendOrderPage() {
         }
         if (typeof d.overdraftEnabled === "boolean") {
           setOverdraftEnabled(d.overdraftEnabled);
+        }
+        if (typeof d.overdraftLimit === "number") {
+          setOverdraftLimit(d.overdraftLimit);
         }
         if (d.whatsappChannel) {
           setWhatsappChannel(d.whatsappChannel);
@@ -880,17 +887,25 @@ export default function SendOrderPage() {
 
       const currentTotal = ordersToSubmit.reduce((s, l) => s + (l.price ?? 0), 0);
 
-      // Pre-check balance if known (unless overdraft is enabled for this user)
-      if (!overdraftEnabled && userBalance !== null && userBalance < currentTotal) {
+      // Pre-check balance if known (accounting for user's overdraft setting and limit)
+      const effectiveMaxSpend = overdraftEnabled
+        ? overdraftLimit > 0
+          ? (userBalance ?? 0) + overdraftLimit
+          : Infinity
+        : (userBalance ?? 0);
+      if (userBalance !== null && currentTotal > effectiveMaxSpend + 0.0001) {
         isSubmittingRef.current = false;
         setSubmitting(false);
-        const deficit = Math.max(0, currentTotal - userBalance);
+        const deficit = Math.max(0, currentTotal - effectiveMaxSpend);
         setInsufficientBalanceModal({
           needed: currentTotal,
           balance: userBalance,
           deficit,
           orders: ordersToSubmit,
-          message: `Insufficient balance. You need GHS ${currentTotal.toFixed(2)} but have GHS ${userBalance.toFixed(2)}.`,
+          message:
+            overdraftEnabled && overdraftLimit > 0
+              ? `Insufficient balance. Order requires GHS ${currentTotal.toFixed(2)}, which exceeds your overdraft limit of GHS ${overdraftLimit.toFixed(2)} (available with overdraft: GHS ${Math.max(0, effectiveMaxSpend).toFixed(2)}).`
+              : `Insufficient balance. You need GHS ${currentTotal.toFixed(2)} but have GHS ${userBalance.toFixed(2)}.`,
         });
         return;
       }

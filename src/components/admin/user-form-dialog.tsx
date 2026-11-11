@@ -15,6 +15,7 @@ export interface AdminUser {
   status: string;
   balance: number;
   overdraftEnabled?: boolean;
+  overdraftLimit?: number;
   pricingProfileId: string | null;
   signupCodeUsage?: {
     signupCode: { code: string };
@@ -54,6 +55,7 @@ export function UserFormDialog({
   const [status, setStatus] = React.useState("ACTIVE");
   const [balance, setBalance] = React.useState("0");
   const [overdraftEnabled, setOverdraftEnabled] = React.useState(false);
+  const [overdraftLimit, setOverdraftLimit] = React.useState("0");
   const [profileId, setProfileId] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
@@ -66,6 +68,7 @@ export function UserFormDialog({
       setStatus(user?.status ?? "ACTIVE");
       setBalance(String(user?.balance ?? 0));
       setOverdraftEnabled(Boolean(user?.overdraftEnabled));
+      setOverdraftLimit(String(user?.overdraftLimit ?? 0));
       setProfileId(user?.pricingProfileId ?? "");
     }
   }, [open, user]);
@@ -81,6 +84,7 @@ export function UserFormDialog({
         status,
         balance: Number(balance),
         overdraftEnabled,
+        overdraftLimit: Math.max(0, Number(overdraftLimit) || 0),
         pricingProfileId: profileId,
       };
       if (!user) body.password = password || undefined;
@@ -197,7 +201,7 @@ export function UserFormDialog({
             </Select>
           </div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-800/40">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5 dark:border-slate-800 dark:bg-slate-800/40">
           <label className="flex items-start justify-between gap-3 cursor-pointer">
             <div className="space-y-0.5">
               <span className="font-semibold text-xs text-slate-900 dark:text-slate-100 block">
@@ -214,6 +218,43 @@ export function UserFormDialog({
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-900 cursor-pointer"
             />
           </label>
+          {overdraftEnabled && (
+            <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/70 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs">Overdraft Limit (GHS)</Label>
+                <span className="text-[10px] font-medium text-violet-600 dark:text-violet-400">
+                  {Number(overdraftLimit) > 0
+                    ? `Max negative balance: −GHS ${Number(overdraftLimit).toFixed(2)}`
+                    : "0 = Unlimited overdraft"}
+                </span>
+              </div>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={overdraftLimit}
+                onChange={(e) => setOverdraftLimit(e.target.value)}
+                placeholder="e.g. 100.00 (0 for unlimited)"
+                className="h-8 text-xs"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {[50, 100, 200, 500, 1000, 0].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setOverdraftLimit(String(preset))}
+                    className={`rounded-md px-2 py-0.5 text-[10px] font-semibold border transition cursor-pointer ${
+                      Number(overdraftLimit) === preset
+                        ? "bg-violet-600 text-white border-violet-600"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700"
+                    }`}
+                  >
+                    {preset === 0 ? "Unlimited (0)" : `GHS ${preset}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         {user?.registrationPayment && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5 dark:border-slate-800 dark:bg-slate-800/40">

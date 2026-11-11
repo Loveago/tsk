@@ -350,8 +350,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!user.overdraftEnabled && user.balance < total) {
+    const overdraftLimit = user.overdraftLimit ?? 0;
+    if (!user.overdraftEnabled && user.balance < total - 0.0001) {
       return apiError(402, `Insufficient balance. You need GHS ${total.toFixed(2)} but have GHS ${user.balance.toFixed(2)}.`);
+    }
+    if (user.overdraftEnabled && overdraftLimit > 0 && user.balance - total < -overdraftLimit - 0.0001) {
+      const availableWithOverdraft = Math.max(0, user.balance + overdraftLimit);
+      return apiError(
+        402,
+        `Insufficient balance. Order requires GHS ${total.toFixed(2)}, which exceeds your overdraft limit of GHS ${overdraftLimit.toFixed(2)} (available with overdraft: GHS ${availableWithOverdraft.toFixed(2)}).`
+      );
     }
 
     // Group recipients by network — one OrderBatch per network (§2: never mixed)
@@ -370,19 +378,34 @@ export async function POST(request: NextRequest) {
     try {
       const txResult = await prisma.$transaction(
         async (tx) => {
-          // 1. Atomic balance deduction with balance / overdraft check
+          // 1. Atomic balance deduction with balance / overdraft limit check
+          const liveUser = await tx.user.findUnique({
+            where: { id: user.id },
+            select: { balance: true, overdraftEnabled: true, overdraftLimit: true },
+          });
+          const liveLimit = liveUser?.overdraftLimit ?? 0;
+          const minBalanceRequired = !liveUser?.overdraftEnabled
+            ? Number((total - 0.0001).toFixed(4))
+            : liveLimit > 0
+            ? Number((total - liveLimit - 0.0001).toFixed(4))
+            : undefined;
+
           const debited = await tx.user.updateMany({
             where: {
               id: user.id,
               status: "ACTIVE",
-              OR: [{ balance: { gte: total } }, { overdraftEnabled: true }],
+              ...(minBalanceRequired !== undefined
+                ? { balance: { gte: minBalanceRequired } }
+                : { overdraftEnabled: true }),
             },
             data: { balance: { decrement: total } },
           });
 
           if (debited.count === 0) {
             throw new Error(
-              `INSUFFICIENT_BALANCE: Insufficient balance. You need GHS ${total.toFixed(2)} but your active balance is insufficient.`
+              liveUser?.overdraftEnabled && liveLimit > 0
+                ? `INSUFFICIENT_BALANCE: Insufficient balance. Order requires GHS ${total.toFixed(2)}, which exceeds your overdraft limit of GHS ${liveLimit.toFixed(2)}.`
+                : `INSUFFICIENT_BALANCE: Insufficient balance. You need GHS ${total.toFixed(2)} but your active balance is insufficient.`
             );
           }
 

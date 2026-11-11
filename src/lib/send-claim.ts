@@ -729,9 +729,18 @@ export async function adminManualDebitWallet(input: {
       const user = await tx.user.findUnique({ where: { id: input.userId } });
       if (!user) throw new Error("User not found");
 
-      if (!user.overdraftEnabled && user.balance < input.amount) {
+      if (!user.overdraftEnabled && user.balance < input.amount - 0.0001) {
         throw new Error(
           `Insufficient balance. User has GHS ${user.balance.toFixed(2)}, cannot debit GHS ${input.amount.toFixed(2)}.`
+        );
+      }
+      if (
+        user.overdraftEnabled &&
+        (user.overdraftLimit ?? 0) > 0 &&
+        user.balance - input.amount < -(user.overdraftLimit ?? 0) - 0.0001
+      ) {
+        throw new Error(
+          `Debit of GHS ${input.amount.toFixed(2)} would exceed user's overdraft limit of GHS ${(user.overdraftLimit ?? 0).toFixed(2)} (current balance: GHS ${user.balance.toFixed(2)}).`
         );
       }
 

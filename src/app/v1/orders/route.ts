@@ -449,7 +449,7 @@ export async function POST(request: NextRequest) {
     // Resolve price server-side using centralized pricing resolution
     const user = await prisma.user.findUnique({
       where: { id: authContext.userId },
-      select: { id: true, role: true, pricingProfileId: true, balance: true, overdraftEnabled: true },
+      select: { id: true, role: true, pricingProfileId: true, balance: true, overdraftEnabled: true, overdraftLimit: true },
     });
 
     if (!user) {
@@ -511,11 +511,24 @@ export async function POST(request: NextRequest) {
     try {
       createdOrder = await prisma.$transaction(async (tx) => {
         if (!authContext.isSandbox) {
+          const liveUser = await tx.user.findUnique({
+            where: { id: authContext.userId },
+            select: { balance: true, overdraftEnabled: true, overdraftLimit: true },
+          });
+          const liveLimit = liveUser?.overdraftLimit ?? 0;
+          const minBalanceRequired = !liveUser?.overdraftEnabled
+            ? Number((price - 0.0001).toFixed(4))
+            : liveLimit > 0
+            ? Number((price - liveLimit - 0.0001).toFixed(4))
+            : undefined;
+
           const debited = await tx.user.updateMany({
             where: {
               id: authContext.userId,
               status: "ACTIVE",
-              OR: [{ balance: { gte: price } }, { overdraftEnabled: true }],
+              ...(minBalanceRequired !== undefined
+                ? { balance: { gte: minBalanceRequired } }
+                : { overdraftEnabled: true }),
             },
             data: {
               balance: { decrement: price },
@@ -525,7 +538,9 @@ export async function POST(request: NextRequest) {
           if (debited.count === 0) {
             throw new ApiError(
               "INSUFFICIENT_BALANCE",
-              `Insufficient wallet balance. Order requires GHS ${price.toFixed(2)}, available: GHS ${(user.balance ?? 0).toFixed(2)}`,
+              liveUser?.overdraftEnabled && liveLimit > 0
+                ? `Insufficient wallet balance. Order requires GHS ${price.toFixed(2)}, which exceeds overdraft limit of GHS ${liveLimit.toFixed(2)} (balance: GHS ${(liveUser?.balance ?? 0).toFixed(2)})`
+                : `Insufficient wallet balance. Order requires GHS ${price.toFixed(2)}, available: GHS ${(liveUser?.balance ?? user.balance ?? 0).toFixed(2)}`,
               402
             );
           }

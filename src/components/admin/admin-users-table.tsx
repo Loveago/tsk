@@ -52,6 +52,7 @@ export interface UserRow {
   status: string;
   balance: number;
   overdraftEnabled?: boolean;
+  overdraftLimit?: number;
   pricingProfileId: string | null;
   _count: { orders: number };
   lastLoginAt: string | null;
@@ -263,8 +264,10 @@ export function AdminUsersTable({
                             }`}
                             title={
                               u.overdraftEnabled
-                                ? "Overdraft is ON — click to turn OFF"
-                                : "Overdraft is OFF — click to turn ON"
+                                ? (u.overdraftLimit ?? 0) > 0
+                                  ? `Overdraft is ON (Limit: ${formatGHS(u.overdraftLimit ?? 0)}) — click to edit limit or turn OFF`
+                                  : "Overdraft is ON (Unlimited) — click to set limit or turn OFF"
+                                : "Overdraft is OFF — click to enable and set limit"
                             }
                           >
                             <span
@@ -272,7 +275,11 @@ export function AdminUsersTable({
                                 u.overdraftEnabled ? "bg-violet-600 dark:bg-violet-400" : "bg-slate-400"
                               }`}
                             />
-                            {u.overdraftEnabled ? "Overdraft: ON" : "Overdraft: OFF"}
+                            {u.overdraftEnabled
+                              ? (u.overdraftLimit ?? 0) > 0
+                                ? `OD: ${formatGHS(u.overdraftLimit ?? 0)}`
+                                : "Overdraft: ON"
+                              : "Overdraft: OFF"}
                           </button>
                         ) : (
                           u.overdraftEnabled && (
@@ -280,7 +287,9 @@ export function AdminUsersTable({
                               className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/20 whitespace-nowrap"
                               title="Overdraft is enabled for this user"
                             >
-                              Overdraft ON
+                              {(u.overdraftLimit ?? 0) > 0
+                                ? `OD: ${formatGHS(u.overdraftLimit ?? 0)}`
+                                : "Overdraft ON"}
                             </span>
                           )
                         )}

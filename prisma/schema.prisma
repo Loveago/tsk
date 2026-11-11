@@ -16,6 +16,7 @@ model User {
   status           String          @default("ACTIVE") // ACTIVE | DISABLED
   balance          Float           @default(0)
   overdraftEnabled Boolean         @default(false)
+  overdraftLimit   Float           @default(0)
   phone            String?
   pricingProfileId String?
   pricingProfile   PricingProfile? @relation(fields: [pricingProfileId], references: [id])

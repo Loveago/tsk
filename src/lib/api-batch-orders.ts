@@ -508,7 +508,7 @@ export async function handleBatchOrderSubmission({
   // 3. User resolution
   const user = await prisma.user.findUnique({
     where: { id: authContext.userId },
-    select: { id: true, role: true, pricingProfileId: true, balance: true, overdraftEnabled: true },
+    select: { id: true, role: true, pricingProfileId: true, balance: true, overdraftEnabled: true, overdraftLimit: true },
   });
 
   if (!user) {
@@ -573,7 +573,12 @@ export async function handleBatchOrderSubmission({
   }
 
   if (!authContext.isSandbox) {
-    if (!user.overdraftEnabled && (user.balance ?? 0) < totalCost) {
+    const userLimit = user.overdraftLimit ?? 0;
+    const isInsufficient = !user.overdraftEnabled
+      ? (user.balance ?? 0) < totalCost - 0.0001
+      : userLimit > 0 && (user.balance ?? 0) - totalCost < -userLimit - 0.0001;
+
+    if (isInsufficient) {
       if (idemKey) {
         await prisma.idempotencyKey.deleteMany({
           where: { key: idemKey, status: "PROCESSING" },
@@ -581,7 +586,9 @@ export async function handleBatchOrderSubmission({
       }
       throw new ApiError(
         "INSUFFICIENT_BALANCE",
-        `Insufficient wallet balance. Batch requires GHS ${totalCost.toFixed(2)}, available: GHS ${(user.balance ?? 0).toFixed(2)}`,
+        user.overdraftEnabled && userLimit > 0
+          ? `Insufficient wallet balance. Batch requires GHS ${totalCost.toFixed(2)}, which exceeds overdraft limit of GHS ${userLimit.toFixed(2)} (balance: GHS ${(user.balance ?? 0).toFixed(2)})`
+          : `Insufficient wallet balance. Batch requires GHS ${totalCost.toFixed(2)}, available: GHS ${(user.balance ?? 0).toFixed(2)}`,
         402
       );
     }
@@ -597,11 +604,24 @@ export async function handleBatchOrderSubmission({
   try {
     result = await prisma.$transaction(async (tx) => {
       if (!authContext.isSandbox) {
+        const liveUser = await tx.user.findUnique({
+          where: { id: authContext.userId },
+          select: { balance: true, overdraftEnabled: true, overdraftLimit: true },
+        });
+        const liveLimit = liveUser?.overdraftLimit ?? 0;
+        const minBalanceRequired = !liveUser?.overdraftEnabled
+          ? Number((totalCost - 0.0001).toFixed(4))
+          : liveLimit > 0
+          ? Number((totalCost - liveLimit - 0.0001).toFixed(4))
+          : undefined;
+
         const debited = await tx.user.updateMany({
           where: {
             id: authContext.userId,
             status: "ACTIVE",
-            OR: [{ balance: { gte: totalCost } }, { overdraftEnabled: true }],
+            ...(minBalanceRequired !== undefined
+              ? { balance: { gte: minBalanceRequired } }
+              : { overdraftEnabled: true }),
           },
           data: {
             balance: { decrement: totalCost },
@@ -611,7 +631,9 @@ export async function handleBatchOrderSubmission({
         if (debited.count === 0) {
           throw new ApiError(
             "INSUFFICIENT_BALANCE",
-            `Insufficient wallet balance. Batch requires GHS ${totalCost.toFixed(2)}, available: GHS ${(user.balance ?? 0).toFixed(2)}`,
+            liveUser?.overdraftEnabled && liveLimit > 0
+              ? `Insufficient wallet balance. Batch requires GHS ${totalCost.toFixed(2)}, which exceeds overdraft limit of GHS ${liveLimit.toFixed(2)} (balance: GHS ${(liveUser?.balance ?? 0).toFixed(2)})`
+              : `Insufficient wallet balance. Batch requires GHS ${totalCost.toFixed(2)}, available: GHS ${(liveUser?.balance ?? user.balance ?? 0).toFixed(2)}`,
             402
           );
         }

@@ -26,6 +26,7 @@ export interface UserSummary {
   email: string;
   balance: number;
   overdraftEnabled?: boolean;
+  overdraftLimit?: number;
   phone?: string | null;
   role?: string;
   status?: string;
@@ -126,9 +127,14 @@ export function ManualCreditDialog({
   const parsedAmount = Number(amount) || 0;
   const isDebit = mode === "DEBIT";
   const currentBalance = selectedUser?.balance ?? 0;
+  const userOverdraftLimit = selectedUser?.overdraftLimit ?? 0;
   const projectedBalance = isDebit ? currentBalance - parsedAmount : currentBalance + parsedAmount;
-  const isInsufficient = isDebit && !selectedUser?.overdraftEnabled && parsedAmount > currentBalance;
-  const isOverdraftDebit = isDebit && Boolean(selectedUser?.overdraftEnabled) && projectedBalance < 0;
+  const isInsufficient =
+    isDebit &&
+    (!selectedUser?.overdraftEnabled
+      ? parsedAmount > currentBalance
+      : userOverdraftLimit > 0 && projectedBalance < -userOverdraftLimit - 0.0001);
+  const isOverdraftDebit = isDebit && Boolean(selectedUser?.overdraftEnabled) && projectedBalance < 0 && !isInsufficient;
 
   const handleProceed = async (e: React.FormEvent) => {
     e.preventDefault();

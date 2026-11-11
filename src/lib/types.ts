@@ -177,6 +177,7 @@ export interface AuthUser {
   status: string;
   balance: number;
   overdraftEnabled?: boolean;
+  overdraftLimit?: number;
   phone?: string | null;
   pricingProfileId: string | null;
 }

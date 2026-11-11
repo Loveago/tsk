@@ -36,6 +36,9 @@ export async function PATCH(
     if (typeof input.overdraftEnabled === "boolean") {
       data.overdraftEnabled = input.overdraftEnabled;
     }
+    if (typeof input.overdraftLimit === "number" && Number.isFinite(input.overdraftLimit)) {
+      data.overdraftLimit = Number(input.overdraftLimit.toFixed(2));
+    }
     if (input.password) {
       data.passwordHash = await bcrypt.hash(input.password, 10);
       data.tokenVersion = { increment: 1 }; // force re-login everywhere
@@ -53,12 +56,14 @@ export async function PATCH(
         status: existing.status,
         balance: existing.balance,
         overdraftEnabled: existing.overdraftEnabled,
+        overdraftLimit: existing.overdraftLimit,
       }),
       newValue: JSON.stringify({
         role: input.role,
         status: input.status,
         balance: input.balance,
         overdraftEnabled: updated.overdraftEnabled,
+        overdraftLimit: updated.overdraftLimit,
       }),
     });
 
@@ -69,6 +74,7 @@ export async function PATCH(
         role: updated.role,
         status: updated.status,
         overdraftEnabled: updated.overdraftEnabled,
+        overdraftLimit: updated.overdraftLimit,
       },
     });
   } catch (err) {

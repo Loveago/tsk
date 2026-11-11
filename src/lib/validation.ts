@@ -217,6 +217,7 @@ export const createUserSchema = z.object({
   role: z.enum(ROLES as [string, ...string[]]),
   balance: z.coerce.number().default(0),
   overdraftEnabled: z.boolean().optional().default(false),
+  overdraftLimit: z.coerce.number().min(0, "Overdraft limit cannot be negative").max(1000000).optional().default(0),
   pricingProfileId: z.string().optional().or(z.literal("")),
 });
 
@@ -227,6 +228,7 @@ export const updateUserSchema = z.object({
   status: z.enum(["ACTIVE", "DISABLED", "FROZEN", "PENDING_PAYMENT"]),
   balance: z.coerce.number(),
   overdraftEnabled: z.boolean().optional(),
+  overdraftLimit: z.coerce.number().min(0, "Overdraft limit cannot be negative").max(1000000).optional(),
   pricingProfileId: z.string().optional().or(z.literal("")),
   password: z.string().min(8).optional().or(z.literal("")),
 });

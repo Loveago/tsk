@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
           status: true,
           balance: true,
           overdraftEnabled: true,
+          overdraftLimit: true,
           phone: true,
           pricingProfileId: true,
           lastLoginAt: true,
@@ -149,6 +150,7 @@ export async function GET(request: NextRequest) {
         status: u.status,
         balance: u.balance,
         overdraftEnabled: u.overdraftEnabled,
+        overdraftLimit: u.overdraftLimit,
         phone: u.phone,
         pricingProfileId: u.pricingProfileId,
         lastLoginAt: u.lastLoginAt,
@@ -210,6 +212,7 @@ export async function POST(request: NextRequest) {
         role: input.role,
         balance: input.balance,
         overdraftEnabled: input.overdraftEnabled ?? false,
+        overdraftLimit: input.overdraftLimit ?? 0,
         pricingProfileId: input.pricingProfileId || null,
       },
     });
@@ -224,6 +227,7 @@ export async function POST(request: NextRequest) {
         role: input.role,
         balance: input.balance,
         overdraftEnabled: input.overdraftEnabled ?? false,
+        overdraftLimit: input.overdraftLimit ?? 0,
       }),
     });
 
