@@ -43,15 +43,27 @@ export function DeveloperApplicationCard({
   const [submitting, setSubmitting] = React.useState(false);
 
   // Form states
-  const [businessName, setBusinessName] = React.useState("");
-  const [websiteUrl, setWebsiteUrl] = React.useState("");
-  const [usageDescription, setUsageDescription] = React.useState("");
-  const [expectedMonthlyVolume, setExpectedMonthlyVolume] = React.useState("100-500 orders");
-  const [contactEmail, setContactEmail] = React.useState("");
-  const [contactPhone, setContactPhone] = React.useState("");
-  const [applicationType, setApplicationType] = React.useState("WEBSITE");
-  const [webhookUrl, setWebhookUrl] = React.useState("");
+  const [businessName, setBusinessName] = React.useState(application?.businessName ?? "");
+  const [websiteUrl, setWebsiteUrl] = React.useState(application?.websiteUrl ?? "");
+  const [usageDescription, setUsageDescription] = React.useState(application?.usageDescription ?? "");
+  const [expectedMonthlyVolume, setExpectedMonthlyVolume] = React.useState(application?.expectedMonthlyVolume ?? "100-500 orders");
+  const [contactEmail, setContactEmail] = React.useState(application?.contactEmail ?? "");
+  const [contactPhone, setContactPhone] = React.useState(application?.contactPhone ?? "");
+  const [applicationType, setApplicationType] = React.useState(application?.applicationType ?? "WEBSITE");
+  const [webhookUrl, setWebhookUrl] = React.useState(application?.webhookUrl ?? "");
   const [termsAccepted, setTermsAccepted] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!application) return;
+    setBusinessName(application.businessName ?? "");
+    setWebsiteUrl(application.websiteUrl ?? "");
+    setUsageDescription(application.usageDescription ?? "");
+    setExpectedMonthlyVolume(application.expectedMonthlyVolume ?? "100-500 orders");
+    setContactEmail(application.contactEmail ?? "");
+    setContactPhone(application.contactPhone ?? "");
+    setApplicationType(application.applicationType ?? "WEBSITE");
+    setWebhookUrl(application.webhookUrl ?? "");
+  }, [application]);
 
   const status = application ? application.status : "NOT_APPLIED";
 
@@ -174,35 +186,216 @@ export function DeveloperApplicationCard({
     );
   }
 
-  if (status === "REJECTED") {
-    return (
-      <div className="rounded-2xl border border-red-200/80 bg-red-50/40 p-6 dark:border-red-500/20 dark:bg-red-950/10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-red-500/10 p-2.5 text-red-600 dark:text-red-400">
-              <XCircle className="h-6 w-6" />
+  const applyModal = showApplyModal ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+        <h3 className="text-lg font-bold">
+          {status === "REJECTED" ? "Update Developer API Application" : "Apply for Developer API Access"}
+        </h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Provide information about your business or integration to receive production credentials.
+        </p>
+
+        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Business / Website Name *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. DataShop Ghana"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+              />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  Application Not Approved
-                </h3>
-                <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-500/20 dark:text-red-400">
-                  REJECTED
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                {application?.adminNotes
-                  ? `Admin feedback: ${application.adminNotes}`
-                  : "Your application could not be approved at this time. Please update your details and re-apply."}
-              </p>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Website URL *
+              </label>
+              <input
+                type="url"
+                required
+                placeholder="https://yourwebsite.com"
+                value={websiteUrl}
+                onChange={(e) => setWebsiteUrl(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+              />
             </div>
           </div>
-          <Button size="sm" onClick={() => setShowApplyModal(true)}>
-            Update Application
-          </Button>
-        </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              API Usage Description *
+            </label>
+            <textarea
+              required
+              rows={3}
+              placeholder="Describe your platform and how you will use the Tskconnect API..."
+              value={usageDescription}
+              onChange={(e) => setUsageDescription(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Intended Application Type *
+              </label>
+              <select
+                value={applicationType}
+                onChange={(e) => setApplicationType(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              >
+                <option value="WEBSITE">Website / Web App</option>
+                <option value="MOBILE_APP">Mobile Application (iOS / Android)</option>
+                <option value="RESELLER_PORTAL">Reseller Platform</option>
+                <option value="ERP_ECOMMERCE">E-Commerce / ERP Integration</option>
+                <option value="OTHER">Other Integration</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Expected Monthly Volume *
+              </label>
+              <select
+                value={expectedMonthlyVolume}
+                onChange={(e) => setExpectedMonthlyVolume(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              >
+                <option value="1-100 orders">1 - 100 orders/month</option>
+                <option value="100-500 orders">100 - 500 orders/month</option>
+                <option value="500-2,000 orders">500 - 2,000 orders/month</option>
+                <option value="2,000+ orders">2,000+ orders/month</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Contact Email *
+              </label>
+              <input
+                type="email"
+                required
+                placeholder="dev@yourcompany.com"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Contact Phone *
+              </label>
+              <input
+                type="tel"
+                required
+                placeholder="0241234567"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Webhook URL (Optional initially)
+            </label>
+            <input
+              type="url"
+              placeholder="https://yourwebsite.com/api/webhooks/tskconnect"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+            />
+          </div>
+
+          <div className="flex items-start gap-2 pt-2">
+            <input
+              type="checkbox"
+              id="terms"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="terms" className="text-xs text-slate-600 dark:text-slate-400">
+              I agree to the Tskconnect Developer API{" "}
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-yellow-600 dark:text-yellow-400 underline font-semibold hover:opacity-80"
+              >
+                Terms of Service
+              </a>{" "}
+              and understand that automated order fulfillment will debit from my account balance.
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowApplyModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={submitting}
+              className="bg-gradient-to-r from-blue-600 to-violet-600 text-white"
+            >
+              {submitting ? <Spinner className="h-4 w-4" /> : "Submit Application"}
+            </Button>
+          </div>
+        </form>
       </div>
+    </div>
+  ) : null;
+
+  if (status === "REJECTED") {
+    return (
+      <>
+        <div className="rounded-2xl border border-red-200/80 bg-red-50/40 p-6 dark:border-red-500/20 dark:bg-red-950/10">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-red-500/10 p-2.5 text-red-600 dark:text-red-400">
+                <XCircle className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Application Not Approved
+                  </h3>
+                  <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-500/20 dark:text-red-400">
+                    REJECTED
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  {application?.adminNotes
+                    ? `Admin feedback: ${application.adminNotes}`
+                    : "Your application could not be approved at this time. Please update your details and re-apply."}
+                </p>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => setShowApplyModal(true)}>
+              Update Application
+            </Button>
+          </div>
+        </div>
+        {applyModal}
+      </>
     );
   }
 
@@ -252,182 +445,7 @@ export function DeveloperApplicationCard({
         </div>
       </div>
 
-      {/* Application Form Modal */}
-      {showApplyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-            <h3 className="text-lg font-bold">Apply for Developer API Access</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Provide information about your business or integration to receive production credentials.
-            </p>
-
-            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Business / Website Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. DataShop Ghana"
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Website URL *
-                  </label>
-                  <input
-                    type="url"
-                    required
-                    placeholder="https://yourwebsite.com"
-                    value={websiteUrl}
-                    onChange={(e) => setWebsiteUrl(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  API Usage Description *
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  placeholder="Describe your platform and how you will use the Tskconnect API..."
-                  value={usageDescription}
-                  onChange={(e) => setUsageDescription(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Intended Application Type *
-                  </label>
-                  <select
-                    value={applicationType}
-                    onChange={(e) => setApplicationType(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                  >
-                    <option value="WEBSITE">Website / Web App</option>
-                    <option value="MOBILE_APP">Mobile Application (iOS / Android)</option>
-                    <option value="RESELLER_PORTAL">Reseller Platform</option>
-                    <option value="ERP_ECOMMERCE">E-Commerce / ERP Integration</option>
-                    <option value="OTHER">Other Integration</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Expected Monthly Volume *
-                  </label>
-                  <select
-                    value={expectedMonthlyVolume}
-                    onChange={(e) => setExpectedMonthlyVolume(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                  >
-                    <option value="1-100 orders">1 - 100 orders/month</option>
-                    <option value="100-500 orders">100 - 500 orders/month</option>
-                    <option value="500-2,000 orders">500 - 2,000 orders/month</option>
-                    <option value="2,000+ orders">2,000+ orders/month</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Contact Email *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="dev@yourcompany.com"
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Contact Phone *
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="0241234567"
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  Webhook URL (Optional initially)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://yourwebsite.com/api/webhooks/tskconnect"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                />
-              </div>
-
-              <div className="flex items-start gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="terms"
-                  checked={termsAccepted}
-                  onChange={(e) => setTermsAccepted(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <label htmlFor="terms" className="text-xs text-slate-600 dark:text-slate-400">
-                  I agree to the Tskconnect Developer API{" "}
-                  <a
-                    href="/terms"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-yellow-600 dark:text-yellow-400 underline font-semibold hover:opacity-80"
-                  >
-                    Terms of Service
-                  </a>{" "}
-                  and understand that automated order fulfillment will debit from my account balance.
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowApplyModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={submitting}
-                  className="bg-gradient-to-r from-blue-600 to-violet-600 text-white"
-                >
-                  {submitting ? <Spinner className="h-4 w-4" /> : "Submit Application"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {applyModal}
     </>
   );
 }

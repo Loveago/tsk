@@ -65,7 +65,7 @@ export default function SendOrderPage() {
   const [loading, setLoading] = React.useState(true);
   const [network, setNetwork] = React.useState<string>("MTN");
   const isCurrentNetworkPaused = networkStatus[network] === false || isHalted;
-  const [tab, setTab] = React.useState<"upload" | "paste">("upload");
+  const [tab, setTab] = React.useState<"upload" | "paste">("paste");
   const [bulkText, setBulkText] = React.useState("");
   const [fileName, setFileName] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState(false);
@@ -1109,8 +1109,8 @@ export default function SendOrderPage() {
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5">
             {(
               [
-                { key: "upload", label: "Upload File", icon: UploadCloud },
                 { key: "paste", label: "Paste Text", icon: ClipboardPaste },
+                { key: "upload", label: "Upload File", icon: UploadCloud },
               ] as const
             ).map((t) => (
               <button
