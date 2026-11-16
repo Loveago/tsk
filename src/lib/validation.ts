@@ -156,10 +156,23 @@ export const exportOrdersSchema = z
     volumeMaxMb: z.coerce.number().positive().optional(),
     /** Format: excel or txt. Defaults to excel. */
     format: z.enum(["excel", "txt"]).optional().default("excel"),
+    /** Optional status filter (e.g. "REFUNDED" to export all refunds). */
+    status: z.enum(ORDER_STATUSES as [string, ...string[]]).optional(),
+    /** Optional search query when exporting by status. */
+    q: z.string().max(200).optional().or(z.literal("")),
   })
   .refine(
-    (data) => Boolean(data.network || (data.orderIds && data.orderIds.length > 0) || (data.batchIds && data.batchIds.length > 0)),
-    { message: "Network is required unless specific order IDs or batch IDs are provided", path: ["network"] }
+    (data) =>
+      Boolean(
+        data.network ||
+          (data.orderIds && data.orderIds.length > 0) ||
+          (data.batchIds && data.batchIds.length > 0) ||
+          data.status === "REFUNDED"
+      ),
+    {
+      message: "Network is required unless specific order IDs, batch IDs, or REFUNDED status are provided",
+      path: ["network"],
+    }
   );
 
 export const deliveryReportActionSchema = z.object({

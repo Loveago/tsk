@@ -393,7 +393,9 @@ export default function AdminOrdersPage() {
       const count = json.count ?? orderIds.length;
       const exportCodes = json.exportCode ? ` (${json.exportCode})` : "";
       toast(
-        `Exported ${count} order(s) to Excel${exportCodes} — moved to Processing. Saved to Exported Files.`,
+        json.statusPreserved
+          ? `Exported ${count} refunded order(s) to Excel (status kept as Refunded).`
+          : `Exported ${count} order(s) to Excel${exportCodes} — moved to Processing. Saved to Exported Files.`,
         "success"
       );
 
@@ -438,7 +440,9 @@ export default function AdminOrdersPage() {
       const count = json.count ?? batchIds.length;
       const exportCodes = json.exportCode ? ` (${json.exportCode})` : "";
       toast(
-        `Exported batch orders to Excel (${count} order(s))${exportCodes} — moved to Processing. Saved to Exported Files.`,
+        json.statusPreserved
+          ? `Exported batch refunded orders to Excel (${count} order(s), status kept as Refunded).`
+          : `Exported batch orders to Excel (${count} order(s))${exportCodes} — moved to Processing. Saved to Exported Files.`,
         "success"
       );
 
@@ -482,7 +486,9 @@ export default function AdminOrdersPage() {
       const count = json.count ?? orderIds.length;
       const exportCodes = json.exportCode ? ` (${json.exportCode})` : "";
       toast(
-        `Exported ${count} order(s) to TXT${exportCodes} — moved to Processing. Saved to Exported Files.`,
+        json.statusPreserved
+          ? `Exported ${count} refunded order(s) to TXT (status kept as Refunded).`
+          : `Exported ${count} order(s) to TXT${exportCodes} — moved to Processing. Saved to Exported Files.`,
         "success"
       );
       setSelectedOrderIds(new Set());
@@ -525,7 +531,9 @@ export default function AdminOrdersPage() {
       const count = json.count ?? batchIds.length;
       const exportCodes = json.exportCode ? ` (${json.exportCode})` : "";
       toast(
-        `Exported batch orders to TXT (${count} order(s))${exportCodes} — moved to Processing. Saved to Exported Files.`,
+        json.statusPreserved
+          ? `Exported batch refunded orders to TXT (${count} order(s), status kept as Refunded).`
+          : `Exported batch orders to TXT (${count} order(s))${exportCodes} — moved to Processing. Saved to Exported Files.`,
         "success"
       );
       setSelectedBatchIds(new Set());
@@ -534,6 +542,54 @@ export default function AdminOrdersPage() {
       toast(err?.message || "Failed to export batches to TXT", "error");
     } finally {
       setExportingToTxt(false);
+    }
+  };
+
+  const handleExportAllRefunds = async (format: "excel" | "txt") => {
+    if (exportingToExcel || exportingToTxt || bulkUpdatingStatus || dispatchingToApi) return;
+    const setBusy = format === "txt" ? setExportingToTxt : setExportingToExcel;
+    try {
+      setBusy(true);
+      const endpoint = format === "txt" ? "/api/admin/exports/txt" : "/api/admin/exports";
+      const payload: Record<string, unknown> = {
+        status: "REFUNDED",
+        format,
+      };
+      if (network) payload.network = network;
+      if (dateFilter.from) payload.from = dateFilter.from;
+      if (dateFilter.to) payload.to = dateFilter.to;
+      if (q.trim()) payload.q = q.trim();
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast(json.error ?? `Failed to export refunds to ${format.toUpperCase()}`, "error");
+        return;
+      }
+
+      if (json.exports && Array.isArray(json.exports) && json.exports.length > 0) {
+        for (const exp of json.exports) {
+          if (exp.fileName && exp.fileBase64) {
+            downloadBase64(exp.fileName, exp.fileBase64);
+          }
+        }
+      } else if (json.fileName && json.fileBase64) {
+        downloadBase64(json.fileName, json.fileBase64);
+      }
+
+      const count = json.count ?? 0;
+      toast(
+        `Exported ${count} refunded order(s) to ${format === "txt" ? "TXT" : "Excel"} (status kept as Refunded).`,
+        "success"
+      );
+    } catch (err: any) {
+      toast(err?.message || `Failed to export refunds to ${format.toUpperCase()}`, "error");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -927,6 +983,52 @@ export default function AdminOrdersPage() {
               <option value={10000}>Show All</option>
             </select>
           </div>
+
+          {/* Export all refunds matching current filters */}
+          {viewMode !== "storefront" && (status === "Refund" || status === "REFUNDED") && (
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={exportingToExcel || exportingToTxt || bulkUpdatingStatus || dispatchingToApi}
+                onClick={() => handleExportAllRefunds("excel")}
+                className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-500/40 dark:text-emerald-400 dark:hover:bg-emerald-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                title="Export all refunded orders matching the current filters to Excel"
+              >
+                {exportingToExcel ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+                    <span>Exporting...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Export All Refunds (Excel)</span>
+                  </>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={exportingToExcel || exportingToTxt || bulkUpdatingStatus || dispatchingToApi}
+                onClick={() => handleExportAllRefunds("txt")}
+                className="border-sky-500/40 text-sky-700 hover:bg-sky-50 hover:text-sky-800 dark:border-sky-500/40 dark:text-sky-400 dark:hover:bg-sky-950/40 font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                title="Export all refunded orders matching the current filters to TXT"
+              >
+                {exportingToTxt ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-sky-600" />
+                    <span>Exporting...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                    <span>Export All Refunds (TXT)</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
 
           {/* Sync Paystack button for storefront */}
           {viewMode === "storefront" && (

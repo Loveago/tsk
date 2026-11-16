@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
-import { exportOrdersToExcel } from "@/lib/order-export";
+import { exportOrdersToExcel, buildOrderSearchOr } from "@/lib/order-export";
 
 /**
  * POST /api/admin/exports/txt
@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
       packageId?: string;
       from?: string;
       to?: string;
-      status?: string[];
+      status?: string | string[];
+      q?: string;
       targetStatus?: string;
       isReexport?: boolean;
       reason?: string;
@@ -33,12 +34,25 @@ export async function POST(request: NextRequest) {
       volumeMaxMb?: number;
     };
 
-    // If network was not specified, but specific orderIds or batchIds were provided,
+    const statusFilter = typeof body.status === "string" ? body.status : undefined;
+
+    // If network was not specified, but specific orderIds, batchIds, or status="REFUNDED" were provided,
     // determine the network(s) of the matching orders and export each network.
-    if (!body.network && (body.orderIds?.length || body.batchIds?.length)) {
+    if (!body.network && (body.orderIds?.length || body.batchIds?.length || statusFilter === "REFUNDED")) {
       const orderWhere: Record<string, unknown> = { isSandbox: false };
       if (body.orderIds?.length) orderWhere.id = { in: body.orderIds };
       if (body.batchIds?.length) orderWhere.batchId = { in: body.batchIds };
+      if (statusFilter === "REFUNDED" && !body.orderIds?.length) {
+        orderWhere.status = "REFUNDED";
+      }
+      if (body.from || body.to) {
+        orderWhere.createdAt = {} as Record<string, Date>;
+        if (body.from) (orderWhere.createdAt as Record<string, Date>).gte = new Date(body.from);
+        if (body.to) (orderWhere.createdAt as Record<string, Date>).lte = new Date(body.to);
+      }
+      if (body.q?.trim()) {
+        orderWhere.OR = buildOrderSearchOr(body.q);
+      }
 
       const matchingOrders = await prisma.order.findMany({
         where: orderWhere,
@@ -65,6 +79,8 @@ export async function POST(request: NextRequest) {
           reason: body.reason || undefined,
           targetStatus: body.targetStatus || "PROCESSING",
           format: "txt",
+          status: statusFilter,
+          q: body.q || undefined,
         });
         results.push({
           exportBatchId: res.exportBatchId,
@@ -75,6 +91,7 @@ export async function POST(request: NextRequest) {
           totalAmount: res.totalAmount,
           fileName: res.fileName,
           fileBase64: res.buffer.toString("base64"),
+          statusPreserved: res.statusPreserved ?? false,
         });
       }
 
@@ -87,12 +104,13 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         exportBatchId: results[0].exportBatchId,
-        exportCode: results.map((r) => r.exportCode).join(", "),
+        exportCode: results.map((r) => r.exportCode).filter(Boolean).join(", "),
         count: results.reduce((sum, r) => sum + r.count, 0),
         totalGb: results.reduce((sum, r) => sum + r.totalGb, 0),
         totalAmount: results.reduce((sum, r) => sum + r.totalAmount, 0),
         fileName: results.map((r) => r.fileName).join(", "),
         fileBase64: results[0].fileBase64,
+        statusPreserved: results.every((r) => r.statusPreserved),
         exports: results,
       });
     }
@@ -117,6 +135,8 @@ export async function POST(request: NextRequest) {
       volumeMinMb: body.volumeMinMb,
       volumeMaxMb: body.volumeMaxMb,
       format: "txt",
+      status: statusFilter,
+      q: body.q || undefined,
     });
 
     return NextResponse.json({
@@ -127,6 +147,7 @@ export async function POST(request: NextRequest) {
       totalAmount: result.totalAmount,
       fileName: result.fileName,
       fileBase64: result.buffer.toString("base64"),
+      statusPreserved: result.statusPreserved ?? false,
       exports: [
         {
           exportBatchId: result.exportBatchId,
@@ -137,6 +158,7 @@ export async function POST(request: NextRequest) {
           totalAmount: result.totalAmount,
           fileName: result.fileName,
           fileBase64: result.buffer.toString("base64"),
+          statusPreserved: result.statusPreserved ?? false,
         },
       ],
     });

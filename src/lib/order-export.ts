@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 import { recordAudit } from "./audit";
 import { nextExportCode } from "./batches";
 import { recomputeBatchStatus, type Actor } from "./orders";
+import { parseOrderCode } from "./utils";
 import type { OrderStatus } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -88,6 +89,10 @@ export interface ExportOrdersInput {
   volumeMaxMb?: number;
   /** Format of the exported file: "excel" (default) or "txt". */
   format?: "excel" | "txt";
+  /** Optional status filter (e.g. "REFUNDED" to export refunds without changing status). */
+  status?: string;
+  /** Optional search query when exporting by status. */
+  q?: string;
 }
 
 export interface ExportOrdersResult {
@@ -99,6 +104,37 @@ export interface ExportOrdersResult {
   totalGb: number;
   totalAmount: number;
   orderIds: number[];
+  statusPreserved?: boolean;
+}
+
+/**
+ * Builds Prisma `OR` search conditions matching `/api/admin/orders` for `q`.
+ */
+export function buildOrderSearchOr(q: string): Record<string, unknown>[] {
+  const trimmed = q.trim();
+  const parsedId = parseOrderCode(trimmed);
+  const idMatch = trimmed.match(/^(?:ORD-|API-)?0*(\d+)$/i);
+  const orConditions: Record<string, unknown>[] = [
+    { phoneNumber: { contains: trimmed } },
+    { externalReference: { contains: trimmed } },
+    { providerReference: { contains: trimmed } },
+    { failureReason: { contains: trimmed } },
+    { user: { is: { email: { contains: trimmed } } } },
+    { user: { is: { name: { contains: trimmed } } } },
+  ];
+  if (/^\d{7,13}$/.test(trimmed)) {
+    if (trimmed.startsWith("0")) {
+      orConditions.push({ phoneNumber: { contains: trimmed.slice(1) } });
+    } else {
+      orConditions.push({ phoneNumber: { contains: `0${trimmed}` } });
+    }
+  }
+  if (parsedId !== null && parsedId < 2147483647) {
+    orConditions.push({ id: parsedId });
+  } else if (idMatch && Number(idMatch[1]) < 2147483647) {
+    orConditions.push({ id: Number(idMatch[1]) });
+  }
+  return orConditions;
 }
 
 /**
@@ -107,6 +143,7 @@ export interface ExportOrdersResult {
  *  2. verify them
  *  3. generate the Excel file (before ANY status change)
  *  4. only if generation succeeded -> create ExportBatch, move PENDING -> targetStatus
+ *     (REFUNDED orders are exported read-only without changing their status or fields)
  *  5. record status history + audit log + submit to provider
  * If file generation fails, orders stay untouched in the pending queue (§31).
  */
@@ -119,7 +156,9 @@ export async function exportOrdersToExcel(
   const where: Record<string, unknown> = { network: input.network, isSandbox: false };
   if (input.orderIds?.length) {
     where.id = { in: input.orderIds };
-    where.status = { notIn: ["CANCELLED", "REFUNDED"] };
+    where.status = { notIn: ["CANCELLED"] };
+  } else if (input.status === "REFUNDED") {
+    where.status = "REFUNDED";
   } else {
     where.status = isReexport ? { in: ["PROCESSING", "FAILED"] } : "PENDING";
     if (!isReexport) {
@@ -133,6 +172,9 @@ export async function exportOrdersToExcel(
     where.createdAt = {} as Record<string, Date>;
     if (input.from) (where.createdAt as Record<string, Date>).gte = new Date(input.from);
     if (input.to) (where.createdAt as Record<string, Date>).lte = new Date(input.to);
+  }
+  if (input.q?.trim()) {
+    where.OR = buildOrderSearchOr(input.q);
   }
   // Volume filters: MB values from the dialog are converted to GB (orders store gbAmount in GB)
   if (input.volumeExactMb !== undefined) {
@@ -158,15 +200,21 @@ export async function exportOrdersToExcel(
     throw new Error("No eligible orders found for this export.");
   }
 
-  const exportCode = await nextExportCode();
+  // Refunded orders are exported read-only so their REFUNDED status, failureReason,
+  // and original exportBatchId/providerReference are never overwritten.
+  const mutableOrders = orders.filter((o) => o.status !== "REFUNDED");
+  const isRefundOnly = mutableOrders.length === 0;
+
+  const exportCode = isRefundOnly ? "" : await nextExportCode();
   const exportedAt = new Date();
   const totalGb = orders.reduce((s, o) => s + o.gbAmount, 0);
   const totalAmount = orders.reduce((s, o) => s + o.amount, 0);
-  // File name starts with the network: MTN_EX-0001.xlsx, Telecel_EX-0002.xlsx, ...
+  // File name starts with the network: MTN_EX-0001.xlsx, Telecel_EX-0002.xlsx, or MTN_REFUNDS_2026-11-16.xlsx
   const format = input.format ?? "excel";
   const ext = format === "txt" ? "txt" : "xlsx";
-  const fileName = `${input.network}_${exportCode}.${ext}`;
-  const batchIds = [...new Set(orders.map((o) => o.batchId).filter(Boolean))] as string[];
+  const fileName = isRefundOnly
+    ? `${input.network}_REFUNDS_${exportedAt.toISOString().slice(0, 10)}.${ext}`
+    : `${input.network}_${exportCode}.${ext}`;
 
   // 3. Generate the file FIRST — failure here leaves orders untouched
   let buffer: Buffer;
@@ -199,6 +247,39 @@ export async function exportOrdersToExcel(
   }
 
   // 4. Status update only after successful file generation (§31)
+  if (isRefundOnly) {
+    await recordAudit({
+      userId: input.actor.id,
+      actorLabel: input.actor.label,
+      action: "export.refunds",
+      target: `refunds:${input.network}`,
+      newValue: JSON.stringify({
+        network: input.network,
+        format,
+        orders: orders.length,
+        totalGb,
+        totalAmount,
+        orderIds: orders.map((o) => o.id),
+      }),
+    });
+
+    return {
+      buffer,
+      fileName,
+      exportCode: "",
+      exportBatchId: "",
+      count: orders.length,
+      totalGb,
+      totalAmount,
+      orderIds: orders.map((o) => o.id),
+      statusPreserved: true,
+    };
+  }
+
+  const mutableTotalGb = mutableOrders.reduce((s, o) => s + o.gbAmount, 0);
+  const mutableTotalAmount = mutableOrders.reduce((s, o) => s + o.amount, 0);
+  const batchIds = [...new Set(mutableOrders.map((o) => o.batchId).filter(Boolean))] as string[];
+
   const exportBatch = await prisma.$transaction(async (tx) => {
     const created = await tx.exportBatch.create({
       data: {
@@ -206,9 +287,9 @@ export async function exportOrdersToExcel(
         network: input.network,
         adminId: input.actor.id,
         adminLabel: input.actor.label,
-        totalRecipients: orders.length,
-        totalGb,
-        totalAmount,
+        totalRecipients: mutableOrders.length,
+        totalGb: mutableTotalGb,
+        totalAmount: mutableTotalAmount,
         status: (input.targetStatus ?? "PROCESSING") as any,
         fileName,
         isReexport,
@@ -216,7 +297,7 @@ export async function exportOrdersToExcel(
       },
     });
 
-    for (const order of orders) {
+    for (const order of mutableOrders) {
       const previousStatus = order.status;
       const nextStatus: OrderStatus = isReexport
         ? (order.status as OrderStatus)

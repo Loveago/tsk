@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
 import { exportOrdersSchema } from "@/lib/validation";
-import { exportOrdersToExcel } from "@/lib/order-export";
+import { exportOrdersToExcel, buildOrderSearchOr } from "@/lib/order-export";
 import { computeExportStatusFromCounts } from "@/lib/orders";
 import { quickDateRange } from "@/lib/batches";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
@@ -192,12 +192,23 @@ export async function POST(request: NextRequest) {
     const actor = await requireStaff();
     const input = exportOrdersSchema.parse(await request.json());
 
-    // If network was not specified, but specific orderIds or batchIds were provided,
+    // If network was not specified, but specific orderIds, batchIds, or status="REFUNDED" were provided,
     // determine the network(s) of the matching orders and export each network.
-    if (!input.network && (input.orderIds?.length || input.batchIds?.length)) {
+    if (!input.network && (input.orderIds?.length || input.batchIds?.length || input.status === "REFUNDED")) {
       const orderWhere: Record<string, unknown> = { isSandbox: false };
       if (input.orderIds?.length) orderWhere.id = { in: input.orderIds };
       if (input.batchIds?.length) orderWhere.batchId = { in: input.batchIds };
+      if (input.status === "REFUNDED" && !input.orderIds?.length) {
+        orderWhere.status = "REFUNDED";
+      }
+      if (input.from || input.to) {
+        orderWhere.createdAt = {} as Record<string, Date>;
+        if (input.from) (orderWhere.createdAt as Record<string, Date>).gte = new Date(input.from);
+        if (input.to) (orderWhere.createdAt as Record<string, Date>).lte = new Date(input.to);
+      }
+      if (input.q?.trim()) {
+        orderWhere.OR = buildOrderSearchOr(input.q);
+      }
 
       const matchingOrders = await prisma.order.findMany({
         where: orderWhere,
@@ -224,6 +235,8 @@ export async function POST(request: NextRequest) {
           reason: input.reason || undefined,
           targetStatus: input.targetStatus || "PROCESSING",
           format: input.format,
+          status: input.status,
+          q: input.q || undefined,
         });
         results.push({
           exportBatchId: res.exportBatchId,
@@ -234,6 +247,7 @@ export async function POST(request: NextRequest) {
           totalAmount: res.totalAmount,
           fileName: res.fileName,
           fileBase64: res.buffer.toString("base64"),
+          statusPreserved: res.statusPreserved ?? false,
         });
       }
 
@@ -246,12 +260,13 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         exportBatchId: results[0].exportBatchId,
-        exportCode: results.map((r) => r.exportCode).join(", "),
+        exportCode: results.map((r) => r.exportCode).filter(Boolean).join(", "),
         count: results.reduce((sum, r) => sum + r.count, 0),
         totalGb: results.reduce((sum, r) => sum + r.totalGb, 0),
         totalAmount: results.reduce((sum, r) => sum + r.totalAmount, 0),
         fileName: results.map((r) => r.fileName).join(", "),
         fileBase64: results[0].fileBase64,
+        statusPreserved: results.every((r) => r.statusPreserved),
         exports: results,
       });
     }
@@ -273,6 +288,8 @@ export async function POST(request: NextRequest) {
       volumeMinMb: input.volumeMinMb,
       volumeMaxMb: input.volumeMaxMb,
       format: input.format,
+      status: input.status,
+      q: input.q || undefined,
     });
 
     return NextResponse.json({
@@ -283,6 +300,7 @@ export async function POST(request: NextRequest) {
       totalAmount: result.totalAmount,
       fileName: result.fileName,
       fileBase64: result.buffer.toString("base64"),
+      statusPreserved: result.statusPreserved ?? false,
       exports: [
         {
           exportBatchId: result.exportBatchId,
@@ -293,6 +311,7 @@ export async function POST(request: NextRequest) {
           totalAmount: result.totalAmount,
           fileName: result.fileName,
           fileBase64: result.buffer.toString("base64"),
+          statusPreserved: result.statusPreserved ?? false,
         },
       ],
     });
