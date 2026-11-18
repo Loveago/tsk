@@ -131,6 +131,11 @@ export async function GET(request: NextRequest) {
               status: true,
               commissionState: true,
               paidAt: true,
+              paystackRefundId: true,
+              paystackRefundStatus: true,
+              paystackRefundAmount: true,
+              paystackRefundedAt: true,
+              paystackRefundError: true,
               storefront: {
                 select: {
                   id: true,
@@ -228,6 +233,13 @@ export async function GET(request: NextRequest) {
               customerEmail: o.storefrontOrder.customerEmail,
               commissionState: o.storefrontOrder.commissionState,
               paidAt: o.storefrontOrder.paidAt?.toISOString() || null,
+              paystackRefundId: o.storefrontOrder.paystackRefundId || null,
+              paystackRefundStatus: o.storefrontOrder.paystackRefundStatus || null,
+              paystackRefundAmountGhs: o.storefrontOrder.paystackRefundAmount
+                ? o.storefrontOrder.paystackRefundAmount / 100
+                : null,
+              paystackRefundedAt: o.storefrontOrder.paystackRefundedAt?.toISOString() || null,
+              paystackRefundError: o.storefrontOrder.paystackRefundError || null,
             }
           : null,
         user: o.user

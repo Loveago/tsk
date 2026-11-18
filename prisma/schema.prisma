@@ -487,10 +487,15 @@ model StorefrontOrder {
   status            String   @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | REFUNDED
   commissionState   String   @default("PENDING") // PENDING | AVAILABLE | WITHDRAWN | REVERSED (§25)
   paymentReference  String   @unique // Paystack reference; unique => idempotent settlement (§47)
-  paidAt            DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  paidAt                 DateTime?
+  completedAt            DateTime?
+  paystackRefundId       String?
+  paystackRefundStatus   String? // PENDING | PROCESSING | PROCESSED | FAILED
+  paystackRefundAmount   Int? // pesewas refunded via Paystack (net of 2% fee)
+  paystackRefundedAt     DateTime?
+  paystackRefundError    String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@index([storefrontId, createdAt])
   @@index([storefrontId, status])

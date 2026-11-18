@@ -84,6 +84,61 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, event: event.event });
   }
 
+  // Handle Paystack Refund Webhooks (Storefront Auto-Refunds)
+  if (event.event?.startsWith("refund.")) {
+    const refundData = event.data as {
+      id?: number | string;
+      status?: string;
+      transaction_reference?: string;
+      transaction?: { reference?: string };
+    };
+    const refundId = refundData?.id !== undefined ? String(refundData.id) : null;
+    const txRef = refundData?.transaction_reference || refundData?.transaction?.reference || null;
+    const statusMap: Record<string, string> = {
+      "refund.pending": "PENDING",
+      "refund.processing": "PROCESSING",
+      "refund.processed": "PROCESSED",
+      "refund.failed": "FAILED",
+    };
+    const mappedStatus =
+      statusMap[event.event] || (refundData?.status ? refundData.status.toUpperCase() : "PENDING");
+
+    if (refundId || txRef) {
+      try {
+        const sfOrder = await prisma.storefrontOrder.findFirst({
+          where: {
+            OR: [
+              ...(refundId ? [{ paystackRefundId: refundId }] : []),
+              ...(txRef ? [{ paymentReference: txRef }] : []),
+            ],
+          },
+          select: { id: true, paymentReference: true },
+        });
+        if (sfOrder) {
+          await prisma.storefrontOrder.update({
+            where: { id: sfOrder.id },
+            data: {
+              paystackRefundStatus: mappedStatus,
+              ...(refundId ? { paystackRefundId: refundId } : {}),
+              ...(mappedStatus === "FAILED"
+                ? { paystackRefundError: `Paystack webhook reported ${event.event}` }
+                : { paystackRefundError: null }),
+            },
+          });
+          await recordAudit({
+            actorLabel: "paystack-webhook",
+            action: "storefront.paystack_refund_webhook",
+            target: `storefront-order:${sfOrder.paymentReference}`,
+            newValue: JSON.stringify({ event: event.event, refundId, status: mappedStatus }),
+          });
+        }
+      } catch (refundErr) {
+        console.error("Error handling refund webhook:", refundErr);
+      }
+    }
+    return NextResponse.json({ received: true, event: event.event });
+  }
+
   if (event.event !== "charge.success" || !event.data?.reference) {
     return NextResponse.json({ received: true });
   }

@@ -47,6 +47,14 @@ export async function isPaystackConfigured(): Promise<boolean> {
   return (await getPaystackSecretKey()) !== null;
 }
 
+export async function isPaystackAutoRefundEnabled(): Promise<boolean> {
+  const row = await prisma.systemSetting.findUnique({
+    where: { key: "paystack_auto_refund_enabled" },
+    select: { value: true },
+  });
+  return row?.value?.trim().toLowerCase() === "true";
+}
+
 async function paystackRequest<T>(
   method: "GET" | "POST",
   path: string,
@@ -486,4 +494,44 @@ export async function executePaystackWithdrawalPayout(input: {
       error: err?.message || "Paystack transfer failed",
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Paystack Refunds (Storefront Customer Refunds)
+// ---------------------------------------------------------------------------
+
+export interface PaystackRefundResult {
+  id: number;
+  status: string; // "pending" | "processing" | "processed" | "failed" | "needs-attention"
+  amount: number; // pesewas
+  currency: string;
+  transaction?: number | { id: number; reference: string; amount: number };
+  customer_note?: string;
+  merchant_note?: string;
+}
+
+/**
+ * Initiates a Paystack refund for a settled transaction.
+ * amountPesewas is optional; when provided, Paystack refunds that exact amount in pesewas.
+ */
+export async function createPaystackRefund(input: {
+  transaction: string;
+  amountPesewas?: number;
+  customerNote?: string;
+  merchantNote?: string;
+}): Promise<PaystackRefundResult> {
+  const body: Record<string, unknown> = {
+    transaction: input.transaction,
+    currency: PAYSTACK_CURRENCY,
+  };
+  if (input.amountPesewas !== undefined && input.amountPesewas > 0) {
+    body.amount = Math.round(input.amountPesewas);
+  }
+  if (input.customerNote) {
+    body.customer_note = input.customerNote;
+  }
+  if (input.merchantNote) {
+    body.merchant_note = input.merchantNote;
+  }
+  return paystackRequest<PaystackRefundResult>("POST", "/refund", body);
 }

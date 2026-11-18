@@ -56,6 +56,11 @@ export interface RefundedOrder {
     customerEmail: string | null;
     commissionState: string;
     paidAt: string | null;
+    paystackRefundId?: string | null;
+    paystackRefundStatus?: string | null;
+    paystackRefundAmountGhs?: number | null;
+    paystackRefundedAt?: string | null;
+    paystackRefundError?: string | null;
   } | null;
   user: {
     id: string;
@@ -751,23 +756,53 @@ export function RefundedOrdersTab({
                       {/* Actions */}
                       <td className="px-4 py-3 text-right">
                         {o.isStorefront && o.paystackReference ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <a
-                              href={`https://dashboard.paystack.com/#/transactions?q=${encodeURIComponent(
-                                o.paystackReference
-                              )}`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2 text-[11px] gap-1 text-amber-800 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-500/30"
+                          <div className="flex items-center justify-end gap-1.5">
+                            {o.storefrontOrder?.paystackRefundStatus &&
+                            o.storefrontOrder.paystackRefundStatus !== "FAILED" ? (
+                              <span
+                                title={
+                                  o.storefrontOrder.paystackRefundId
+                                    ? `Paystack Refund ID: ${o.storefrontOrder.paystackRefundId}`
+                                    : undefined
+                                }
+                                className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
                               >
-                                <span>Refund on Paystack</span>
-                                <ExternalLink className="h-3 w-3" />
-                              </Button>
-                            </a>
+                                <Check className="h-3 w-3" />
+                                <span>
+                                  Auto-Refunded
+                                  {o.storefrontOrder.paystackRefundAmountGhs
+                                    ? ` (GHS ${o.storefrontOrder.paystackRefundAmountGhs.toFixed(2)})`
+                                    : ""}
+                                </span>
+                              </span>
+                            ) : (
+                              <>
+                                {o.storefrontOrder?.paystackRefundStatus === "FAILED" && (
+                                  <span
+                                    title={o.storefrontOrder.paystackRefundError || "Paystack auto-refund failed"}
+                                    className="inline-flex items-center rounded-md border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-300"
+                                  >
+                                    Auto Failed
+                                  </span>
+                                )}
+                                <a
+                                  href={`https://dashboard.paystack.com/#/transactions?q=${encodeURIComponent(
+                                    o.paystackReference
+                                  )}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2 text-[11px] gap-1 text-amber-800 border-amber-300 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-500/30"
+                                  >
+                                    <span>Refund on Paystack</span>
+                                    <ExternalLink className="h-3 w-3" />
+                                  </Button>
+                                </a>
+                              </>
+                            )}
                           </div>
                         ) : (
                           <Link href={`/admin/orders?search=${o.id}`}>

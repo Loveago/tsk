@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { syncCommissionForOrder } from "./storefront";
+import { syncCommissionForOrder, processStorefrontPaystackRefund } from "./storefront";
 import { dispatchWebhookEvent } from "./webhooks";
 import {
   canTransition,
@@ -587,8 +587,44 @@ export async function changeOrderStatus(
         ]);
       }
     } else if (isStorefront) {
+      let paystackAutoRefunded = false;
+      let paystackRefundSummary = "";
+      let paystackRefundFailedMsg = "";
+
+      if (target === "REFUNDED") {
+        const psRefund = await processStorefrontPaystackRefund(orderId, reason);
+        if (psRefund.refunded && psRefund.amountPesewas) {
+          paystackAutoRefunded = true;
+          const ghsAmt = (psRefund.amountPesewas / 100).toFixed(2);
+          paystackRefundSummary = `Paystack auto-refunded: GHS ${ghsAmt}${psRefund.refundId ? ` (Ref: ${psRefund.refundId})` : ""}`;
+        } else if (psRefund.attempted && !psRefund.refunded && psRefund.error) {
+          paystackRefundFailedMsg = psRefund.error;
+        }
+      }
+
       const curReason = order.failureReason || reason || "";
-      if (!curReason.toLowerCase().includes("refund")) {
+      if (paystackAutoRefunded) {
+        if (!curReason.toLowerCase().includes("paystack auto-refunded")) {
+          await prisma.order.update({
+            where: { id: orderId },
+            data: {
+              failureReason: curReason
+                ? `${curReason} [${paystackRefundSummary}]`
+                : paystackRefundSummary,
+            },
+          });
+        }
+      } else if (paystackRefundFailedMsg) {
+        if (!curReason.toLowerCase().includes("manual refund")) {
+          const failNote = `Paystack auto-refund failed: ${paystackRefundFailedMsg}. Manual refund required`;
+          await prisma.order.update({
+            where: { id: orderId },
+            data: {
+              failureReason: curReason ? `${curReason} [${failNote}]` : failNote,
+            },
+          });
+        }
+      } else if (!curReason.toLowerCase().includes("refund")) {
         await prisma.order.update({
           where: { id: orderId },
           data: {
@@ -598,42 +634,74 @@ export async function changeOrderStatus(
           },
         });
       }
+
+      // Automatically resolve any open delivery reports for this order
+      const activeReports = await prisma.deliveryReport.findMany({
+        where: {
+          orderId,
+          status: { in: ["OPEN", "UNDER_REVIEW", "INVESTIGATING"] },
+        },
+      });
+      for (const rep of activeReports) {
+        const reportMsg = paystackAutoRefunded
+          ? `Order marked as ${target}. ${paystackRefundSummary} (minus 2% Paystack fee).`
+          : `Order marked as ${target}. Storefront order flagged for manual refund.`;
+
+        await prisma.deliveryReport.update({
+          where: { id: rep.id },
+          data: {
+            status: "REFUNDED",
+            resolvedAt: new Date(),
+            resolvedBy: actor.label,
+            adminResponse:
+              rep.adminResponse ||
+              (paystackAutoRefunded
+                ? `Order refunded automatically via Paystack (${paystackRefundSummary}, minus 2% Paystack fee).`
+                : "Order failed on provider. Storefront customer manual refund required."),
+          },
+        });
+        await prisma.deliveryReportEvent.create({
+          data: {
+            reportId: rep.id,
+            type: "REFUND",
+            message: reportMsg,
+            actorLabel: actor.label,
+          },
+        });
+      }
+      // Skip the non-storefront deliveryReport loop below
     }
 
-    // Automatically resolve any open delivery reports for this order
-    const activeReports = await prisma.deliveryReport.findMany({
-      where: {
-        orderId,
-        status: { in: ["OPEN", "UNDER_REVIEW", "INVESTIGATING"] },
-      },
-    });
-    for (const rep of activeReports) {
-      const reportMsg =
-        order.source === "STOREFRONT"
-          ? `Order marked as ${target}. Storefront order flagged for manual refund.`
-          : `Order marked as ${target}. Refund credited to user wallet.`;
+    if (!isStorefront) {
+      // Automatically resolve any open delivery reports for this order
+      const activeReports = await prisma.deliveryReport.findMany({
+        where: {
+          orderId,
+          status: { in: ["OPEN", "UNDER_REVIEW", "INVESTIGATING"] },
+        },
+      });
+      for (const rep of activeReports) {
+        const reportMsg = `Order marked as ${target}. Refund credited to user wallet.`;
 
-      await prisma.deliveryReport.update({
-        where: { id: rep.id },
-        data: {
-          status: "REFUNDED",
-          resolvedAt: new Date(),
-          resolvedBy: actor.label,
-          adminResponse:
-            rep.adminResponse ||
-            (order.source === "STOREFRONT"
-              ? "Order failed on provider. Storefront customer manual refund required."
-              : "Order failed on provider. Amount refunded to user wallet."),
-        },
-      });
-      await prisma.deliveryReportEvent.create({
-        data: {
-          reportId: rep.id,
-          type: "REFUND",
-          message: reportMsg,
-          actorLabel: actor.label,
-        },
-      });
+        await prisma.deliveryReport.update({
+          where: { id: rep.id },
+          data: {
+            status: "REFUNDED",
+            resolvedAt: new Date(),
+            resolvedBy: actor.label,
+            adminResponse:
+              rep.adminResponse || "Order failed on provider. Amount refunded to user wallet.",
+          },
+        });
+        await prisma.deliveryReportEvent.create({
+          data: {
+            reportId: rep.id,
+            type: "REFUND",
+            message: reportMsg,
+            actorLabel: actor.label,
+          },
+        });
+      }
     }
   }
 

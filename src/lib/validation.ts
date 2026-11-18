@@ -323,6 +323,7 @@ export const settingsSchema = z.object({
   storefront_min_withdrawal: z.string().max(20).optional(),
   max_orders_per_submission: z.string().max(10).optional(),
   paystack_topup_enabled: z.enum(["true", "false"]).optional(),
+  paystack_auto_refund_enabled: z.enum(["true", "false"]).optional(),
   paystack_min_topup: z.string().max(20).optional(),
   paystack_max_topup: z.string().max(20).optional(),
   paystack_secret_key: z.string().max(255).optional(),

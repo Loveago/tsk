@@ -3,7 +3,15 @@ import { AuthError } from "./auth";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { validateMtnOrderRecipient } from "./mtn-verification";
-import { verifyTransaction, PAYSTACK_CURRENCY } from "./paystack";
+import {
+  verifyTransaction,
+  PAYSTACK_CURRENCY,
+  PAYSTACK_FEE_PERCENT,
+  createPaystackRefund,
+  isPaystackAutoRefundEnabled,
+  isPaystackConfigured,
+} from "./paystack";
+import { recordAudit } from "./audit";
 
 // ---------------------------------------------------------------------------
 // Money — all storefront money is stored as integer pesewas (GHS x 100) so
@@ -769,6 +777,167 @@ export async function syncCommissionForOrder(
     },
     { maxWait: 15000, timeout: 30000 }
   );
+}
+
+export interface StorefrontPaystackRefundResult {
+  attempted: boolean;
+  refunded: boolean;
+  alreadyRefunded?: boolean;
+  disabled?: boolean;
+  refundId?: string | null;
+  status?: string | null;
+  amountPesewas?: number | null;
+  error?: string;
+}
+
+/**
+ * Automatically initiates a Paystack refund for a storefront order when
+ * `paystack_auto_refund_enabled` is turned on in Admin Settings.
+ * Refunds the customer's payment minus the 2% Paystack gateway fee.
+ */
+export async function processStorefrontPaystackRefund(
+  orderId: number,
+  reason?: string | null
+): Promise<StorefrontPaystackRefundResult> {
+  if (!(await isPaystackAutoRefundEnabled())) {
+    return { attempted: false, refunded: false, disabled: true };
+  }
+
+  if (!(await isPaystackConfigured())) {
+    return {
+      attempted: false,
+      refunded: false,
+      error: "Paystack is not configured",
+    };
+  }
+
+  const storeOrder = await prisma.storefrontOrder.findUnique({
+    where: { underlyingOrderId: orderId },
+  });
+
+  if (!storeOrder || !storeOrder.paymentReference) {
+    return {
+      attempted: false,
+      refunded: false,
+      error: "No storefront payment reference found",
+    };
+  }
+
+  // Idempotency: do not send duplicate refund requests to Paystack
+  const existingStatus = (storeOrder.paystackRefundStatus || "").toUpperCase();
+  if (
+    storeOrder.paystackRefundId ||
+    existingStatus === "PENDING" ||
+    existingStatus === "PROCESSING" ||
+    existingStatus === "PROCESSED"
+  ) {
+    return {
+      attempted: false,
+      refunded: true,
+      alreadyRefunded: true,
+      refundId: storeOrder.paystackRefundId,
+      status: storeOrder.paystackRefundStatus,
+      amountPesewas: storeOrder.paystackRefundAmount,
+    };
+  }
+
+  try {
+    const verification = await verifyTransaction(storeOrder.paymentReference);
+    if (verification.status !== "success") {
+      const msg = `Paystack transaction is not settled (status: ${verification.status})`;
+      await prisma.storefrontOrder.update({
+        where: { id: storeOrder.id },
+        data: {
+          paystackRefundStatus: "FAILED",
+          paystackRefundError: msg,
+        },
+      });
+      return { attempted: true, refunded: false, error: msg };
+    }
+
+    // Storefront checkout adds a 2% Paystack fee on top of sellingPrice
+    // (totalPesewas = sellingPrice + Math.round(sellingPrice * 0.02)).
+    // Refunding sellingPrice returns the payment minus the 2% Paystack fee.
+    // If the transaction was charged without the 2% fee on top, deduct 2% from the paid amount.
+    const refundAmountPesewas =
+      verification.amount > storeOrder.sellingPrice
+        ? storeOrder.sellingPrice
+        : Math.round(verification.amount * (1 - PAYSTACK_FEE_PERCENT));
+
+    if (refundAmountPesewas <= 0) {
+      const msg = "Calculated refund amount is zero or negative";
+      await prisma.storefrontOrder.update({
+        where: { id: storeOrder.id },
+        data: {
+          paystackRefundStatus: "FAILED",
+          paystackRefundError: msg,
+        },
+      });
+      return { attempted: true, refunded: false, error: msg };
+    }
+
+    const orderCode = storefrontOrderCode(storeOrder.seq);
+    const refundRes = await createPaystackRefund({
+      transaction: storeOrder.paymentReference,
+      amountPesewas: refundAmountPesewas,
+      customerNote: `Refund for storefront order ${orderCode} (minus 2% Paystack fee)`,
+      merchantNote: reason
+        ? `Auto-refund for Order #${orderId} (${orderCode}): ${reason}`
+        : `Auto-refund for Order #${orderId} (${orderCode})`,
+    });
+
+    const normalizedStatus = (refundRes.status || "PENDING").toUpperCase();
+    await prisma.storefrontOrder.update({
+      where: { id: storeOrder.id },
+      data: {
+        paystackRefundId: String(refundRes.id),
+        paystackRefundStatus: normalizedStatus,
+        paystackRefundAmount: refundAmountPesewas,
+        paystackRefundedAt: new Date(),
+        paystackRefundError: null,
+      },
+    });
+
+    await recordAudit({
+      actorLabel: "paystack-auto-refund",
+      action: "storefront.paystack_auto_refund",
+      target: `storefront-order:${storeOrder.paymentReference}`,
+      newValue: JSON.stringify({
+        orderId,
+        storefrontOrderId: storeOrder.id,
+        orderCode,
+        paystackRefundId: refundRes.id,
+        status: normalizedStatus,
+        refundAmountPesewas,
+        paidAmountPesewas: verification.amount,
+      }),
+    });
+
+    return {
+      attempted: true,
+      refunded: true,
+      refundId: String(refundRes.id),
+      status: normalizedStatus,
+      amountPesewas: refundAmountPesewas,
+    };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "Paystack refund request failed";
+    await prisma.storefrontOrder
+      .update({
+        where: { id: storeOrder.id },
+        data: {
+          paystackRefundStatus: "FAILED",
+          paystackRefundError: errMsg.slice(0, 500),
+        },
+      })
+      .catch(() => {});
+
+    return {
+      attempted: true,
+      refunded: false,
+      error: errMsg,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

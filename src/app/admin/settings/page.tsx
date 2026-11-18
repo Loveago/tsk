@@ -217,6 +217,7 @@ export default function AdminSettingsPage() {
   const storefrontEnabled = settings.storefront_feature_enabled !== "false";
   const storefrontApplyEnabled = settings.storefront_apply_enabled !== "false";
   const paystackTopupEnabled = settings.paystack_topup_enabled === "true";
+  const paystackAutoRefundEnabled = settings.paystack_auto_refund_enabled === "true";
   const loginOtpEnabled = settings.login_otp_enabled === "true";
   const apiFeatureEnabled = settings.api_feature_enabled === "true";
   const defaultRole = settings.default_register_role || "USER";
@@ -1567,6 +1568,37 @@ export default function AdminSettingsPage() {
                   <span
                     className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
                       paystackTopupEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Paystack Auto-Refund (Storefront Orders)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    When enabled, clicking Refund on a storefront order automatically sends the refund via Paystack minus the 2% Paystack fee.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={paystackAutoRefundEnabled}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      paystack_auto_refund_enabled: paystackAutoRefundEnabled ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    paystackAutoRefundEnabled ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      paystackAutoRefundEnabled ? "left-[22px]" : "left-0.5"
                     }`}
                   />
                 </button>
