@@ -913,15 +913,15 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 uppercase tracking-wider">
-                <th className="py-2.5 px-3 font-medium">Network / Bundle Type</th>
-                <th className="py-2.5 px-3 font-medium text-center">Manual File Export</th>
-                <th className="py-2.5 px-3 font-medium text-center">Bigwindata API</th>
-                <th className="py-2.5 px-3 font-medium text-center">Bigwin Telecel</th>
-                <th className="py-2.5 px-3 font-medium text-center">Clickyfied API</th>
-                <th className="py-2.5 px-3 font-medium text-center">GHConnect API</th>
-                <th className="py-2.5 px-3 font-medium text-center">ADH Group API</th>
-                <th className="py-2.5 px-3 font-medium text-right">Active Mode</th>
+              <tr className="border-b border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 uppercase tracking-wider">
+                <th className="py-2.5 px-2 font-medium whitespace-nowrap">Network</th>
+                <th className="py-2.5 px-1.5 font-medium text-center whitespace-nowrap">Manual</th>
+                <th className="py-2.5 px-1.5 font-medium text-center whitespace-nowrap">Bigwindata</th>
+                <th className="py-2.5 px-1.5 font-medium text-center whitespace-nowrap">Bigwin Tel</th>
+                <th className="py-2.5 px-1.5 font-medium text-center whitespace-nowrap">Clickyfied</th>
+                <th className="py-2.5 px-1.5 font-medium text-center whitespace-nowrap">GHConnect</th>
+                <th className="py-2.5 px-1.5 font-medium text-center whitespace-nowrap">ADH Group</th>
+                <th className="py-2.5 px-2 font-medium text-right whitespace-nowrap">Active</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -931,15 +931,15 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
 
                 return (
                   <tr key={row.key} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                    <td className="py-3 px-3 font-medium text-slate-800 dark:text-slate-200">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{row.label}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">({row.key})</span>
+                    <td className="py-2.5 px-2 font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs">{row.label}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">{row.key}</span>
                       </div>
                     </td>
 
-                    <td className="py-3 px-3 text-center">
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
                         <input
                           type="radio"
                           name={settingKey}
@@ -948,12 +948,12 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                           onChange={() => setSettings((s) => ({ ...s, [settingKey]: "MANUAL" }))}
                           className="text-brand-600 focus:ring-brand-500"
                         />
-                        <span className="text-slate-600 dark:text-slate-400 text-xs">Manual</span>
+                        <span className="text-slate-600 dark:text-slate-400 text-[11px]">Manual</span>
                       </label>
                     </td>
 
-                    <td className="py-3 px-3 text-center">
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
                         <input
                           type="radio"
                           name={settingKey}
@@ -964,14 +964,14 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                           }
                           className="text-amber-600 focus:ring-amber-500"
                         />
-                        <span className="text-amber-700 dark:text-amber-400 font-medium text-xs">
+                        <span className="text-amber-700 dark:text-amber-400 font-medium text-[11px]">
                           Bigwindata
                         </span>
                       </label>
                     </td>
 
-                    <td className="py-3 px-3 text-center">
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
                         <input
                           type="radio"
                           name={settingKey}
@@ -982,14 +982,14 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                           }
                           className="text-rose-600 focus:ring-rose-500"
                         />
-                        <span className="text-rose-700 dark:text-rose-400 font-medium text-xs">
-                          Bigwin Telecel
+                        <span className="text-rose-700 dark:text-rose-400 font-medium text-[11px]">
+                          Bigwin Tel
                         </span>
                       </label>
                     </td>
 
-                    <td className="py-3 px-3 text-center">
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
                         <input
                           type="radio"
                           name={settingKey}
@@ -1000,14 +1000,14 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                           }
                           className="text-indigo-600 focus:ring-indigo-500"
                         />
-                        <span className="text-indigo-700 dark:text-indigo-400 font-medium text-xs">
+                        <span className="text-indigo-700 dark:text-indigo-400 font-medium text-[11px]">
                           Clickyfied
                         </span>
                       </label>
                     </td>
 
-                    <td className="py-3 px-3 text-center">
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
                         <input
                           type="radio"
                           name={settingKey}
@@ -1018,14 +1018,14 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                           }
                           className="text-emerald-600 focus:ring-emerald-500"
                         />
-                        <span className="text-emerald-700 dark:text-emerald-400 font-medium text-xs">
+                        <span className="text-emerald-700 dark:text-emerald-400 font-medium text-[11px]">
                           GHConnect
                         </span>
                       </label>
                     </td>
 
-                    <td className="py-3 px-3 text-center">
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <td className="py-2.5 px-1.5 text-center whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
                         <input
                           type="radio"
                           name={settingKey}
@@ -1036,16 +1036,16 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                           }
                           className="text-orange-600 focus:ring-orange-500"
                         />
-                        <span className="text-orange-700 dark:text-orange-400 font-medium text-xs">
+                        <span className="text-orange-700 dark:text-orange-400 font-medium text-[11px]">
                           ADH Group
                         </span>
                       </label>
                     </td>
 
-                    <td className="py-3 px-3 text-right">
+                    <td className="py-2.5 px-2 text-right whitespace-nowrap">
                       {!isRoutingEnabled ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                          Export Manual (Routing Off)
+                          Manual (Off)
                         </span>
                       ) : currentVal === "BIGWINDATA" ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
@@ -1053,7 +1053,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                         </span>
                       ) : currentVal === "BIGWIN_TELECEL" ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
-                          🔴 Bigwin Telecel
+                          🔴 Bigwin Tel
                         </span>
                       ) : currentVal === "CLICKYFIED" ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300">
@@ -1069,7 +1069,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                          📁 Manual Export
+                          📁 Manual
                         </span>
                       )}
                     </td>
