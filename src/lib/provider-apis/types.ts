@@ -1,4 +1,10 @@
-export type ProviderType = "MANUAL" | "BIGWINDATA" | "CLICKYFIED" | "GHCONNECT" | "BIGWIN_TELECEL";
+export type ProviderType =
+  | "MANUAL"
+  | "BIGWINDATA"
+  | "CLICKYFIED"
+  | "GHCONNECT"
+  | "BIGWIN_TELECEL"
+  | "ADHGROUP";
 
 export interface BigwindataConfig {
   enabled: boolean;
@@ -29,6 +35,16 @@ export interface BigwinTelecelConfig {
   baseUrl: string;
 }
 
+export interface AdhgroupConfig {
+  enabled: boolean;
+  apiKey: string;
+  baseUrl: string;
+  webhookSecret: string;
+  mtnOfferSlug: string;
+  telecelOfferSlug: string;
+  atOfferSlug: string;
+}
+
 export interface ProviderRoutingConfig {
   enabled: boolean; // Master switch: if false, everything is manual export
   defaultProvider: ProviderType;
@@ -38,6 +54,7 @@ export interface ProviderRoutingConfig {
   clickyfied: ClickyfiedConfig;
   ghconnect: GhconnectConfig;
   bigwinTelecel: BigwinTelecelConfig;
+  adhgroup: AdhgroupConfig;
 }
 
 export interface BigwindataBundle {

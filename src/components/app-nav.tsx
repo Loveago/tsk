@@ -107,6 +107,7 @@ export const adminNav: NavItem[] = [
   { href: "/admin/orders", label: "Orders", icon: ClipboardList, badge: true },
   { href: "/admin/refunds", label: "Refunds", icon: RotateCcw },
   { href: "/admin/clickyfied-batches", label: "Clickyfied Batches", icon: Layers },
+  { href: "/admin/adh-rejections", label: "ADH Rejections", icon: FileWarning },
   { href: "/admin/order-api-logs", label: "Order API Logs", icon: Activity },
   { href: "/admin/mtn-verification", label: "MTN Verification", icon: ShieldCheck },
   { href: "/admin/exports", label: "Exports", icon: FileSpreadsheet },

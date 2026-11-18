@@ -4,6 +4,7 @@ import { BigwindataClient } from "@/lib/provider-apis/bigwindata";
 import { ClickyfiedClient, generateClickyfiedReference } from "@/lib/provider-apis/clickyfied";
 import { GhconnectClient } from "@/lib/provider-apis/ghconnect";
 import { BigwinTelecelClient } from "@/lib/provider-apis/bigwin-telecel";
+import { AdhgroupClient } from "@/lib/provider-apis/adhgroup";
 import { getProviderRoutingConfig } from "@/lib/provider-apis/router";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 
@@ -19,6 +20,20 @@ export async function POST(request: NextRequest) {
       const client = new BigwinTelecelClient(config.bigwinTelecel);
       const packages = await client.getPackages();
       return NextResponse.json({ success: true, packages });
+    }
+
+    if (action === "test_adhgroup") {
+      const client = new AdhgroupClient(config.adhgroup);
+      const [balanceRes, offersRes] = await Promise.all([
+        client.getBalance(),
+        client.getOffers(),
+      ]);
+      return NextResponse.json({
+        success: true,
+        balance: balanceRes.balance,
+        currency: balanceRes.currency || "GHS",
+        offers: offersRes.offers || [],
+      });
     }
 
     if (action === "test_bigwin_telecel_transactions") {

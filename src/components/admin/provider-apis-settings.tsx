@@ -43,6 +43,7 @@ import {
   DEFAULT_CLICKYFIED_PROD_URL,
 } from "@/lib/provider-apis/clickyfied";
 import { DEFAULT_GHCONNECT_BASE_URL } from "@/lib/provider-apis/ghconnect";
+import { DEFAULT_ADHGROUP_BASE_URL } from "@/lib/provider-apis/adhgroup";
 import { SUPPORTED_ROUTING_NETWORKS } from "@/lib/provider-apis/router";
 
 interface Props {
@@ -57,6 +58,14 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
 
   const [showBigwinKey, setShowBigwinKey] = React.useState(false);
   const [showBigwinTelecelKey, setShowBigwinTelecelKey] = React.useState(false);
+  const [showAdhgroupKey, setShowAdhgroupKey] = React.useState(false);
+  const [showAdhgroupWebhookSecret, setShowAdhgroupWebhookSecret] = React.useState(false);
+  const [testingAdhgroup, setTestingAdhgroup] = React.useState(false);
+  const [adhgroupTestResult, setAdhgroupTestResult] = React.useState<{
+    ok: boolean;
+    message: string;
+    offers?: Array<{ name: string; isp: string; offerSlug: string; type: string; volumes: Array<number | string> }>;
+  } | null>(null);
   const [showClickyfiedKey, setShowClickyfiedKey] = React.useState(false);
   const [showGhcKey, setShowGhcKey] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
@@ -911,6 +920,7 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                 <th className="py-2.5 px-3 font-medium text-center">Bigwin Telecel</th>
                 <th className="py-2.5 px-3 font-medium text-center">Clickyfied API</th>
                 <th className="py-2.5 px-3 font-medium text-center">GHConnect API</th>
+                <th className="py-2.5 px-3 font-medium text-center">ADH Group API</th>
                 <th className="py-2.5 px-3 font-medium text-right">Active Mode</th>
               </tr>
             </thead>
@@ -1014,6 +1024,24 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       </label>
                     </td>
 
+                    <td className="py-3 px-3 text-center">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={settingKey}
+                          value="ADHGROUP"
+                          checked={currentVal === "ADHGROUP"}
+                          onChange={() =>
+                            setSettings((s) => ({ ...s, [settingKey]: "ADHGROUP" }))
+                          }
+                          className="text-orange-600 focus:ring-orange-500"
+                        />
+                        <span className="text-orange-700 dark:text-orange-400 font-medium text-xs">
+                          ADH Group
+                        </span>
+                      </label>
+                    </td>
+
                     <td className="py-3 px-3 text-right">
                       {!isRoutingEnabled ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
@@ -1034,6 +1062,10 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
                       ) : currentVal === "GHCONNECT" ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                           🟢 GHConnect
+                        </span>
+                      ) : currentVal === "ADHGROUP" ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300">
+                          🟠 ADH Group
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
@@ -1886,6 +1918,236 @@ export function ProviderApisSettings({ settings, setSettings, onSave, saving }: 
             <p className="font-semibold">Automatic Telecel Poller Active</p>
             <p className="text-[11px] text-rose-800/90 dark:text-rose-300/90">
               When Telecel orders are routed to Bigwin Telecel, orders are sent to <code className="px-1 bg-white/60 dark:bg-black/20 rounded">POST /api/v1/share/send</code> and tracked with reference prefix <code className="px-1 bg-white/60 dark:bg-black/20 rounded font-mono">BWTEL:</code>. The automated partner poller checks status via <code className="px-1 bg-white/60 dark:bg-black/20 rounded">GET /api/v1/share/status</code> and updates the order to Completed or Failed (with automatic refund).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 7. ADH Group v1 API Configuration */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-orange-50 dark:bg-orange-950/60 flex items-center justify-center text-orange-600">
+              🟠
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                ADH Group v1 API Configuration
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Configure ADH Group (<code className="font-mono">x-api-key</code>) for MTN, Telecel, and AirtelTigo bundles. MTN rejections are automatically routed to the dedicated ADH Rejections queue.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={testingAdhgroup}
+              onClick={async () => {
+                try {
+                  setTestingAdhgroup(true);
+                  setAdhgroupTestResult(null);
+                  const res = await fetch("/api/admin/provider-apis/test", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "test_adhgroup" }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok || !data.success) {
+                    setAdhgroupTestResult({
+                      ok: false,
+                      message: data.error || "Connection test failed",
+                    });
+                  } else {
+                    setAdhgroupTestResult({
+                      ok: true,
+                      message: `Connected! Wallet Balance: ${data.currency || "GHS"} ${Number(data.balance || 0).toFixed(2)} (${(data.offers || []).length} offers)`,
+                      offers: data.offers || [],
+                    });
+                  }
+                } catch (err: any) {
+                  setAdhgroupTestResult({
+                    ok: false,
+                    message: err?.message || "Connection test error",
+                  });
+                } finally {
+                  setTestingAdhgroup(false);
+                }
+              }}
+              className="gap-1.5 text-xs"
+            >
+              {testingAdhgroup ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5 text-orange-600" />
+              )}
+              <span>Test Balance &amp; Offers</span>
+            </Button>
+
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                Enabled
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.adhgroup_enabled !== "false"}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    adhgroup_enabled: e.target.checked ? "true" : "false",
+                  }))
+                }
+                className="rounded border-slate-300 text-orange-600 focus:ring-orange-500 h-4 w-4"
+              />
+            </label>
+          </div>
+        </div>
+
+        {adhgroupTestResult && (
+          <div
+            className={`rounded-xl border p-3 text-xs ${
+              adhgroupTestResult.ok
+                ? "border-emerald-200 bg-emerald-50/70 text-emerald-900 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-200"
+                : "border-rose-200 bg-rose-50/70 text-rose-900 dark:border-rose-800/50 dark:bg-rose-950/30 dark:text-rose-200"
+            }`}
+          >
+            <p className="font-semibold">{adhgroupTestResult.message}</p>
+            {adhgroupTestResult.offers && adhgroupTestResult.offers.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {adhgroupTestResult.offers.map((off) => (
+                  <span
+                    key={off.offerSlug}
+                    className="inline-flex items-center gap-1 rounded-md bg-white/80 dark:bg-black/30 px-2 py-0.5 text-[11px] font-mono border border-emerald-200/70 dark:border-emerald-700/40"
+                  >
+                    <span>{off.isp}</span>
+                    <span className="text-slate-400">•</span>
+                    <span className="font-semibold">{off.offerSlug}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>ADH Group API Key (x-api-key)</Label>
+            <div className="relative">
+              <Input
+                type={showAdhgroupKey ? "text" : "password"}
+                placeholder="adh_live_..."
+                value={settings.adhgroup_api_key ?? ""}
+                onChange={(e) =>
+                  setSettings((s) => ({ ...s, adhgroup_api_key: e.target.value }))
+                }
+                className="pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdhgroupKey(!showAdhgroupKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                {showAdhgroupKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Live API key from ADH Group dealer desk (Developers → API keys).
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>API Base URL</Label>
+            <Input
+              type="text"
+              placeholder={DEFAULT_ADHGROUP_BASE_URL}
+              value={settings.adhgroup_base_url ?? DEFAULT_ADHGROUP_BASE_URL}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, adhgroup_base_url: e.target.value }))
+              }
+              className="font-mono text-xs"
+            />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Default is <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded">{DEFAULT_ADHGROUP_BASE_URL}</code>.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Webhook Signing Secret (whsec_...)</Label>
+            <div className="relative">
+              <Input
+                type={showAdhgroupWebhookSecret ? "text" : "password"}
+                placeholder="whsec_..."
+                value={settings.adhgroup_webhook_secret ?? ""}
+                onChange={(e) =>
+                  setSettings((s) => ({ ...s, adhgroup_webhook_secret: e.target.value }))
+                }
+                className="pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdhgroupWebhookSecret(!showAdhgroupWebhookSecret)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                {showAdhgroupWebhookSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Webhook URL: <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded font-mono">/api/webhooks/providers/adhgroup</code>
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>MTN Offer Slug (Optional)</Label>
+            <Input
+              type="text"
+              placeholder="e.g. mtn_data_bundle"
+              value={settings.adhgroup_mtn_offer_slug ?? ""}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, adhgroup_mtn_offer_slug: e.target.value }))
+              }
+              className="font-mono text-xs"
+            />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Leave blank to use your first assigned MTN data offer automatically.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Telecel Offer Slug (Optional)</Label>
+            <Input
+              type="text"
+              placeholder="e.g. telecel_data_bundle"
+              value={settings.adhgroup_telecel_offer_slug ?? ""}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, adhgroup_telecel_offer_slug: e.target.value }))
+              }
+              className="font-mono text-xs"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>AirtelTigo Offer Slug (Optional)</Label>
+            <Input
+              type="text"
+              placeholder="e.g. at_data_bundle"
+              value={settings.adhgroup_at_offer_slug ?? ""}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, adhgroup_at_offer_slug: e.target.value }))
+              }
+              className="font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-orange-200/80 bg-orange-50/60 p-3.5 text-xs text-orange-900 dark:border-orange-900/40 dark:bg-orange-950/20 dark:text-orange-300 flex items-start gap-2.5">
+          <CheckCircle2 className="h-4 w-4 text-orange-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold">MTN Rejection Isolation Active</p>
+            <p className="text-[11px] text-orange-800/90 dark:text-orange-300/90">
+              When MTN is routed to ADH Group, unverified/restricted numbers rejected by <code className="px-1 bg-white/60 dark:bg-black/20 rounded">POST /orders/validate-recipient</code> or <code className="px-1 bg-white/60 dark:bg-black/20 rounded">POST /order/mtn</code> are held in <code className="px-1 bg-white/60 dark:bg-black/20 rounded font-mono">PENDING</code> with <code className="px-1 bg-white/60 dark:bg-black/20 rounded font-mono">ADH_REJECTED</code> instead of failing. Export and update them on the <strong>ADH Rejections</strong> page.
             </p>
           </div>
         </div>

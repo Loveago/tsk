@@ -427,6 +427,15 @@ export const settingsSchema = z.object({
   bigwin_telecel_api_key: z.string().max(255).optional(),
   bigwin_telecel_base_url: z.string().max(255).optional(),
 
+  // ADH Group v1 Settings
+  adhgroup_enabled: z.enum(["true", "false"]).optional(),
+  adhgroup_api_key: z.string().max(255).optional(),
+  adhgroup_base_url: z.string().max(255).optional(),
+  adhgroup_webhook_secret: z.string().max(255).optional(),
+  adhgroup_mtn_offer_slug: z.string().max(120).optional(),
+  adhgroup_telecel_offer_slug: z.string().max(120).optional(),
+  adhgroup_at_offer_slug: z.string().max(120).optional(),
+
   // Dedicated Telecel & AT Status Poller (Bigwin & GHConnect)
   partner_poller_enabled: z.enum(["true", "false"]).optional(),
   partner_poller_interval_seconds: z.string().max(10).optional(),

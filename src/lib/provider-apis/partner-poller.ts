@@ -1,5 +1,5 @@
 import { prisma } from "../prisma";
-import { syncBigwindataOrder, syncGhconnectOrder, syncBigwinTelecelOrder } from "./router";
+import { syncBigwindataOrder, syncGhconnectOrder, syncBigwinTelecelOrder, syncAdhgroupOrder } from "./router";
 
 let isPolling = false;
 
@@ -64,7 +64,10 @@ export function startPartnerOrderPoller() {
       const config = await getProviderRoutingConfig();
       if (
         !config.enabled ||
-        (!config.bigwindata.enabled && !config.ghconnect?.enabled && !config.bigwinTelecel?.enabled)
+        (!config.bigwindata.enabled &&
+          !config.ghconnect?.enabled &&
+          !config.bigwinTelecel?.enabled &&
+          !config.adhgroup?.enabled)
       ) {
         return;
       }
@@ -180,6 +183,35 @@ export function startPartnerOrderPoller() {
           }
         } catch (err: any) {
           console.error("[PartnerOrderPoller] Error fetching in-flight Bigwin Telecel orders:", err?.message || err);
+        }
+      }
+
+      // 4b. Poll in-flight ADH Group orders (MTN, Telecel, AT)
+      if (config.adhgroup?.enabled) {
+        try {
+          const inFlightAdhOrders = await prisma.order.findMany({
+            where: {
+              status: { in: ["PENDING", "PROCESSING"] },
+              providerReference: { startsWith: "ADH:" },
+              updatedAt: { lte: cutoffTime },
+            },
+            take: 100,
+            orderBy: { updatedAt: "asc" },
+          });
+
+          if (inFlightAdhOrders.length > 0) {
+            console.log(`[PartnerOrderPoller] Polling ${inFlightAdhOrders.length} in-flight ADH Group order(s)...`);
+          }
+
+          for (const adhOrder of inFlightAdhOrders) {
+            try {
+              await syncAdhgroupOrder(adhOrder, "Automatic Partner Poller");
+            } catch (err: any) {
+              console.error(`[PartnerOrderPoller] Error syncing ADH Group order #${adhOrder.id}:`, err?.message || err);
+            }
+          }
+        } catch (err: any) {
+          console.error("[PartnerOrderPoller] Error fetching in-flight ADH Group orders:", err?.message || err);
         }
       }
 

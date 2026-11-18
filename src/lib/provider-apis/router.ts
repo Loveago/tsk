@@ -7,7 +7,13 @@ import { BigwindataClient, DEFAULT_BIGWINDATA_API_KEY, DEFAULT_BIGWINDATA_BASE_U
 import { ClickyfiedClient, DEFAULT_CLICKYFIED_API_KEY, DEFAULT_CLICKYFIED_CLIENT_ID, DEFAULT_CLICKYFIED_SANDBOX_URL, generateClickyfiedReference } from "./clickyfied";
 import { GhconnectClient, DEFAULT_GHCONNECT_BASE_URL, formatGhconnectPhone } from "./ghconnect";
 import { BigwinTelecelClient, DEFAULT_BIGWIN_TELECEL_API_KEY, DEFAULT_BIGWIN_TELECEL_BASE_URL } from "./bigwin-telecel";
-import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig, GhconnectConfig, BigwinTelecelConfig, ClickyfiedFilteredOutEntry } from "./types";
+import {
+  AdhgroupClient,
+  DEFAULT_ADHGROUP_BASE_URL,
+  isAdhgroupMtnRejectionError,
+  mapNetworkToAdhgroupPath,
+} from "./adhgroup";
+import type { ProviderRoutingConfig, ProviderType, ProviderDispatchResult, ClickyfiedConfig, GhconnectConfig, BigwinTelecelConfig, AdhgroupConfig, ClickyfiedFilteredOutEntry } from "./types";
 
 /**
  * Standard Ghanaian network keys supported in routing
@@ -33,14 +39,14 @@ export async function getProviderRoutingConfig(): Promise<ProviderRoutingConfig>
   const networkRoutes: Record<string, ProviderType> = {};
   for (const net of SUPPORTED_ROUTING_NETWORKS) {
     const routeVal = getVal(`provider_route_${net}`, "MANUAL") as ProviderType;
-    networkRoutes[net] = ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT", "BIGWIN_TELECEL"].includes(routeVal) ? routeVal : "MANUAL";
+    networkRoutes[net] = ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT", "BIGWIN_TELECEL", "ADHGROUP"].includes(routeVal) ? routeVal : "MANUAL";
   }
 
   // Also include any dynamically saved routes for custom categories
   for (const [key, val] of map.entries()) {
     if (key.startsWith("provider_route_")) {
       const net = key.replace("provider_route_", "").toUpperCase();
-      if (!networkRoutes[net] && ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT", "BIGWIN_TELECEL"].includes(val)) {
+      if (!networkRoutes[net] && ["MANUAL", "BIGWINDATA", "CLICKYFIED", "GHCONNECT", "BIGWIN_TELECEL", "ADHGROUP"].includes(val)) {
         networkRoutes[net] = val as ProviderType;
       }
     }
@@ -75,6 +81,15 @@ export async function getProviderRoutingConfig(): Promise<ProviderRoutingConfig>
       enabled: getVal("bigwin_telecel_enabled", "true") === "true",
       apiKey: getVal("bigwin_telecel_api_key", DEFAULT_BIGWIN_TELECEL_API_KEY),
       baseUrl: getVal("bigwin_telecel_base_url", DEFAULT_BIGWIN_TELECEL_BASE_URL),
+    },
+    adhgroup: {
+      enabled: getVal("adhgroup_enabled", "true") === "true",
+      apiKey: getVal("adhgroup_api_key", ""),
+      baseUrl: getVal("adhgroup_base_url", DEFAULT_ADHGROUP_BASE_URL),
+      webhookSecret: getVal("adhgroup_webhook_secret", ""),
+      mtnOfferSlug: getVal("adhgroup_mtn_offer_slug", ""),
+      telecelOfferSlug: getVal("adhgroup_telecel_offer_slug", ""),
+      atOfferSlug: getVal("adhgroup_at_offer_slug", ""),
     },
   };
 }
@@ -265,6 +280,15 @@ export async function dispatchOrder(
     };
   }
 
+  if (order.providerReference?.startsWith("ADH_REJECTED") && !options.force) {
+    return {
+      success: false,
+      provider: "ADHGROUP",
+      status: order.status,
+      error: "Order was rejected by ADH Group MTN check and is queued in ADH Rejections for manual fulfillment.",
+    };
+  }
+
   if ((order.exportBatchId || order.exportCount > 0 || order.lastExportedAt) && !options.force) {
     return {
       success: false,
@@ -299,6 +323,8 @@ export async function dispatchOrder(
         ? "GHCONNECT"
         : order.providerReference.startsWith("BWTEL:")
         ? "BIGWIN_TELECEL"
+        : order.providerReference.startsWith("ADH:")
+        ? "ADHGROUP"
         : "BIGWINDATA",
       status: order.status,
       error: `Order already dispatched to provider (${order.providerReference})`,
@@ -1037,6 +1063,272 @@ export async function dispatchOrder(
       return {
         success: false,
         provider: "BIGWIN_TELECEL",
+        error: errMsg,
+      };
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Dispatched to ADHGROUP (https://www.adhgroupgh.com/api/v1)
+  // -------------------------------------------------------------------------
+  if (provider === "ADHGROUP") {
+    if (!config.adhgroup.enabled) {
+      return {
+        success: false,
+        provider: "ADHGROUP",
+        error: "ADH Group integration is disabled in settings.",
+      };
+    }
+
+    const client = new AdhgroupClient(config.adhgroup);
+    const adhStartTime = Date.now();
+    const networkPath = mapNetworkToAdhgroupPath(order.network);
+    const offerSlug =
+      networkPath === "mtn"
+        ? config.adhgroup.mtnOfferSlug
+        : networkPath === "telecel"
+        ? config.adhgroup.telecelOfferSlug
+        : config.adhgroup.atOfferSlug;
+    const baseUrl = config.adhgroup.baseUrl || DEFAULT_ADHGROUP_BASE_URL;
+
+    // For MTN orders, pre-validate recipient (non-billable) to catch unverified/restricted numbers cleanly
+    if (networkPath === "mtn") {
+      try {
+        const check = await client.validateRecipient({
+          phone: order.phoneNumber,
+          network: "MTN",
+          offerSlug: offerSlug || undefined,
+        });
+        if (!check.eligible) {
+          const rejectReason = check.reason || check.code || "Number not verified / restricted on ADH Group";
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: "PENDING",
+              providerReference: "ADH_REJECTED",
+              failureReason: `ADH Group MTN Rejection: ${rejectReason}`,
+            },
+          });
+          await prisma.orderStatusHistory.create({
+            data: {
+              orderId: order.id,
+              status: "PENDING",
+              previousStatus: order.status,
+              note: `ADH Group MTN rejection (${check.code || "RESTRICTED"}): ${rejectReason}`,
+              changedBy: "ADH Group API",
+            },
+          });
+          await recordOrderApiLog({
+            orderId: order.id,
+            provider: "ADHGROUP",
+            action: "VALIDATE_RECIPIENT",
+            endpoint: `${baseUrl}/orders/validate-recipient`,
+            method: "POST",
+            requestPayload: { phone: order.phoneNumber, network: "MTN", offerSlug: offerSlug || undefined },
+            responsePayload: check.raw,
+            statusCode: 200,
+            success: false,
+            errorMessage: `MTN Rejection: ${rejectReason}`,
+            durationMs: Date.now() - adhStartTime,
+          });
+          return {
+            success: false,
+            provider: "ADHGROUP",
+            status: "PENDING",
+            error: `ADH Group MTN Rejection: ${rejectReason}`,
+            raw: check.raw,
+          };
+        }
+      } catch (valErr: any) {
+        // If validation endpoint fails transiently (e.g. timeout), continue to order placement
+        // which will still enforce MTN restrictions if applicable.
+        console.warn(`[ADHGROUP] validateRecipient warning for order #${order.id}:`, valErr?.message);
+      }
+    }
+
+    const reqPayload = {
+      network: order.network,
+      gbAmount: order.gbAmount,
+      phone: order.phoneNumber,
+      offerSlug: offerSlug || undefined,
+      metadata: { orderId: order.id },
+    };
+
+    try {
+      const res = await client.placeSingleDataOrder(reqPayload);
+      const adhOrderId =
+        res.order?.orderId ||
+        res.orderId ||
+        res.order?.reference ||
+        res.reference ||
+        "";
+
+      if (
+        networkPath === "mtn" &&
+        (!adhOrderId || (Array.isArray(res.skipped) && res.skipped.length > 0))
+      ) {
+        const skipReason =
+          res.skipped?.[0]?.reason ||
+          res.skipped?.[0]?.code ||
+          res.message ||
+          "MTN recipient skipped/rejected by ADH Group";
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: "PENDING",
+            providerReference: "ADH_REJECTED",
+            failureReason: `ADH Group MTN Rejection: ${skipReason}`,
+          },
+        });
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: "PENDING",
+            previousStatus: order.status,
+            note: `ADH Group MTN rejection: ${skipReason}`,
+            changedBy: "ADH Group API",
+          },
+        });
+        await recordOrderApiLog({
+          orderId: order.id,
+          provider: "ADHGROUP",
+          action: "DISPATCH_ORDER",
+          endpoint: `${baseUrl}/order/${networkPath}`,
+          method: "POST",
+          requestPayload: reqPayload,
+          responsePayload: res,
+          statusCode: 200,
+          success: false,
+          errorMessage: `MTN Rejection: ${skipReason}`,
+          durationMs: Date.now() - adhStartTime,
+        });
+        return {
+          success: false,
+          provider: "ADHGROUP",
+          status: "PENDING",
+          error: `ADH Group MTN Rejection: ${skipReason}`,
+          raw: res,
+        };
+      }
+
+      if (!adhOrderId) {
+        throw new Error(res.message || res.error || "ADH Group did not return an orderId");
+      }
+
+      const providerRef = `ADH:${adhOrderId}`;
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          providerReference: providerRef,
+          status: "PROCESSING",
+          failureReason: null,
+        },
+      });
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: "PROCESSING",
+          previousStatus: order.status,
+          note: `Dispatched to ADH Group (ID: ${adhOrderId})`,
+          changedBy: "ADH Group API",
+        },
+      });
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "ADHGROUP",
+        action: "DISPATCH_ORDER",
+        endpoint: `${baseUrl}/order/${networkPath}`,
+        method: "POST",
+        requestPayload: reqPayload,
+        responsePayload: res,
+        statusCode: 201,
+        success: true,
+        durationMs: Date.now() - adhStartTime,
+      });
+
+      return {
+        success: true,
+        provider: "ADHGROUP",
+        providerReference: providerRef,
+        status: "PROCESSING",
+        price: res.order?.price ?? res.price ?? res.amount,
+        raw: res,
+      };
+    } catch (err: any) {
+      const errMsg = err?.message || "ADH Group dispatch error";
+
+      if (networkPath === "mtn" && isAdhgroupMtnRejectionError(err)) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: "PENDING",
+            providerReference: "ADH_REJECTED",
+            failureReason: `ADH Group MTN Rejection: ${errMsg}`,
+          },
+        });
+        await prisma.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            status: "PENDING",
+            previousStatus: order.status,
+            note: `ADH Group MTN rejection: ${errMsg}`,
+            changedBy: "ADH Group API",
+          },
+        });
+        await recordOrderApiLog({
+          orderId: order.id,
+          provider: "ADHGROUP",
+          action: "DISPATCH_ORDER",
+          endpoint: `${baseUrl}/order/${networkPath}`,
+          method: "POST",
+          requestPayload: reqPayload,
+          responsePayload: err?.rawResponse || { error: errMsg },
+          statusCode: err?.status || 400,
+          success: false,
+          errorMessage: `MTN Rejection: ${errMsg}`,
+          durationMs: Date.now() - adhStartTime,
+        });
+        return {
+          success: false,
+          provider: "ADHGROUP",
+          status: "PENDING",
+          error: `ADH Group MTN Rejection: ${errMsg}`,
+          raw: err?.rawResponse,
+        };
+      }
+
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "ADHGROUP",
+        action: "DISPATCH_ORDER",
+        endpoint: `${baseUrl}/order/${networkPath}`,
+        method: "POST",
+        requestPayload: reqPayload,
+        responsePayload: err?.rawResponse || { error: errMsg },
+        statusCode: err?.status || 500,
+        success: false,
+        errorMessage: errMsg,
+        durationMs: Date.now() - adhStartTime,
+      });
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { failureReason: `ADH Group Error: ${errMsg}` },
+      });
+
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: order.status,
+          previousStatus: order.status,
+          note: `ADH Group dispatch failed: ${errMsg}`,
+          changedBy: "ADH Group API",
+        },
+      });
+
+      return {
+        success: false,
+        provider: "ADHGROUP",
         error: errMsg,
       };
     }
@@ -2111,6 +2403,132 @@ export async function syncBigwinTelecelOrder(
     return { changed: false, error: err?.message || "Bigwin Telecel sync failed" };
   } finally {
     syncingOrders.delete(orderId);
+  }
+}
+
+/**
+ * Polls ADH Group API to sync the status of an in-flight `ADH:` order.
+ */
+export async function syncAdhgroupOrder(
+  order: {
+    id: number;
+    status: string;
+    network: string;
+    providerReference: string | null;
+    updatedAt?: Date;
+  },
+  actorLabel = "System Sync",
+  options: { forceCheck?: boolean } = {}
+): Promise<{ changed: boolean; status: string; rawStatus?: string; error?: string }> {
+  if (!order.providerReference || !order.providerReference.startsWith("ADH:")) {
+    return { changed: false, status: order.status };
+  }
+
+  const identifier = order.providerReference.replace(/^ADH:/, "").trim();
+  if (!identifier) return { changed: false, status: order.status };
+
+  const config = await getProviderRoutingConfig();
+  if (!config.enabled || !config.adhgroup.enabled) {
+    return { changed: false, status: order.status };
+  }
+
+  if (!options.forceCheck && order.updatedAt) {
+    const now = Date.now();
+    if (now - new Date(order.updatedAt).getTime() < 30_000) {
+      return { changed: false, status: order.status };
+    }
+  }
+
+  try {
+    const client = new AdhgroupClient(config.adhgroup);
+    const statusRes = await client.getOrderStatus(identifier);
+    const rawStatus = (statusRes.order?.status || statusRes.status || "").toLowerCase().trim();
+    if (!rawStatus) {
+      return { changed: false, status: order.status };
+    }
+
+    const baseUrl = config.adhgroup.baseUrl || DEFAULT_ADHGROUP_BASE_URL;
+    const endpoint = `${baseUrl}/order/status/${encodeURIComponent(identifier)}`;
+
+    // If an MTN order is rejected/restricted asynchronously, hold it in ADH_REJECTED instead of failing
+    if (
+      order.network.toUpperCase().includes("MTN") &&
+      (rawStatus.includes("reject") || rawStatus.includes("restrict") || rawStatus.includes("ineligible"))
+    ) {
+      const rejectReason = statusRes.order?.reason || `ADH Group status: ${rawStatus}`;
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: "PENDING",
+          providerReference: "ADH_REJECTED",
+          failureReason: `ADH Group MTN Rejection: ${rejectReason}`,
+        },
+      });
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: "PENDING",
+          previousStatus: order.status,
+          note: `Moved to ADH Rejections (${rawStatus}): ${rejectReason}`,
+          changedBy: actorLabel,
+        },
+      });
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "ADHGROUP",
+        action: "SYNC_ORDER",
+        endpoint,
+        method: "GET",
+        statusCode: 200,
+        success: false,
+        errorMessage: `MTN Rejection: ${rejectReason}`,
+        responsePayload: statusRes,
+        providerReference: order.providerReference,
+      });
+      return { changed: true, status: "PENDING", rawStatus };
+    }
+
+    let targetStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | null = null;
+    if (["processed", "completed", "delivered", "success", "successful"].includes(rawStatus)) {
+      targetStatus = "SUCCESS";
+    } else if (["failed", "error", "cancelled", "canceled", "refunded"].includes(rawStatus)) {
+      targetStatus = "FAILED";
+    } else if (["processing", "pending", "queued", "accepted", "in_progress"].includes(rawStatus)) {
+      targetStatus = "PROCESSING";
+    }
+
+    if (targetStatus && targetStatus !== order.status) {
+      await recordOrderApiLog({
+        orderId: order.id,
+        provider: "ADHGROUP",
+        action: "SYNC_ORDER",
+        endpoint,
+        method: "GET",
+        statusCode: 200,
+        success: targetStatus === "SUCCESS",
+        errorMessage: targetStatus === "FAILED" ? `Order marked as ${rawStatus} by ADH Group` : null,
+        responsePayload: statusRes,
+        providerReference: order.providerReference,
+      });
+
+      await changeOrderStatus(
+        order.id,
+        targetStatus,
+        `Delivery status synced from ADH Group (${rawStatus})`,
+        { id: "system", label: actorLabel },
+        { force: true }
+      );
+
+      return { changed: true, status: targetStatus, rawStatus };
+    }
+
+    return { changed: false, status: order.status, rawStatus };
+  } catch (err: any) {
+    return {
+      changed: false,
+      status: order.status,
+      error: err?.message || "ADH Group sync error",
+    };
   }
 }
 
