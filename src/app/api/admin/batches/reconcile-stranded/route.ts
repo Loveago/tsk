@@ -4,28 +4,59 @@ import { requireStaff } from "@/lib/auth";
 import { handleRouteError } from "@/lib/api-helpers";
 import { recomputeBatchStatus } from "@/lib/orders";
 import { dispatchClickyfiedMtnBatch } from "@/lib/provider-apis/clickyfied-batch";
+import { getProviderRoutingConfig } from "@/lib/provider-apis/router";
 
 export const dynamic = "force-dynamic";
 
-function isStrandedClickyfiedOrder(order: {
-  providerReference: string | null;
-  externalReference?: string | null;
-  exportBatchId?: string | null;
-  updatedAt?: Date;
-}): boolean {
-  // If order was exported via Excel file, it is handled manually/by vendor and is NOT a stranded Clickyfied order
-  if (order.exportBatchId) return false;
+const NON_CLICKYFIED_PREFIXES = [
+  "ADH:",
+  "ADH_REJECTED",
+  "BIGWIN:",
+  "GHC:",
+  "BWTEL:",
+  "UNVERIFIED_HOLD",
+  "CLICKYFIED_MANUAL_HOLD",
+];
+
+function isStrandedClickyfiedOrder(
+  order: {
+    providerReference: string | null;
+    externalReference?: string | null;
+    exportBatchId?: string | null;
+    exportCount?: number;
+    updatedAt?: Date;
+  },
+  isClickyfiedMtnActive: boolean
+): boolean {
+  // If order was exported via Excel/TXT file, it is handled manually/by vendor and is NOT stranded
+  if (order.exportBatchId || (order.exportCount ?? 0) > 0) return false;
+
   // Orders updated within the last 15 minutes are actively in-flight and must NEVER be treated as stranded
   if (order.updatedAt && Date.now() - order.updatedAt.getTime() < 15 * 60 * 1000) {
     return false;
   }
-  if (!order.providerReference) return true;
-  const ref = order.providerReference.trim();
-  if (ref === "") return true;
+
+  const ref = (order.providerReference || "").trim();
+  const extRef = (order.externalReference || "").trim();
+
+  // Never treat orders belonging to other providers (ADH Group, Bigwindata, GHConnect, etc.) or manual holds as stranded Clickyfied orders
+  if (NON_CLICKYFIED_PREFIXES.some((prefix) => ref.startsWith(prefix))) {
+    return false;
+  }
+
+  // Confirmed Clickyfied submission always has "order-"
+  if (ref.includes("order-")) return false;
+
+  // Explicit Clickyfied incomplete/stranded markers
   if (ref.startsWith("CLICKYFIED_CLAIMED")) return true;
   if (ref.includes("CF-BATCH-")) return true;
-  // A confirmed Clickyfied submission always returns an order ID starting with "order-"
-  if (!ref.includes("order-")) return true;
+  if (ref.startsWith("CLICKYFIED:")) return true;
+
+  // Empty/null providerReference is ONLY considered stranded if it was part of a Clickyfied batch
+  // OR if Clickyfied is actively enabled for MTN (otherwise it's a manual PROCESSING order)
+  if (extRef.startsWith("CF-BATCH-")) return true;
+  if (isClickyfiedMtnActive && ref === "") return true;
+
   return false;
 }
 
@@ -65,6 +96,7 @@ export async function GET(request: NextRequest) {
         providerReference: true,
         externalReference: true,
         exportBatchId: true,
+        exportCount: true,
         batchId: true,
         createdAt: true,
         updatedAt: true,
@@ -72,7 +104,15 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "asc" },
     });
 
-    const strandedOrders = processingOrders.filter(isStrandedClickyfiedOrder);
+    const routingConfig = await getProviderRoutingConfig();
+    const isClickyfiedMtnActive =
+      routingConfig.enabled &&
+      routingConfig.clickyfied.enabled &&
+      routingConfig.networkRoutes["MTN"] === "CLICKYFIED";
+
+    const strandedOrders = processingOrders.filter((o) =>
+      isStrandedClickyfiedOrder(o, isClickyfiedMtnActive)
+    );
     const totalGb = strandedOrders.reduce((sum, o) => sum + o.gbAmount, 0);
 
     return NextResponse.json({
@@ -124,12 +164,21 @@ export async function POST(request: NextRequest) {
         providerReference: true,
         externalReference: true,
         exportBatchId: true,
+        exportCount: true,
         batchId: true,
         updatedAt: true,
       },
     });
 
-    const strandedOrders = processingOrders.filter(isStrandedClickyfiedOrder);
+    const routingConfig = await getProviderRoutingConfig();
+    const isClickyfiedMtnActive =
+      routingConfig.enabled &&
+      routingConfig.clickyfied.enabled &&
+      routingConfig.networkRoutes["MTN"] === "CLICKYFIED";
+
+    const strandedOrders = processingOrders.filter((o) =>
+      isStrandedClickyfiedOrder(o, isClickyfiedMtnActive)
+    );
 
     if (strandedOrders.length === 0) {
       return NextResponse.json({

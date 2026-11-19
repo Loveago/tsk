@@ -1478,9 +1478,12 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
         providerReference: true,
         externalReference: true,
         exportBatchId: true,
+        exportCount: true,
         updatedAt: true,
       },
     });
+
+    const isClickyfiedMtnActive = routerConfig.networkRoutes["MTN"] === "CLICKYFIED";
 
     // Check if any of these orders actually have a valid batch code on Clickyfied
     const { ClickyfiedClient } = await import("./clickyfied");
@@ -1492,9 +1495,22 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
     const actuallyStranded: typeof processingMtnOrders = [];
 
     for (const o of processingMtnOrders) {
-      if (o.exportBatchId) continue;
+      if (o.exportBatchId || (o.exportCount ?? 0) > 0) continue;
       const ref = (o.providerReference || "").trim();
       const extRef = (o.externalReference || "").trim();
+
+      // Never touch orders belonging to other providers or manual holds
+      if (
+        ref.startsWith("ADH:") ||
+        ref.startsWith("ADH_REJECTED") ||
+        ref.startsWith("BIGWIN:") ||
+        ref.startsWith("GHC:") ||
+        ref.startsWith("BWTEL:") ||
+        ref.startsWith("UNVERIFIED_HOLD") ||
+        ref.startsWith("CLICKYFIED_MANUAL_HOLD")
+      ) {
+        continue;
+      }
 
       // If it already has a canonical Clickyfied order ID, it is NOT stranded
       if (ref.includes("order-")) continue;
@@ -1522,8 +1538,13 @@ export async function recoverStrandedMtnOrders(): Promise<{ recoveredCount: numb
         }
       }
 
-      // If providerReference is empty, null, or temporary claim token older than 15 mins
-      if (!ref || ref === "" || ref.startsWith("CLICKYFIED_CLAIMED") || ref.includes("CF-BATCH-")) {
+      // If providerReference is a temporary claim token/batch ref, or empty while Clickyfied is active for MTN
+      if (
+        ref.startsWith("CLICKYFIED_CLAIMED") ||
+        ref.includes("CF-BATCH-") ||
+        extRef.startsWith("CF-BATCH-") ||
+        (isClickyfiedMtnActive && (!ref || ref === ""))
+      ) {
         actuallyStranded.push(o);
       }
     }
