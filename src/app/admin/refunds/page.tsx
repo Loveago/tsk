@@ -106,7 +106,7 @@ export default function AdminRefundsPage() {
 
   const [date, setDate] = React.useState<string>(getTodayString);
   const [inputText, setInputText] = React.useState<string>("");
-  const [statusFilter, setStatusFilter] = React.useState<string>("DEFAULT"); // DEFAULT | ALL
+  const [statusFilter, setStatusFilter] = React.useState<string>("DEFAULT"); // DEFAULT | PROCESSING | SUCCESS | ALL
   const [scanning, setScanning] = React.useState<boolean>(false);
   const [executing, setExecuting] = React.useState<boolean>(false);
 
@@ -142,7 +142,13 @@ export default function AdminRefundsPage() {
           text: inputText,
           date,
           statusFilter:
-            statusFilter === "DEFAULT" ? ["PROCESSING", "SUCCESS", "PENDING"] : undefined,
+            statusFilter === "DEFAULT"
+              ? ["PROCESSING", "SUCCESS", "PENDING"]
+              : statusFilter === "PROCESSING"
+              ? ["PROCESSING"]
+              : statusFilter === "SUCCESS"
+              ? ["SUCCESS"]
+              : undefined,
         }),
       });
 
@@ -404,6 +410,8 @@ export default function AdminRefundsPage() {
                 className="h-8.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800 outline-none transition focus:border-brand-500 dark:border-white/10 dark:bg-[#0d1526] dark:text-slate-200"
               >
                 <option value="DEFAULT">Processing &amp; Completed (Default)</option>
+                <option value="PROCESSING">Processing Only</option>
+                <option value="SUCCESS">Completed Only</option>
                 <option value="ALL">All Statuses</option>
               </select>
             </div>
