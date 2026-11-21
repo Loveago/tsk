@@ -738,7 +738,7 @@ export async function GET(request: NextRequest) {
         ...order,
         providerReference: isStaff ? order.providerReference : null,
         completedAt: deliveredAt ? new Date(deliveredAt).toISOString() : null,
-        failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount),
+        failureReason: null,
         queuePosition: positionOf.get(order.id) ?? null,
         queueTotal,
       };

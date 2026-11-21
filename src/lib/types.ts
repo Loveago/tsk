@@ -333,23 +333,25 @@ export function sanitizeCustomerFacingText(text: string | null | undefined): str
   if (!s) return null;
 
   // Collapse raw transport/provider error details into a generic message
-  if (/dispatch failed|request failed|timed out|\bhttp\s*\d{3}\b|api[\s_-]?key|not configured|fetch failed|econn|enotfound|invalid json/i.test(s)) {
+  if (/dispatch failed|request failed|timed out|\bhttp\s*\d{3}\b|api[\s_-]?key|not configured|fetch failed|econn|enotfound|invalid json|adh\s*group|adhgroup|adh_rejected|insufficient\s*balance|too\s*many\s*requests|rate[\s_-]?limit/i.test(s)) {
     return "Delivery processing failed";
   }
 
   // Mask internal batch codes / provider report IDs in notes
   s = s.replace(/\[PROVIDER_REPORT_ID:[^\]]+\]/gi, "");
   s = s.replace(/\[?CLICKYFIED_REPORT_ID:[^\]]+\]?/gi, "");
-  s = s.replace(/CLICKYFIED:[a-z0-9_-]+(?::[a-z0-9_-]+)?/gi, "");
+  s = s.replace(/(?:CLICKYFIED|ADH|GHC|BIGWIN|BWTEL):[a-z0-9_-]+(?::[a-z0-9_-]+)?/gi, "");
 
   // Convert common provider failure/status phrases into clean customer language
-  s = s.replace(/order marked as failed by [a-z0-9_-]+(?:\s*provider)?/gi, "Order delivery failed");
-  s = s.replace(/marked as failed by [a-z0-9_-]+(?:\s*provider)?/gi, "Delivery failed");
-  s = s.replace(/failed (?:on|by) [a-z0-9_-]+(?:\s*provider)?/gi, "Failed to deliver");
-  s = s.replace(/dispatched via [a-z0-9_-]+ api/gi, "Dispatched for automated delivery");
-  s = s.replace(/dispatched to [a-z0-9_-]+/gi, "Dispatched for delivery");
-  s = s.replace(/updated via [a-z0-9_-]+ callback/gi, "Updated delivery status");
-  s = s.replace(/synced with [a-z0-9_-]+/gi, "Delivery status synced");
+  s = s.replace(/order marked as failed by [a-z0-9_ -]+(?:\s*provider)?/gi, "Order delivery failed");
+  s = s.replace(/marked as failed by [a-z0-9_ -]+(?:\s*provider)?/gi, "Delivery failed");
+  s = s.replace(/failed (?:on|by) [a-z0-9_ -]+(?:\s*provider)?/gi, "Failed to deliver");
+  s = s.replace(/dispatched via [a-z0-9_ -]+ api/gi, "Dispatched for automated delivery");
+  s = s.replace(/dispatched to [a-z0-9_ -]+/gi, "Dispatched for delivery");
+  s = s.replace(/updated via [a-z0-9_ -]+ callback/gi, "Updated delivery status");
+  s = s.replace(/updated via [a-z0-9_ -]+ webhook/gi, "Updated delivery status");
+  s = s.replace(/synced with [a-z0-9_ -]+/gi, "Delivery status synced");
+  s = s.replace(/synced from [a-z0-9_ -]+/gi, "Delivery status synced");
   s = s.replace(/submitted in [a-z0-9_-]+(?: mtn)? batch/gi, "Submitted in automated batch");
   s = s.replace(/[a-z0-9_-]+ batch attempt \([^)]+\) failed/gi, "Batch delivery attempt failed");
   s = s.replace(/[a-z0-9_-]+ dispatch failed/gi, "Delivery processing failed");
@@ -370,6 +372,9 @@ export function sanitizeCustomerFacingText(text: string | null | undefined): str
     .replace(/clickyfied provider/gi, "network provider")
     .replace(/clickyfied/gi, "")
     .replace(/clickify/gi, "")
+    .replace(/adh\s*group\s*(?:api|webhook|error)?/gi, "System")
+    .replace(/adhgroup/gi, "System")
+    .replace(/bigwin\s*telecel/gi, "System")
     .replace(/ghconnect/gi, "")
     .replace(/bigwindata/gi, "")
     .replace(/bigwin/gi, "");

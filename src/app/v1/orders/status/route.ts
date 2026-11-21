@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
         package: order.dataPackage?.name || `${order.gbAmount}GB`,
         recipient: order.phoneNumber,
         status: displayStatus,
-        failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount) || null,
+        failureReason: null,
         createdAt: order.createdAt.toISOString(),
         completedAt: order.completedAt?.toISOString() || null,
       };

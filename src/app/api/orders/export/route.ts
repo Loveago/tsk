@@ -230,7 +230,14 @@ export async function GET(request: NextRequest) {
       batchCode: o.batch?.batchCode || "—",
       source: o.source || "WEB",
       completedAt: fmt(o.completedAt ?? (o.status === "SUCCESS" || o.status === "COMPLETED" ? o.updatedAt : null)),
-      failureReason: o.failureReason ? sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason : "—",
+      failureReason:
+        o.status === "REFUNDED"
+          ? "Refunded"
+          : o.status === "FAILED"
+          ? "Failed"
+          : o.status === "CANCELLED"
+          ? "Cancelled"
+          : "—",
     }));
 
     const dateStamp = new Date().toISOString().slice(0, 10);

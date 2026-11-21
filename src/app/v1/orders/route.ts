@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
       recipient: o.phoneNumber,
       amount: o.amount,
       status: o.isSandbox ? (o.status === "SUCCESS" ? "TEST_COMPLETED" : o.status) : (o.status === "SUCCESS" ? "COMPLETED" : o.status),
-      failureReason: sanitizeCustomerRefundNote(o.failureReason, o.amount) || null,
+      failureReason: null,
       isSandbox: o.isSandbox,
       createdAt: o.createdAt.toISOString(),
       completedAt: o.completedAt?.toISOString() || null,

@@ -120,11 +120,6 @@ export function OrderDetailDialog({
               <div><p className="text-xs text-slate-500">Source</p><p className="font-medium">{order.source}</p></div>
               <div><p className="text-xs text-slate-500">Status</p><StatusBadge status={order.status} /></div>
             </div>
-            {order.failureReason && (
-              <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                {sanitizeCustomerRefundNote(order.failureReason, order.amount)}
-              </div>
-            )}
 
             {/* 24h reporting window (§6) */}
             {order.status === "SUCCESS" && <ReportWindowBanner reportWindow={order.reportWindow ?? null} />}

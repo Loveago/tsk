@@ -171,7 +171,7 @@ export async function GET(
       recipient: order.phoneNumber,
       amount: order.amount,
       status: displayStatus,
-      failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount) || null,
+      failureReason: null,
       isSandbox: order.isSandbox,
       deliveryReport: order.deliveryReports?.[0] ? {
         id: order.deliveryReports[0].id,

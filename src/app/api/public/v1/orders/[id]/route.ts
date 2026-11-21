@@ -37,10 +37,10 @@ export async function GET(
     const safeOrder = {
       ...order,
       providerReference: null,
-      failureReason: sanitizeCustomerRefundNote(order.failureReason, order.amount),
+      failureReason: null,
       history: order.history.map((h) => ({
         ...h,
-        note: sanitizeCustomerFacingText(h.note),
+        note: null,
       })),
     };
     return NextResponse.json({ success: true, order: safeOrder });

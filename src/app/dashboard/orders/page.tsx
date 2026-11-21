@@ -647,15 +647,6 @@ export default function OrdersPage() {
                     </div>
                   </div>
 
-                  {o.failureReason && (
-                    <p
-                      className="mt-2 truncate text-[11px] text-red-500"
-                      title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
-                    >
-                      {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
-                    </p>
-                  )}
-
                   {(o.status === "SUCCESS" || o.status === "COMPLETED") && (
                     <p className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
@@ -723,14 +714,6 @@ export default function OrdersPage() {
                         </td>
                         <td className="px-4 py-3.5">
                           <StatusBadge status={o.status} />
-                          {o.failureReason && (
-                            <p
-                              className="mt-1 max-w-[170px] truncate text-[11px] text-red-500"
-                              title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
-                            >
-                              {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
-                            </p>
-                          )}
                         </td>
                         <td className="px-4 py-3.5 text-xs whitespace-nowrap">
                           {o.status === "SUCCESS" || o.status === "COMPLETED" ? (
@@ -847,15 +830,6 @@ export default function OrdersPage() {
                       <p className="font-bold text-slate-900 dark:text-white">{formatGHS(o.amount)}</p>
                     </div>
                   </div>
-
-                  {o.failureReason && (
-                    <p
-                      className="mt-2 truncate text-[11px] text-red-500"
-                      title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
-                    >
-                      {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
-                    </p>
-                  )}
 
                   {(o.status === "SUCCESS" || o.status === "COMPLETED") && (
                     <p className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
@@ -1240,14 +1214,6 @@ export default function OrdersPage() {
                         <td className="px-3 py-2">{o.gbAmount} GB</td>
                         <td className="px-3 py-2">
                           <StatusBadge status={o.status} />
-                          {o.failureReason && (
-                            <p
-                              className="mt-0.5 max-w-[150px] truncate text-[11px] text-red-500"
-                              title={sanitizeCustomerRefundNote(o.failureReason, o.amount) ?? o.failureReason}
-                            >
-                              {sanitizeCustomerRefundNote(o.failureReason, o.amount)}
-                            </p>
-                          )}
                         </td>
                         <td className="px-3 py-2 text-xs whitespace-nowrap">
                           {o.status === "SUCCESS" || o.status === "COMPLETED" ? (

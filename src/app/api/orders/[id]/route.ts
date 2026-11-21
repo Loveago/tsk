@@ -99,10 +99,8 @@ export async function GET(
       ? safeOrder.history
       : (safeOrder.history || []).map((h) => ({
           ...h,
-          note: sanitizeCustomerFacingText(h.note),
-          changedBy: h.changedBy?.toLowerCase().includes("clickyfied")
-            ? "System"
-            : (sanitizeCustomerFacingText(h.changedBy) || "System"),
+          note: null,
+          changedBy: "System",
         }));
 
     return NextResponse.json({
@@ -110,7 +108,7 @@ export async function GET(
         ...safeOrder,
         providerReference: isStaff ? safeOrder.providerReference : null,
         history: sanitizedHistory,
-        failureReason: sanitizeCustomerRefundNote(safeOrder.failureReason, safeOrder.amount),
+        failureReason: isStaff ? safeOrder.failureReason : null,
         deliveryReport: activeReport
           ? {
               ...activeReport,

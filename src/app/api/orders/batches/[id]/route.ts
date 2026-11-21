@@ -112,7 +112,7 @@ export async function GET(
           ...o,
           providerReference: isStaff ? o.providerReference : null,
           completedAt: deliveredAt ? new Date(deliveredAt).toISOString() : null,
-          failureReason: sanitizeCustomerRefundNote(o.failureReason, o.amount),
+          failureReason: null,
         };
       }),
       stats,
