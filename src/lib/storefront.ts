@@ -791,18 +791,22 @@ export interface StorefrontPaystackRefundResult {
 }
 
 /**
- * Automatically initiates a Paystack refund for a storefront order when
- * `paystack_auto_refund_enabled` is turned on in Admin Settings.
- * Refunds the customer's payment minus the 2% Paystack gateway fee.
+ * Executes a Paystack refund for a specific StorefrontOrder (minus the 2% Paystack fee).
+ * Idempotent: skips if already refunded on Paystack.
  */
-export async function processStorefrontPaystackRefund(
-  orderId: number,
+export async function executeStorefrontPaystackRefund(
+  storeOrder: {
+    id: string;
+    seq: number;
+    underlyingOrderId: number | null;
+    sellingPrice: number;
+    paymentReference: string;
+    paystackRefundId: string | null;
+    paystackRefundStatus: string | null;
+    paystackRefundAmount: number | null;
+  },
   reason?: string | null
 ): Promise<StorefrontPaystackRefundResult> {
-  if (!(await isPaystackAutoRefundEnabled())) {
-    return { attempted: false, refunded: false, disabled: true };
-  }
-
   if (!(await isPaystackConfigured())) {
     return {
       attempted: false,
@@ -811,11 +815,7 @@ export async function processStorefrontPaystackRefund(
     };
   }
 
-  const storeOrder = await prisma.storefrontOrder.findUnique({
-    where: { underlyingOrderId: orderId },
-  });
-
-  if (!storeOrder || !storeOrder.paymentReference) {
+  if (!storeOrder.paymentReference) {
     return {
       attempted: false,
       refunded: false,
@@ -840,6 +840,8 @@ export async function processStorefrontPaystackRefund(
       amountPesewas: storeOrder.paystackRefundAmount,
     };
   }
+
+  const orderId = storeOrder.underlyingOrderId ?? 0;
 
   try {
     const verification = await verifyTransaction(storeOrder.paymentReference);
@@ -938,6 +940,34 @@ export async function processStorefrontPaystackRefund(
       error: errMsg,
     };
   }
+}
+
+/**
+ * Automatically initiates a Paystack refund for a storefront order when
+ * `paystack_auto_refund_enabled` is turned on in Admin Settings.
+ * Refunds the customer's payment minus the 2% Paystack gateway fee.
+ */
+export async function processStorefrontPaystackRefund(
+  orderId: number,
+  reason?: string | null
+): Promise<StorefrontPaystackRefundResult> {
+  if (!(await isPaystackAutoRefundEnabled())) {
+    return { attempted: false, refunded: false, disabled: true };
+  }
+
+  const storeOrder = await prisma.storefrontOrder.findUnique({
+    where: { underlyingOrderId: orderId },
+  });
+
+  if (!storeOrder) {
+    return {
+      attempted: false,
+      refunded: false,
+      error: "No storefront order found",
+    };
+  }
+
+  return executeStorefrontPaystackRefund(storeOrder, reason);
 }
 
 // ---------------------------------------------------------------------------

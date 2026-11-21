@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth";
 import { handleRouteError } from "@/lib/api-helpers";
 import { storefrontOrderCode } from "@/lib/storefront";
+import { isPaystackAutoRefundEnabled } from "@/lib/paystack";
 
 export async function GET(request: NextRequest) {
   try {
@@ -261,8 +262,11 @@ export async function GET(request: NextRequest) {
       .filter((o) => o.isStorefront && o.paystackReference)
       .map((o) => o.paystackReference as string);
 
+    const paystackAutoRefundEnabled = await isPaystackAutoRefundEnabled();
+
     return NextResponse.json({
       success: true,
+      paystackAutoRefundEnabled,
       orders: formattedOrders,
       filteredStorefrontRefs: Array.from(new Set(filteredStorefrontRefs)),
       stats: {

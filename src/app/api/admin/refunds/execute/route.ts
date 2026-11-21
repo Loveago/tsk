@@ -5,6 +5,7 @@ import { changeOrderStatus, recomputeBatchStatus, recomputeExportBatchStatus } f
 import { recordAudit } from "@/lib/audit";
 import { handleRouteError, apiError } from "@/lib/api-helpers";
 import { storefrontOrderCode } from "@/lib/storefront";
+import { isPaystackAutoRefundEnabled } from "@/lib/paystack";
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,13 +34,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const paystackAutoRefundEnabled = await isPaystackAutoRefundEnabled();
+
     let refundedCount = 0;
     let skippedCount = 0;
     let storefrontRefundCount = 0;
     let directRefundCount = 0;
+    let paystackRefundedCount = 0;
+    let paystackFailedCount = 0;
     const refundedOrderIds: number[] = [];
     const refundedStorefrontIds: string[] = [];
     const errors: Array<{ orderId: number; error: string }> = [];
+    const paystackErrors: Array<{ orderId: number; error: string }> = [];
 
     // Track batch IDs that need recomputation
     const batchIdsToRecompute = new Set<string>();
@@ -71,6 +77,22 @@ export async function POST(request: NextRequest) {
               order.storefrontOrder?.paymentReference ||
               (order.storefrontOrder?.seq ? storefrontOrderCode(order.storefrontOrder.seq, null) : null);
             if (ref) refundedStorefrontIds.push(ref);
+
+            if (paystackAutoRefundEnabled) {
+              const sfAfter = await prisma.storefrontOrder.findUnique({
+                where: { underlyingOrderId: order.id },
+                select: { paystackRefundStatus: true, paystackRefundError: true },
+              });
+              const psStatus = (sfAfter?.paystackRefundStatus || "").toUpperCase();
+              if (psStatus === "PENDING" || psStatus === "PROCESSING" || psStatus === "PROCESSED") {
+                paystackRefundedCount++;
+              } else if (psStatus === "FAILED") {
+                paystackFailedCount++;
+                if (sfAfter?.paystackRefundError) {
+                  paystackErrors.push({ orderId: order.id, error: sfAfter.paystackRefundError });
+                }
+              }
+            }
           } else {
             directRefundCount++;
           }
@@ -119,6 +141,10 @@ export async function POST(request: NextRequest) {
       skippedCount,
       storefrontRefundCount,
       directRefundCount,
+      paystackAutoRefundEnabled,
+      paystackRefundedCount,
+      paystackFailedCount,
+      paystackErrors: paystackErrors.length > 0 ? paystackErrors : undefined,
       refundedOrderIds,
       refundedStorefrontIds: Array.from(new Set(refundedStorefrontIds)),
       errors: errors.length > 0 ? errors : undefined,

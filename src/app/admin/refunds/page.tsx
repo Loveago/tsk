@@ -21,6 +21,7 @@ import {
   Wallet,
   Store,
   FileSpreadsheet,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,6 +31,7 @@ import { PageHeader, StatCard } from "@/components/shared";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import { RefundedOrdersTab } from "@/components/admin/refunded-orders-tab";
+import { PaystackBatchRefundTab } from "@/components/admin/paystack-batch-refund-tab";
 
 interface MatchedOrder {
   orderId: number;
@@ -100,8 +102,10 @@ export default function AdminRefundsPage() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
 
-  const [activeTab, setActiveTab] = React.useState<"refunded" | "scanner">(() => {
-    return tabParam === "scanner" ? "scanner" : "refunded";
+  const [activeTab, setActiveTab] = React.useState<"refunded" | "scanner" | "paystack">(() => {
+    if (tabParam === "scanner") return "scanner";
+    if (tabParam === "paystack") return "paystack";
+    return "refunded";
   });
 
   const [date, setDate] = React.useState<string>(getTodayString);
@@ -125,6 +129,18 @@ export default function AdminRefundsPage() {
   const [refundReason, setRefundReason] = React.useState<string>("Bulk refund scanner");
   const [copiedAll, setCopiedAll] = React.useState<boolean>(false);
   const [copiedRef, setCopiedRef] = React.useState<string | null>(null);
+  const [paystackAutoRefundEnabled, setPaystackAutoRefundEnabled] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    fetch("/api/admin/refunds?limit=1")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.paystackAutoRefundEnabled === "boolean") {
+          setPaystackAutoRefundEnabled(d.paystackAutoRefundEnabled);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Handle Scanning
   const handleScan = async () => {
@@ -239,10 +255,23 @@ export default function AdminRefundsPage() {
         throw new Error(data.error || "Failed to process refunds.");
       }
 
-      toast(
-        `${data.refundedCount} order(s) successfully marked as REFUNDED.`,
-        "success"
-      );
+      if (data.paystackFailedCount > 0) {
+        const firstErr = data.paystackErrors?.[0]?.error || "Paystack refund failed";
+        toast(
+          `${data.refundedCount} order(s) marked REFUNDED. ${data.paystackRefundedCount ?? 0} sent to Paystack, ${data.paystackFailedCount} failed: ${firstErr}`,
+          "error"
+        );
+      } else if (data.paystackRefundedCount > 0) {
+        toast(
+          `${data.refundedCount} order(s) refunded. ${data.paystackRefundedCount} storefront refund(s) sent via Paystack (minus 2% fee).`,
+          "success"
+        );
+      } else {
+        toast(
+          `${data.refundedCount} order(s) successfully marked as REFUNDED.`,
+          "success"
+        );
+      }
 
       // Update local state to show REFUNDED
       const refundedSet = new Set<number>(data.refundedOrderIds || selectedIds);
@@ -348,9 +377,27 @@ export default function AdminRefundsPage() {
           <Search className="h-4 w-4" />
           <span>Bulk Refund Scanner</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("paystack")}
+          className={cn(
+            "flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer",
+            activeTab === "paystack"
+              ? "border-violet-600 text-violet-600 dark:border-violet-400 dark:text-violet-400"
+              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          )}
+        >
+          <CreditCard className="h-4 w-4" />
+          <span>Paystack Reference Refund</span>
+        </button>
       </div>
 
       {activeTab === "refunded" && <RefundedOrdersTab />}
+
+      {activeTab === "paystack" && (
+        <PaystackBatchRefundTab paystackAutoRefundEnabled={paystackAutoRefundEnabled} />
+      )}
 
       {activeTab === "scanner" && (
         <div className="space-y-6">
@@ -921,9 +968,15 @@ export default function AdminRefundsPage() {
           </div>
 
           {selectedStorefrontCount > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-              ⚠️ <strong>Paystack Note:</strong> {selectedStorefrontCount} storefront orders will be marked as REFUNDED in the database. Remember to copy their storefront IDs and execute their reversals on Paystack!
-            </div>
+            paystackAutoRefundEnabled ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-[11px] text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                ⚡ <strong>Paystack Auto-Refund Active:</strong> {selectedStorefrontCount} storefront order{selectedStorefrontCount === 1 ? "" : "s"} will be automatically refunded via Paystack (minus the 2% Paystack fee).
+              </div>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                ⚠️ <strong>Paystack Auto-Refund is OFF:</strong> {selectedStorefrontCount} storefront order{selectedStorefrontCount === 1 ? "" : "s"} will be marked REFUNDED in the database only (enable Auto-Refund in <strong>Settings → Billing &amp; Payments</strong> or process manually on Paystack).
+              </div>
+            )
           )}
 
           <div>
