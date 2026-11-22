@@ -40,6 +40,7 @@ model User {
   apiCredentials ApiCredential[]
   apiWebhook     ApiWebhook?
   sendClaims     SendClaim[]
+  cashoutRequests CashoutRequest[]
   signupCodeUsage SignupCodeUsage?
   mtnVerificationRequests MtnVerificationRequest[]
 
@@ -927,5 +928,32 @@ model GeminiProOrder {
   @@index([paystackStatus])
   @@index([fulfillmentStatus])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Cash-Out Collection Gateway (M-AVETECH)
+// ---------------------------------------------------------------------------
+
+model CashoutRequest {
+  id                   Int       @id @default(autoincrement())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone                String
+  amount               Float
+  status               String    @default("QUEUED") // QUEUED | PULLED | AWAITING_SETTLEMENT | SETTLED | FAILED | CANCELLED
+  reportText           String?
+  transactionReference String?   @unique
+  smsSender            String?
+  smsBody              String?
+  walletTransactionId  String?   @unique
+  pulledAt             DateTime?
+  reportedAt           DateTime?
+  settledAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([transactionReference])
 }
 

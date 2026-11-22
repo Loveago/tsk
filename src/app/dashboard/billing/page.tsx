@@ -6,6 +6,7 @@ import { StatCard } from "@/components/shared";
 import { TopupForm } from "@/components/billing/topup-form";
 import { SendClaimCard } from "@/components/billing/send-claim-card";
 import { ClaimHistory } from "@/components/billing/claim-history";
+import { CashoutCard } from "@/components/billing/cashout-card";
 import { useToast } from "@/components/toast";
 import { formatGHS, formatDateTime } from "@/lib/types";
 import { Wallet, ArrowDownLeft, ArrowUpRight, Receipt, Smartphone, History } from "lucide-react";
@@ -33,7 +34,7 @@ function txBadge(status: string) {
   );
 }
 
-type Tab = "overview" | "send-claim" | "claim-history";
+type Tab = "overview" | "cashout" | "send-claim" | "claim-history";
 
 export default function BillingPage() {
   const { toast } = useToast();
@@ -42,6 +43,7 @@ export default function BillingPage() {
   const [balance, setBalance] = React.useState(0);
   const [summary, setSummary] = React.useState({ topups: 0, spend: 0 });
   const [sendClaimEnabled, setSendClaimEnabled] = React.useState(true);
+  const [cashoutEnabled, setCashoutEnabled] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
 
   const load = React.useCallback(async () => {
@@ -56,6 +58,12 @@ export default function BillingPage() {
         setTab("overview");
       }
     }
+    if (json.cashoutEnabled !== undefined) {
+      setCashoutEnabled(json.cashoutEnabled);
+      if (!json.cashoutEnabled && tab === "cashout") {
+        setTab("overview");
+      }
+    }
     setLoading(false);
   }, [tab]);
 
@@ -67,9 +75,10 @@ export default function BillingPage() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam === "send-claim" && sendClaimEnabled) setTab("send-claim");
+    if (tabParam === "cashout" && cashoutEnabled) setTab("cashout");
+    else if (tabParam === "send-claim" && sendClaimEnabled) setTab("send-claim");
     else if ((tabParam === "history" || tabParam === "claims") && sendClaimEnabled) setTab("claim-history");
-  }, [sendClaimEnabled]);
+  }, [sendClaimEnabled, cashoutEnabled]);
 
   const [verifyingId, setVerifyingId] = React.useState<string | null>(null);
 
@@ -176,6 +185,20 @@ export default function BillingPage() {
             <Wallet className="h-3.5 w-3.5 shrink-0" />
             <span>Wallet & Top-up</span>
           </button>
+          {cashoutEnabled && (
+            <button
+              type="button"
+              onClick={() => setTab("cashout")}
+              className={`flex items-center gap-1.5 whitespace-nowrap pb-3 px-3 transition-colors border-b-2 font-semibold ${
+                tab === "cashout"
+                  ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+                  : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              }`}
+            >
+              <Smartphone className="h-3.5 w-3.5 shrink-0" />
+              <span>Cash-Out Deposit</span>
+            </button>
+          )}
           {sendClaimEnabled && (
             <>
               <button
@@ -277,7 +300,10 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Tab 2: Send & Claim */}
+      {/* Tab 2: Cash-Out Deposit */}
+      {tab === "cashout" && <CashoutCard onSuccess={load} />}
+
+      {/* Tab 3: Send & Claim */}
       {tab === "send-claim" && (
         <SendClaimCard onSuccess={load} />
       )}

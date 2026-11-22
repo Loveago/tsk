@@ -78,6 +78,7 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = React.useState(false);
   const [activeCat, setActiveCat] = React.useState<Category>("orders");
   const [showPaystackKey, setShowPaystackKey] = React.useState(false);
+  const [showCashoutKey, setShowCashoutKey] = React.useState(false);
   const [showBrevoKey, setShowBrevoKey] = React.useState(false);
   const [testEmailTo, setTestEmailTo] = React.useState("");
   const [sendingTestEmail, setSendingTestEmail] = React.useState(false);
@@ -218,6 +219,7 @@ export default function AdminSettingsPage() {
   const storefrontApplyEnabled = settings.storefront_apply_enabled !== "false";
   const paystackTopupEnabled = settings.paystack_topup_enabled === "true";
   const paystackAutoRefundEnabled = settings.paystack_auto_refund_enabled === "true";
+  const cashoutEnabled = settings.cashout_enabled === "true";
   const loginOtpEnabled = settings.login_otp_enabled === "true";
   const apiFeatureEnabled = settings.api_feature_enabled === "true";
   const defaultRole = settings.default_register_role || "USER";
@@ -1646,6 +1648,103 @@ export default function AdminSettingsPage() {
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Stored securely in database settings. Overrides PAYSTACK_SECRET_KEY in environment variables when provided.
+                </p>
+              </div>
+            </div>
+
+            {/* Cash-Out Collection Gateway (M-AVETECH) */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Cash-Out Collection Gateway (M-AVETECH)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Enable pull-based MoMo Cash-Out deposits on the user billing page.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={cashoutEnabled}
+                  onClick={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      cashout_enabled: cashoutEnabled ? "false" : "true",
+                    }))
+                  }
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    cashoutEnabled ? "bg-emerald-600" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      cashoutEnabled ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="space-y-1.5">
+                  <Label>Site Brand Name</Label>
+                  <Input
+                    type="text"
+                    value={settings.cashout_site_name ?? "Tskconnect"}
+                    onChange={(e) => setSettings((s) => ({ ...s, cashout_site_name: e.target.value }))}
+                    placeholder="Tskconnect"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Allowed SMS Sender IDs (comma-separated)</Label>
+                  <Input
+                    type="text"
+                    value={settings.cashout_allowed_senders ?? "MobileMoney,MTN,TelecelCash,ATMoney"}
+                    onChange={(e) => setSettings((s) => ({ ...s, cashout_allowed_senders: e.target.value }))}
+                    placeholder="MobileMoney,MTN,TelecelCash,ATMoney"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Min Cash-Out Amount (GHS)</Label>
+                  <Input
+                    type="number"
+                    value={settings.cashout_min_amount ?? "1"}
+                    onChange={(e) => setSettings((s) => ({ ...s, cashout_min_amount: e.target.value }))}
+                    placeholder="1"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Max Cash-Out Amount (GHS)</Label>
+                  <Input
+                    type="number"
+                    value={settings.cashout_max_amount ?? "5000"}
+                    onChange={(e) => setSettings((s) => ({ ...s, cashout_max_amount: e.target.value }))}
+                    placeholder="5000"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <Label>Shared Device Key (X-Agent-Sign HMAC Secret)</Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowCashoutKey(!showCashoutKey)}
+                    className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 inline-flex items-center gap-1 font-medium"
+                  >
+                    {showCashoutKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {showCashoutKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <Input
+                  type={showCashoutKey ? "text" : "password"}
+                  value={settings.cashout_device_key ?? ""}
+                  onChange={(e) => setSettings((s) => ({ ...s, cashout_device_key: e.target.value }))}
+                  placeholder="Enter shared device key issued by M-AVETECH"
+                  className="font-mono text-sm"
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Base URL for gateway client: <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded font-mono">https://tsk05.net</code> (or <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded font-mono">https://tsk05.net/api</code>) — exposes <code className="font-mono">/agent-app/poll</code>, <code className="font-mono">/agent-app/report</code>, and <code className="font-mono">/agent-app/sms</code>.
                 </p>
               </div>
             </div>

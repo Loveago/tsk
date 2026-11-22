@@ -61,10 +61,12 @@ export async function GET(request: NextRequest) {
       if (s.type === "DEBIT") spend += s._sum.amount ?? 0;
     }
 
-    const sendClaimSetting = await prisma.systemSetting.findUnique({
-      where: { key: "send_claim_enabled" },
-    });
+    const [sendClaimSetting, cashoutSetting] = await Promise.all([
+      prisma.systemSetting.findUnique({ where: { key: "send_claim_enabled" } }),
+      prisma.systemSetting.findUnique({ where: { key: "cashout_enabled" } }),
+    ]);
     const sendClaimEnabled = sendClaimSetting?.value !== "false";
+    const cashoutEnabled = cashoutSetting?.value === "true";
 
     return NextResponse.json({
       data,
@@ -75,6 +77,7 @@ export async function GET(request: NextRequest) {
       balance: freshUser?.balance ?? user.balance,
       summary: { topups, spend },
       sendClaimEnabled,
+      cashoutEnabled,
     });
   } catch (err) {
     return handleRouteError(err);

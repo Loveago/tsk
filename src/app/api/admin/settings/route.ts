@@ -86,6 +86,11 @@ export async function PATCH(request: NextRequest) {
         ? "********"
         : `${auditSafeInput.adhgroup_webhook_secret.slice(0, 4)}...${auditSafeInput.adhgroup_webhook_secret.slice(-4)}`;
     }
+    if (typeof auditSafeInput.cashout_device_key === "string" && auditSafeInput.cashout_device_key) {
+      auditSafeInput.cashout_device_key = auditSafeInput.cashout_device_key.length <= 8
+        ? "********"
+        : `${auditSafeInput.cashout_device_key.slice(0, 4)}...${auditSafeInput.cashout_device_key.slice(-4)}`;
+    }
 
     await recordAudit({
       userId: actor.id,

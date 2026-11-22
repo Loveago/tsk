@@ -327,6 +327,14 @@ export const settingsSchema = z.object({
   paystack_min_topup: z.string().max(20).optional(),
   paystack_max_topup: z.string().max(20).optional(),
   paystack_secret_key: z.string().max(255).optional(),
+
+  // Cash-Out Collection Gateway (M-AVETECH)
+  cashout_enabled: z.enum(["true", "false"]).optional(),
+  cashout_device_key: z.string().max(255).optional(),
+  cashout_site_name: z.string().max(100).optional(),
+  cashout_min_amount: z.string().max(20).optional(),
+  cashout_max_amount: z.string().max(20).optional(),
+  cashout_allowed_senders: z.string().max(255).optional(),
   api_feature_enabled: z.enum(["true", "false"]).optional(),
 
   // Brevo & Email
