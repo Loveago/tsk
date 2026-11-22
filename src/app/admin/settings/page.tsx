@@ -30,6 +30,8 @@ import {
   Sparkles,
   Check,
   Server,
+  Copy,
+  RefreshCw,
 } from "lucide-react";
 import { ProviderApisSettings } from "@/components/admin/provider-apis-settings";
 import { WhatsAppChannelWidget } from "@/components/whatsapp-channel-widget";
@@ -1725,26 +1727,60 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label>Shared Device Key (X-Agent-Sign HMAC Secret)</Label>
-                  <button
-                    type="button"
-                    onClick={() => setShowCashoutKey(!showCashoutKey)}
-                    className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 inline-flex items-center gap-1 font-medium"
-                  >
-                    {showCashoutKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    {showCashoutKey ? "Hide" : "Show"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const bytes = new Uint8Array(32);
+                        window.crypto.getRandomValues(bytes);
+                        const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+                        setSettings((s) => ({ ...s, cashout_device_key: hex }));
+                        setShowCashoutKey(true);
+                        toast("Generated new Device Key! Click Save Settings, then paste it into the app.", "success");
+                      }}
+                      className="h-7 px-2.5 text-xs gap-1"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      <span>Generate Device Key</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!settings.cashout_device_key?.trim()}
+                      onClick={async () => {
+                        if (!settings.cashout_device_key) return;
+                        await navigator.clipboard.writeText(settings.cashout_device_key);
+                        toast("Device Key copied to clipboard!", "success");
+                      }}
+                      className="h-7 px-2.5 text-xs gap-1"
+                    >
+                      <Copy className="h-3 w-3" />
+                      <span>Copy</span>
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCashoutKey(!showCashoutKey)}
+                      className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 inline-flex items-center gap-1 font-medium"
+                    >
+                      {showCashoutKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {showCashoutKey ? "Hide" : "Show"}
+                    </button>
+                  </div>
                 </div>
                 <Input
                   type={showCashoutKey ? "text" : "password"}
                   value={settings.cashout_device_key ?? ""}
                   onChange={(e) => setSettings((s) => ({ ...s, cashout_device_key: e.target.value }))}
-                  placeholder="Enter shared device key issued by M-AVETECH"
+                  placeholder="Click Generate Device Key or paste your shared secret"
                   className="font-mono text-sm"
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Base URL for gateway client: <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded font-mono">https://tsk05.net</code> (or <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded font-mono">https://tsk05.net/api</code>) — exposes <code className="font-mono">/agent-app/poll</code>, <code className="font-mono">/agent-app/report</code>, and <code className="font-mono">/agent-app/sms</code>.
+                  Generate a key, click <strong>Save Settings</strong>, then copy and paste it into the Cash-Out gateway app. Base URL: <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded font-mono">https://tsk05.net</code> (or <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded font-mono">https://tsk05.net/api</code>).
                 </p>
               </div>
             </div>
